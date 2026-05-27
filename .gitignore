@@ -60,3 +60,6 @@ nunit-*.xml
 
 # Local Codex agent coordination and private project planning
 /Agents/
+
+# Local BenchmarkDotNet output may contain machine and absolute-path details
+/BenchmarkDotNet.Artifacts/

@@ -1,0 +1,243 @@
+namespace VecNet;
+
+/// <summary>
+/// An in-memory exhaustive index using scalar canonical distance calculation.
+/// </summary>
+public sealed class ExactFlatIndex
+{
+    private const int InitialCapacity = 4;
+
+    private ulong[] _ids = [];
+    private float[] _vectors = [];
+    private int _count;
+
+    /// <summary>
+    /// Initializes a new exact flat index with a fixed dimension and metric.
+    /// </summary>
+    /// <param name="dimension">The required positive vector dimension.</param>
+    /// <param name="metric">The canonical distance metric.</param>
+    public ExactFlatIndex(int dimension, VectorMetric metric)
+    {
+        if (dimension <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(dimension), "Dimension must be positive.");
+        }
+
+        if (!Enum.IsDefined(metric))
+        {
+            throw new ArgumentOutOfRangeException(nameof(metric), "Metric is not supported.");
+        }
+
+        Dimension = dimension;
+        Metric = metric;
+    }
+
+    /// <summary>
+    /// Gets the fixed dimension accepted by this index.
+    /// </summary>
+    public int Dimension { get; }
+
+    /// <summary>
+    /// Gets the canonical distance metric used by this index.
+    /// </summary>
+    public VectorMetric Metric { get; }
+
+    /// <summary>
+    /// Inserts a vector associated with a caller-provided external identifier.
+    /// </summary>
+    /// <param name="id">The opaque external vector identifier.</param>
+    /// <param name="vector">
+    /// The vector values to copy into index storage. Cosine vectors are normalized during insertion.
+    /// </param>
+    public void Add(ulong id, ReadOnlySpan<float> vector)
+    {
+        double magnitude = ValidateVector(vector, nameof(vector));
+
+        for (int i = 0; i < _count; i++)
+        {
+            if (_ids[i] == id)
+            {
+                throw new ArgumentException("An item with the same identifier already exists.", nameof(id));
+            }
+        }
+
+        EnsureCapacity(_count + 1);
+
+        int offset = _count * Dimension;
+        if (Metric == VectorMetric.Cosine)
+        {
+            StoreNormalizedVector(vector, magnitude, offset);
+        }
+        else
+        {
+            vector.CopyTo(_vectors.AsSpan(offset, Dimension));
+        }
+
+        _ids[_count] = id;
+        _count++;
+    }
+
+    /// <summary>
+    /// Searches all inserted vectors and writes the nearest results in ascending distance order.
+    /// </summary>
+    /// <param name="query">The query vector. Cosine queries are normalized during search.</param>
+    /// <param name="results">
+    /// The caller-owned destination buffer. Its length specifies the requested result count.
+    /// </param>
+    /// <returns>The number of results written.</returns>
+    public int Search(ReadOnlySpan<float> query, Span<SearchResult> results)
+    {
+        double queryMagnitude = ValidateVector(query, nameof(query));
+
+        if (_count == 0 || results.IsEmpty)
+        {
+            return 0;
+        }
+
+        int written = 0;
+        for (int row = 0; row < _count; row++)
+        {
+            var candidate = new SearchResult(_ids[row], CalculateDistance(row, query, queryMagnitude));
+            int insertionIndex = FindInsertionIndex(results[..written], candidate);
+            if (insertionIndex >= results.Length)
+            {
+                continue;
+            }
+
+            int valuesToShift = Math.Min(written, results.Length - 1) - insertionIndex;
+            if (valuesToShift > 0)
+            {
+                results.Slice(insertionIndex, valuesToShift)
+                    .CopyTo(results.Slice(insertionIndex + 1));
+            }
+
+            results[insertionIndex] = candidate;
+            if (written < results.Length)
+            {
+                written++;
+            }
+        }
+
+        return written;
+    }
+
+    private double ValidateVector(ReadOnlySpan<float> vector, string parameterName)
+    {
+        if (vector.Length != Dimension)
+        {
+            throw new ArgumentException($"Vector dimension must be {Dimension}.", parameterName);
+        }
+
+        double squaredMagnitude = 0;
+        foreach (float component in vector)
+        {
+            if (!float.IsFinite(component))
+            {
+                throw new ArgumentException("Vector components must be finite.", parameterName);
+            }
+
+            if (Metric == VectorMetric.Cosine)
+            {
+                squaredMagnitude += (double)component * component;
+            }
+        }
+
+        if (Metric == VectorMetric.Cosine && squaredMagnitude == 0)
+        {
+            throw new ArgumentException("Cosine distance does not accept a zero vector.", parameterName);
+        }
+
+        return Metric == VectorMetric.Cosine ? Math.Sqrt(squaredMagnitude) : 0;
+    }
+
+    private void EnsureCapacity(int requiredCount)
+    {
+        if (_ids.Length >= requiredCount)
+        {
+            return;
+        }
+
+        int newCapacity = _ids.Length == 0 ? InitialCapacity : checked(_ids.Length * 2);
+        if (newCapacity < requiredCount)
+        {
+            newCapacity = requiredCount;
+        }
+
+        var newIds = new ulong[newCapacity];
+        var newVectors = new float[checked(newCapacity * Dimension)];
+        _ids.AsSpan(0, _count).CopyTo(newIds);
+        _vectors.AsSpan(0, _count * Dimension).CopyTo(newVectors);
+
+        _ids = newIds;
+        _vectors = newVectors;
+    }
+
+    private void StoreNormalizedVector(ReadOnlySpan<float> vector, double magnitude, int offset)
+    {
+        for (int i = 0; i < Dimension; i++)
+        {
+            _vectors[offset + i] = (float)(vector[i] / magnitude);
+        }
+    }
+
+    private float CalculateDistance(int row, ReadOnlySpan<float> query, double queryMagnitude)
+    {
+        int offset = row * Dimension;
+        return Metric switch
+        {
+            VectorMetric.SquaredEuclidean => SquaredEuclideanDistance(query, offset),
+            VectorMetric.InnerProduct => InnerProductDistance(query, offset),
+            VectorMetric.Cosine => CosineDistance(query, queryMagnitude, offset),
+            _ => throw new InvalidOperationException("Index metric is not supported.")
+        };
+    }
+
+    private float SquaredEuclideanDistance(ReadOnlySpan<float> query, int offset)
+    {
+        double sum = 0;
+        for (int i = 0; i < Dimension; i++)
+        {
+            double difference = query[i] - _vectors[offset + i];
+            sum += difference * difference;
+        }
+
+        return (float)sum;
+    }
+
+    private float InnerProductDistance(ReadOnlySpan<float> query, int offset)
+    {
+        double dotProduct = 0;
+        for (int i = 0; i < Dimension; i++)
+        {
+            dotProduct += (double)query[i] * _vectors[offset + i];
+        }
+
+        return (float)-dotProduct;
+    }
+
+    private float CosineDistance(ReadOnlySpan<float> query, double queryMagnitude, int offset)
+    {
+        double dotProduct = 0;
+        for (int i = 0; i < Dimension; i++)
+        {
+            dotProduct += _vectors[offset + i] * (query[i] / queryMagnitude);
+        }
+
+        return (float)(1 - dotProduct);
+    }
+
+    private static int FindInsertionIndex(ReadOnlySpan<SearchResult> results, SearchResult candidate)
+    {
+        for (int i = 0; i < results.Length; i++)
+        {
+            SearchResult current = results[i];
+            if (candidate.Distance < current.Distance ||
+                (candidate.Distance == current.Distance && candidate.Id < current.Id))
+            {
+                return i;
+            }
+        }
+
+        return results.Length;
+    }
+}

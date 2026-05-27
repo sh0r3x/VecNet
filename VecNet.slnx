@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/VecNet.Benchmarks/VecNet.Benchmarks.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/VecNet/VecNet.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/VecNet.Tests/VecNet.Tests.csproj" />
+  </Folder>
+</Solution>

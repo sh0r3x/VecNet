@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace VecNet;
 
 /// <summary>
@@ -7,6 +9,7 @@ public sealed class ExactFlatIndex
 {
     private const int InitialCapacity = 4;
 
+    private readonly ExactFlatIndexDistanceMode _distanceMode;
     private ulong[] _ids = [];
     private float[] _vectors = [];
     private int _count;
@@ -17,6 +20,11 @@ public sealed class ExactFlatIndex
     /// <param name="dimension">The required positive vector dimension.</param>
     /// <param name="metric">The canonical distance metric.</param>
     public ExactFlatIndex(int dimension, VectorMetric metric)
+        : this(dimension, metric, ExactFlatIndexDistanceMode.ScalarDouble)
+    {
+    }
+
+    internal ExactFlatIndex(int dimension, VectorMetric metric, ExactFlatIndexDistanceMode distanceMode)
     {
         if (dimension <= 0)
         {
@@ -28,8 +36,22 @@ public sealed class ExactFlatIndex
             throw new ArgumentOutOfRangeException(nameof(metric), "Metric is not supported.");
         }
 
+        if (!Enum.IsDefined(distanceMode))
+        {
+            throw new ArgumentOutOfRangeException(nameof(distanceMode), "Distance mode is not supported.");
+        }
+
+        if (distanceMode == ExactFlatIndexDistanceMode.VectorFloatSquaredL2 &&
+            metric != VectorMetric.SquaredEuclidean)
+        {
+            throw new ArgumentException(
+                "The vector float distance mode is available only for squared Euclidean search.",
+                nameof(distanceMode));
+        }
+
         Dimension = dimension;
         Metric = metric;
+        _distanceMode = distanceMode;
     }
 
     /// <summary>
@@ -194,6 +216,11 @@ public sealed class ExactFlatIndex
 
     private float SquaredEuclideanDistance(ReadOnlySpan<float> query, int offset)
     {
+        if (_distanceMode == ExactFlatIndexDistanceMode.VectorFloatSquaredL2)
+        {
+            return VectorFloatSquaredEuclideanDistance(query, offset);
+        }
+
         double sum = 0;
         for (int i = 0; i < Dimension; i++)
         {
@@ -202,6 +229,35 @@ public sealed class ExactFlatIndex
         }
 
         return (float)sum;
+    }
+
+    private float VectorFloatSquaredEuclideanDistance(ReadOnlySpan<float> query, int offset)
+    {
+        Vector<float> vectorSum = Vector<float>.Zero;
+        int vectorWidth = Vector<float>.Count;
+        int i = 0;
+
+        for (; i <= Dimension - vectorWidth; i += vectorWidth)
+        {
+            var difference =
+                new Vector<float>(query.Slice(i, vectorWidth)) -
+                new Vector<float>(_vectors.AsSpan(offset + i, vectorWidth));
+            vectorSum += difference * difference;
+        }
+
+        float sum = 0;
+        for (int lane = 0; lane < vectorWidth; lane++)
+        {
+            sum += vectorSum[lane];
+        }
+
+        for (; i < Dimension; i++)
+        {
+            float difference = query[i] - _vectors[offset + i];
+            sum += difference * difference;
+        }
+
+        return sum;
     }
 
     private float InnerProductDistance(ReadOnlySpan<float> query, int offset)

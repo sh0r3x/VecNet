@@ -5,19 +5,20 @@ namespace VecNet.Benchmarks;
 [MemoryDiagnoser]
 public class ExactFlatIndexBenchmarks
 {
-    private const int ResultCount = 10;
-
     private ExactFlatIndex _scalarIndex = null!;
-    private ExactFlatIndex _vectorIndex = null!;
+    private ExactFlatIndex _publicDefaultIndex = null!;
     private float[] _query = null!;
     private SearchResult[] _scalarResults = null!;
-    private SearchResult[] _vectorResults = null!;
+    private SearchResult[] _publicDefaultResults = null!;
 
-    [Params(32, 128, 384, 386)]
+    [Params(32, 96, 128, 384, 386, 768)]
     public int Dimension { get; set; }
 
-    [Params(1024)]
+    [Params(1024, 10000)]
     public int VectorCount { get; set; }
+
+    [Params(1, 10, 100)]
+    public int ResultCount { get; set; }
 
     [GlobalSetup]
     public void Setup()
@@ -25,35 +26,35 @@ public class ExactFlatIndexBenchmarks
         var random = new Random(0x5EED);
         var vector = new float[Dimension];
 
-        _scalarIndex = new ExactFlatIndex(Dimension, VectorMetric.SquaredEuclidean);
-        _vectorIndex = new ExactFlatIndex(
+        _scalarIndex = new ExactFlatIndex(
             Dimension,
             VectorMetric.SquaredEuclidean,
-            ExactFlatIndexDistanceMode.VectorFloatSquaredL2);
+            ExactFlatIndexDistanceMode.ScalarDouble);
+        _publicDefaultIndex = new ExactFlatIndex(Dimension, VectorMetric.SquaredEuclidean);
 
         for (int row = 0; row < VectorCount; row++)
         {
             FillVector(random, vector);
             _scalarIndex.Add((ulong)row, vector);
-            _vectorIndex.Add((ulong)row, vector);
+            _publicDefaultIndex.Add((ulong)row, vector);
         }
 
         _query = new float[Dimension];
         FillVector(random, _query);
         _scalarResults = new SearchResult[ResultCount];
-        _vectorResults = new SearchResult[ResultCount];
+        _publicDefaultResults = new SearchResult[ResultCount];
     }
 
     [Benchmark(Baseline = true)]
-    public int ScalarSearchTop10()
+    public int ScalarReferenceSearch()
     {
         return _scalarIndex.Search(_query, _scalarResults);
     }
 
     [Benchmark]
-    public int VectorFloatSquaredL2SearchTop10()
+    public int PublicDefaultSearch()
     {
-        return _vectorIndex.Search(_query, _vectorResults);
+        return _publicDefaultIndex.Search(_query, _publicDefaultResults);
     }
 
     private static void FillVector(Random random, Span<float> vector)

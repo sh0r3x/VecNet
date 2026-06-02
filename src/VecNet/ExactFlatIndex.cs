@@ -3,7 +3,7 @@ using System.Numerics;
 namespace VecNet;
 
 /// <summary>
-/// An in-memory exhaustive index using scalar canonical distance calculation.
+/// An in-memory exhaustive index using canonical distance calculation.
 /// </summary>
 public sealed class ExactFlatIndex
 {
@@ -20,7 +20,7 @@ public sealed class ExactFlatIndex
     /// <param name="dimension">The required positive vector dimension.</param>
     /// <param name="metric">The canonical distance metric.</param>
     public ExactFlatIndex(int dimension, VectorMetric metric)
-        : this(dimension, metric, ExactFlatIndexDistanceMode.ScalarDouble)
+        : this(dimension, metric, GetDefaultDistanceMode(metric))
     {
     }
 
@@ -259,6 +259,11 @@ public sealed class ExactFlatIndex
 
         return sum;
     }
+
+    private static ExactFlatIndexDistanceMode GetDefaultDistanceMode(VectorMetric metric) =>
+        metric == VectorMetric.SquaredEuclidean
+            ? ExactFlatIndexDistanceMode.VectorFloatSquaredL2
+            : ExactFlatIndexDistanceMode.ScalarDouble;
 
     private float InnerProductDistance(ReadOnlySpan<float> query, int offset)
     {

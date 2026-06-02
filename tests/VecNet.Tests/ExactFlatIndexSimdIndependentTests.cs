@@ -5,7 +5,6 @@ namespace VecNet.Tests;
 public sealed class ExactFlatIndexSimdIndependentTests
 {
     private const int RandomSeed = 0x51D_005;
-    private const float DistanceTolerance = 2e-4f;
 
     [Fact]
     public void PublicConstructors_DoNotExposeDistanceModeSelection()
@@ -24,7 +23,10 @@ public sealed class ExactFlatIndexSimdIndependentTests
         foreach (int dimension in GetAwkwardDimensions())
         {
             var random = new Random(RandomSeed + dimension * 997);
-            var scalar = new ExactFlatIndex(dimension, VectorMetric.SquaredEuclidean);
+            var scalar = new ExactFlatIndex(
+                dimension,
+                VectorMetric.SquaredEuclidean,
+                ExactFlatIndexDistanceMode.ScalarDouble);
             var vector = new ExactFlatIndex(
                 dimension,
                 VectorMetric.SquaredEuclidean,
@@ -52,7 +54,7 @@ public sealed class ExactFlatIndexSimdIndependentTests
                     Assert.InRange(
                         MathF.Abs(scalarResults[i].Distance - vectorResults[i].Distance),
                         0f,
-                        DistanceTolerance);
+                        CalculateD026Tolerance(dimension, scalarResults[i].Distance));
                 }
             }
         }
@@ -104,7 +106,10 @@ public sealed class ExactFlatIndexSimdIndependentTests
     public void NearTieOrdering_DocumentsScalarAndVectorModesCanDiverge()
     {
         int dimension = Vector<float>.Count;
-        var scalar = new ExactFlatIndex(dimension, VectorMetric.SquaredEuclidean);
+        var scalar = new ExactFlatIndex(
+            dimension,
+            VectorMetric.SquaredEuclidean,
+            ExactFlatIndexDistanceMode.ScalarDouble);
         var vector = new ExactFlatIndex(
             dimension,
             VectorMetric.SquaredEuclidean,
@@ -126,24 +131,39 @@ public sealed class ExactFlatIndexSimdIndependentTests
 
         Assert.Equal([20UL, 10UL], scalarResults.Select(static result => result.Id));
         Assert.Equal([10UL, 20UL], vectorResults.Select(static result => result.Id));
-        Assert.True(MathF.Abs(scalarResults[0].Distance - scalarResults[1].Distance) <= 8f);
+
+        float combinedTolerance =
+            CalculateD026Tolerance(dimension, scalarResults[0].Distance) +
+            CalculateD026Tolerance(dimension, scalarResults[1].Distance);
+        Assert.True(MathF.Abs(scalarResults[0].Distance - scalarResults[1].Distance) <= combinedTolerance);
     }
 
     [Fact]
-    public void PublicConstructor_KeepsScalarOrderingForNearTieCase()
+    public void PublicConstructor_UsesOptimizedOrderingForNearTieCase()
     {
         int dimension = Vector<float>.Count;
         var publicIndex = new ExactFlatIndex(dimension, VectorMetric.SquaredEuclidean);
+        var vectorIndex = new ExactFlatIndex(
+            dimension,
+            VectorMetric.SquaredEuclidean,
+            ExactFlatIndexDistanceMode.VectorFloatSquaredL2);
 
-        publicIndex.Add(10, CreateLargeLeadingVector(dimension, smallLaneValue: 1f));
+        float[] manySmallLaneTerms = CreateLargeLeadingVector(dimension, smallLaneValue: 1f);
         float[] oneLargerLaneTerm = new float[dimension];
         oneLargerLaneTerm[0] = 4096f;
         oneLargerLaneTerm[1] = 2f;
+
+        publicIndex.Add(10, manySmallLaneTerms);
         publicIndex.Add(20, oneLargerLaneTerm);
+        vectorIndex.Add(10, manySmallLaneTerms);
+        vectorIndex.Add(20, oneLargerLaneTerm);
 
-        SearchResult[] results = SearchAll(publicIndex, new float[dimension], 2);
+        SearchResult[] publicResults = SearchAll(publicIndex, new float[dimension], 2);
+        SearchResult[] vectorResults = SearchAll(vectorIndex, new float[dimension], 2);
 
-        Assert.Equal([20UL, 10UL], results.Select(static result => result.Id));
+        Assert.Equal([10UL, 20UL], publicResults.Select(static result => result.Id));
+        Assert.Equal(vectorResults, publicResults);
+        Assert.True(publicResults[0].Distance <= publicResults[1].Distance);
     }
 
     [Fact]
@@ -257,5 +277,13 @@ public sealed class ExactFlatIndexSimdIndependentTests
         var vector = new float[dimension];
         vector[0] = value;
         return vector;
+    }
+
+    private static float CalculateD026Tolerance(int dimension, float scalarReference)
+    {
+        double relative =
+            (8.0 * dimension / 16_777_216.0) *
+            Math.Max(1.0, Math.Abs(scalarReference));
+        return (float)Math.Max(2e-4, relative);
     }
 }

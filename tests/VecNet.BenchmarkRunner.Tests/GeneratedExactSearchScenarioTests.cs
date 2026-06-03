@@ -28,15 +28,20 @@ public sealed class GeneratedExactSearchScenarioTests
             QueryCount: 5,
             TopK: 6,
             Seed: 0x1010,
-            OutputPath: "VecNet.BenchmarkRunner.Artifacts/test-report.json");
+            OutputPath: "VecNet.BenchmarkRunner.Artifacts/test-report.json",
+            BaselineReportId: "baseline-smoke");
 
         BenchmarkReport report = GeneratedExactSearchScenario.Run(options, arguments);
 
         Assert.Equal("VecNet.BenchmarkReport", report.SchemaName);
         Assert.Equal("0.1", report.SchemaVersion);
-        Assert.Equal("VEC-010", report.TaskId);
+        Assert.Equal("VEC-011", report.TaskId);
         Assert.Equal("local-evidence", report.ClaimClass);
         Assert.Equal("private-raw", report.PrivacyClass);
+        Assert.Equal("smoke", report.Evidence.Status);
+        Assert.Equal("local-evidence", report.Evidence.Scope);
+        Assert.False(report.Evidence.PublicClaimEligible);
+        Assert.NotEmpty(report.Evidence.Limitations);
         Assert.Equal("generated-uniform", report.Dataset.Kind);
         Assert.Equal("generated-no-external-source", report.Dataset.SourceVerificationStatus);
         Assert.Equal(metric.ToString(), report.Dataset.Metric);
@@ -54,14 +59,30 @@ public sealed class GeneratedExactSearchScenarioTests
         Assert.True(report.Search.LatencyP95Milliseconds >= report.Search.LatencyP50Milliseconds);
         Assert.True(report.Search.LatencyP99Milliseconds >= report.Search.LatencyP95Milliseconds);
         Assert.True(report.Search.Qps > 0);
+        Assert.Equal("notMeasured", report.Measurement.ManagedAllocations.Status);
+        Assert.Equal("absent", report.Measurement.ManagedAllocations.Value);
+        Assert.Equal("notMeasured", report.Measurement.Memory.Status);
+        Assert.Equal("absent", report.Measurement.Memory.Value);
+        Assert.Equal("notMeasured", report.Measurement.RepeatedRuns.Status);
+        Assert.Equal(1, report.Measurement.RepeatedRuns.RunCount);
+        Assert.False(report.Measurement.RepeatedRuns.VarianceMeasured);
+        Assert.Equal("notMeasured", report.Measurement.Warmup.Status);
+        Assert.Equal(0, report.Measurement.Warmup.WarmupCount);
         Assert.Equal(1.0, report.Metrics.RecallAtK);
         Assert.Equal(1.0, report.Metrics.OrderedAgreement);
         Assert.Equal("passed", report.Metrics.DistanceToleranceStatus);
         Assert.Equal(0, report.Metrics.DistanceMismatchCount);
         Assert.Equal(0, report.Metrics.MissingResultCount);
+        Assert.Equal("baseline-smoke", report.Baseline.BaselineReportId);
+        Assert.Equal("smoke", report.Baseline.Suitability);
+        Assert.False(report.Baseline.BaselineCandidateEligible);
+        Assert.False(report.Baseline.RegressionGateEligible);
         Assert.Equal("passed", report.Validation.Status);
+        Assert.Equal("smoke", report.Validation.EvidenceStatus);
         Assert.True(report.Validation.FiniteVectors);
         Assert.True(report.Validation.TruthGenerated);
+        Assert.False(report.Validation.PublicClaimEligible);
+        Assert.False(report.Validation.BaselineCandidateEligible);
         Assert.True(report.Validation.ReportIsPrivateRaw);
     }
 
@@ -75,7 +96,8 @@ public sealed class GeneratedExactSearchScenarioTests
             QueryCount: 2,
             TopK: 4,
             Seed: 0xCAFE,
-            OutputPath: @"C:\private\owner\absolute-report.json");
+            OutputPath: @"C:\private\owner\absolute-report.json",
+            BaselineReportId: null);
 
         BenchmarkReport report = GeneratedExactSearchScenario.Run(options, ["exact-generated"]);
 

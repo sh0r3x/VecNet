@@ -13,9 +13,15 @@ public sealed class ReportWriterTests
             SchemaVersion: "0.1",
             ReportId: "test-report",
             GeneratedAtUtc: DateTimeOffset.UnixEpoch,
-            TaskId: "VEC-010",
+            TaskId: "VEC-011",
             ClaimClass: "local-evidence",
             PrivacyClass: "private-raw",
+            Evidence: new EvidenceInfo(
+                "smoke",
+                "local-evidence",
+                false,
+                "not public evidence",
+                ["allocation not measured"]),
             Repository: new RepositoryInfo("abc123", "main", Dirty: true),
             Runner: new RunnerInfo("VecNet.BenchmarkRunner", "0.1", ["exact-generated"]),
             Command: new CommandInfo("exact-generated", ["exact-generated"]),
@@ -25,8 +31,19 @@ public sealed class ReportWriterTests
             Scenario: new ScenarioInfo("exact-generated", 2, 1, 1, "setup excluded"),
             Index: new IndexInfo("Exact", "ExactFlatIndex", "SquaredEuclidean", 2, 3, "public default"),
             Search: new SearchInfo(1, 0.5, 0.5, 0.5, 0.5, 2000),
+            Measurement: new MeasurementInfo(
+                new MeasurementStatusInfo("notMeasured", "absent", "bytesPerOperation", "not measured"),
+                new MeasurementStatusInfo("notMeasured", "absent", "bytes", "not measured"),
+                new RepeatedRunInfo("notMeasured", 1, false, "not measured"),
+                new WarmupInfo("notMeasured", 0, "not measured")),
             Metrics: new MetricsInfo(1, 1, "passed", 0, 0),
-            Validation: new ValidationInfo("passed", true, true, true),
+            Baseline: new BaselineInfo(
+                "baseline-report",
+                "smoke",
+                false,
+                false,
+                "not eligible"),
+            Validation: new ValidationInfo("passed", "smoke", true, true, false, false, true),
             Notes: ["test"]);
 
         string json = ReportWriter.Serialize(report);
@@ -35,10 +52,17 @@ public sealed class ReportWriterTests
         JsonElement root = document.RootElement;
         Assert.Equal("VecNet.BenchmarkReport", root.GetProperty("schemaName").GetString());
         Assert.Equal("0.1", root.GetProperty("schemaVersion").GetString());
-        Assert.Equal("VEC-010", root.GetProperty("taskId").GetString());
+        Assert.Equal("VEC-011", root.GetProperty("taskId").GetString());
         Assert.Equal("private-raw", root.GetProperty("privacyClass").GetString());
+        Assert.Equal("smoke", root.GetProperty("evidence").GetProperty("status").GetString());
+        Assert.False(root.GetProperty("evidence").GetProperty("publicClaimEligible").GetBoolean());
         Assert.Equal("generated-uniform", root.GetProperty("dataset").GetProperty("kind").GetString());
+        Assert.Equal("notMeasured", root.GetProperty("measurement").GetProperty("managedAllocations").GetProperty("status").GetString());
+        Assert.Equal("absent", root.GetProperty("measurement").GetProperty("memory").GetProperty("value").GetString());
         Assert.Equal(1.0, root.GetProperty("metrics").GetProperty("recallAtK").GetDouble());
+        Assert.Equal("baseline-report", root.GetProperty("baseline").GetProperty("baselineReportId").GetString());
+        Assert.Equal("smoke", root.GetProperty("baseline").GetProperty("suitability").GetString());
         Assert.Equal("passed", root.GetProperty("validation").GetProperty("status").GetString());
+        Assert.False(root.GetProperty("validation").GetProperty("publicClaimEligible").GetBoolean());
     }
 }

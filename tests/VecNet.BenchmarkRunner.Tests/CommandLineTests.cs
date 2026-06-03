@@ -18,6 +18,7 @@ public sealed class CommandLineTests
         Assert.StartsWith("VecNet.BenchmarkRunner.Artifacts", options.OutputPath);
         Assert.False(Path.IsPathRooted(options.OutputPath));
         Assert.EndsWith(".json", options.OutputPath);
+        Assert.Null(options.BaselineReportId);
     }
 
     [Theory]
@@ -30,6 +31,7 @@ public sealed class CommandLineTests
     [InlineData("exact-generated", "--queries", "1.5")]
     [InlineData("exact-generated", "--top-k", "3", "--vectors", "2")]
     [InlineData("exact-generated", "--seed", "0xNOTHEX")]
+    [InlineData("exact-generated", "--baseline-report-id", "")]
     public void Parse_RejectsInvalidCommandLines(params string[] args)
     {
         ArgumentException exception = Assert.Throws<ArgumentException>(() => CommandLine.Parse(args));
@@ -52,7 +54,8 @@ public sealed class CommandLineTests
                 "--queries", "3",
                 "--top-k", "4",
                 "--seed", "0x0000002A",
-                "--output", "VecNet.BenchmarkRunner.Artifacts/test.json"
+                "--output", "VecNet.BenchmarkRunner.Artifacts/test.json",
+                "--baseline-report-id", "baseline-20260603"
             ]);
 
         Assert.Equal(Enum.Parse<VectorMetric>(metric), options.Metric);
@@ -62,5 +65,6 @@ public sealed class CommandLineTests
         Assert.Equal(4, options.TopK);
         Assert.Equal(42u, options.Seed);
         Assert.Equal("VecNet.BenchmarkRunner.Artifacts/test.json", options.OutputPath);
+        Assert.Equal("baseline-20260603", options.BaselineReportId);
     }
 }

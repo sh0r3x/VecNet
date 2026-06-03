@@ -7,7 +7,8 @@ public sealed record GeneratedExactSearchOptions(
     int QueryCount,
     int TopK,
     uint Seed,
-    string OutputPath)
+    string OutputPath,
+    string? BaselineReportId)
 {
     public const string ScenarioName = "exact-generated";
 }

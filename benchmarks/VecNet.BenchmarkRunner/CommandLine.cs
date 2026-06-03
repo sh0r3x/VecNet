@@ -37,13 +37,22 @@ public static class CommandLine
             : Path.Combine(
                 "VecNet.BenchmarkRunner.Artifacts",
                 $"exact-generated-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json");
+        string? baselineReportId = GetOptionalNonWhiteSpace(values, "baseline-report-id");
 
         if (topK > vectorCount)
         {
             throw new ArgumentException("top-k must be less than or equal to the vector count.");
         }
 
-        return new GeneratedExactSearchOptions(metric, dimension, vectorCount, queryCount, topK, seed, outputPath);
+        return new GeneratedExactSearchOptions(
+            metric,
+            dimension,
+            vectorCount,
+            queryCount,
+            topK,
+            seed,
+            outputPath,
+            baselineReportId);
     }
 
     private static TEnum GetEnum<TEnum>(Dictionary<string, string> values, string name, TEnum defaultValue)
@@ -95,5 +104,20 @@ public static class CommandLine
         }
 
         return parsed;
+    }
+
+    private static string? GetOptionalNonWhiteSpace(Dictionary<string, string> values, string name)
+    {
+        if (!values.TryGetValue(name, out string? value))
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new ArgumentException($"Option --{name} must not be empty.");
+        }
+
+        return value;
     }
 }

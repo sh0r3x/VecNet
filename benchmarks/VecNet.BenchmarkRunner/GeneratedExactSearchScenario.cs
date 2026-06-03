@@ -8,7 +8,7 @@ namespace VecNet.BenchmarkRunner;
 
 public static class GeneratedExactSearchScenario
 {
-    private const string TaskId = "VEC-010";
+    private const string TaskId = "VEC-011";
 
     public static BenchmarkReport Run(GeneratedExactSearchOptions options, IReadOnlyList<string> commandArguments)
     {
@@ -36,6 +36,17 @@ public static class GeneratedExactSearchScenario
             TaskId: TaskId,
             ClaimClass: "local-evidence",
             PrivacyClass: "private-raw",
+            Evidence: new EvidenceInfo(
+                "smoke",
+                "local-evidence",
+                false,
+                "Private generated-data runner output lacks allocation, memory and repeated-run variance measurement.",
+                [
+                    "Generated data only; no external dataset source, license, version or checksum applies.",
+                    "Single process run with no repeated-run orchestration or variance/noise analysis.",
+                    "Allocation and memory values are explicitly not measured.",
+                    "Not eligible for public performance, scale, ANN, real-dataset or concurrency claims."
+                ]),
             Repository: repository,
             Runner: new RunnerInfo("VecNet.BenchmarkRunner", "0.1", commandArguments.ToArray()),
             Command: new CommandInfo(GeneratedExactSearchOptions.ScenarioName, commandArguments.ToArray()),
@@ -80,25 +91,55 @@ public static class GeneratedExactSearchScenario
                 measurement.P95Milliseconds,
                 measurement.P99Milliseconds,
                 measurement.Qps),
+            Measurement: new MeasurementInfo(
+                ManagedAllocations: new MeasurementStatusInfo(
+                    "notMeasured",
+                    "absent",
+                    "bytesPerOperation",
+                    "The current runner does not use allocation instrumentation or BenchmarkDotNet MemoryDiagnoser."),
+                Memory: new MeasurementStatusInfo(
+                    "notMeasured",
+                    "absent",
+                    "bytes",
+                    "The current runner does not measure resident, managed heap or process memory."),
+                RepeatedRuns: new RepeatedRunInfo(
+                    "notMeasured",
+                    1,
+                    false,
+                    "The current runner executes one command invocation and does not compute cross-run variance."),
+                Warmup: new WarmupInfo(
+                    "notMeasured",
+                    0,
+                    "The current runner has no separate warmup phase.")),
             Metrics: new MetricsInfo(
                 comparison.RecallAtK,
                 comparison.OrderedAgreement,
                 comparison.DistanceToleranceStatus,
                 comparison.DistanceMismatchCount,
                 comparison.MissingResultCount),
+            Baseline: new BaselineInfo(
+                options.BaselineReportId,
+                "smoke",
+                false,
+                false,
+                "Baseline comparison math, repeated runs and variance thresholds are not implemented."),
             Validation: new ValidationInfo(
                 comparison.RecallAtK == 1 &&
                 comparison.OrderedAgreement == 1 &&
                 comparison.DistanceToleranceStatus == "passed"
                     ? "passed"
                     : "failed",
+                "smoke",
                 true,
                 true,
+                false,
+                false,
                 true),
             Notes:
             [
                 "Private generated-data smoke evidence only; not a public benchmark claim.",
-                "External datasets, ANN, persistence, filtering, updates and concurrency are out of scope for VEC-010."
+                "Allocation, memory, warmup and repeated-run variance values are not measured.",
+                "External datasets, ANN, persistence, filtering, updates and concurrency are out of scope for VEC-011."
             ]);
     }
 

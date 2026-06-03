@@ -14,7 +14,8 @@ public sealed class GeneratedDatasetTests
             QueryCount: 3,
             TopK: 2,
             Seed: 0x5EED2009,
-            OutputPath: "unused.json");
+            OutputPath: "unused.json",
+            BaselineReportId: null);
 
         GeneratedDataset first = GeneratedDatasetFactory.Create(options);
         GeneratedDataset second = GeneratedDatasetFactory.Create(options);

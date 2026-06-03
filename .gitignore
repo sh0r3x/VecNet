@@ -63,3 +63,6 @@ nunit-*.xml
 
 # Local BenchmarkDotNet output may contain machine and absolute-path details
 /BenchmarkDotNet.Artifacts/
+
+# Local benchmark runner reports may contain machine and working-tree details
+/VecNet.BenchmarkRunner.Artifacts/

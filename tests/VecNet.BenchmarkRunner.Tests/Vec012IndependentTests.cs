@@ -49,7 +49,7 @@ public sealed class Vec012IndependentTests
         using JsonDocument document = JsonDocument.Parse(ReportWriter.Serialize(report));
         JsonElement root = document.RootElement;
 
-        Assert.Equal("VEC-012", root.GetProperty("taskId").GetString());
+        Assert.Equal("VEC-013", root.GetProperty("taskId").GetString());
         Assert.Equal("private-raw", root.GetProperty("privacyClass").GetString());
         Assert.Equal("local-evidence", root.GetProperty("claimClass").GetString());
 
@@ -72,6 +72,7 @@ public sealed class Vec012IndependentTests
         JsonElement warmup = root.GetProperty("measurement").GetProperty("warmup");
         Assert.Equal("absent", warmup.GetProperty("status").GetString());
         Assert.Equal(0, warmup.GetProperty("warmupCount").GetInt32());
+        AssertMeasuredAllocationsAndUnmeasuredMemory(root);
 
         AssertFalseEligibility(root);
     }
@@ -147,6 +148,7 @@ public sealed class Vec012IndependentTests
         Assert.Equal(8, warmup.GetProperty("warmupCount").GetInt32());
         Assert.DoesNotContain("\"measuredQueryCount\":11", json, StringComparison.Ordinal);
         Assert.DoesNotContain("\"measuredQueryCountPerRun\":11", json, StringComparison.Ordinal);
+        AssertMeasuredAllocationsAndUnmeasuredMemory(root);
 
         Assert.Equal("passed", root.GetProperty("validation").GetProperty("status").GetString());
         Assert.Equal(1.0, root.GetProperty("metrics").GetProperty("recallAtK").GetDouble());
@@ -161,5 +163,29 @@ public sealed class Vec012IndependentTests
         Assert.False(root.GetProperty("baseline").GetProperty("regressionGateEligible").GetBoolean());
         Assert.False(root.GetProperty("validation").GetProperty("publicClaimEligible").GetBoolean());
         Assert.False(root.GetProperty("validation").GetProperty("baselineCandidateEligible").GetBoolean());
+    }
+
+    private static void AssertMeasuredAllocationsAndUnmeasuredMemory(JsonElement root)
+    {
+        JsonElement measurement = root.GetProperty("measurement");
+        Assert.Equal("measured", measurement.GetProperty("managedAllocations").GetProperty("status").GetString());
+        Assert.Equal("bytesPerQuery", measurement.GetProperty("managedAllocations").GetProperty("unit").GetString());
+        Assert.Equal("notMeasured", measurement.GetProperty("memory").GetProperty("status").GetString());
+        Assert.Equal("absent", measurement.GetProperty("memory").GetProperty("value").GetString());
+
+        JsonElement search = root.GetProperty("search");
+        foreach (JsonElement run in search.GetProperty("runs").EnumerateArray())
+        {
+            Assert.True(run.GetProperty("managedAllocatedBytes").GetInt64() >= 0);
+            Assert.True(run.GetProperty("managedAllocatedBytesPerQuery").GetDouble() >= 0);
+        }
+
+        JsonElement aggregate = search.GetProperty("aggregate");
+        Assert.True(aggregate.GetProperty("meanManagedAllocatedBytes").GetDouble() >= 0);
+        Assert.True(aggregate.GetProperty("minManagedAllocatedBytes").GetInt64() >= 0);
+        Assert.True(aggregate.GetProperty("maxManagedAllocatedBytes").GetInt64() >= 0);
+        Assert.True(aggregate.GetProperty("meanManagedAllocatedBytesPerQuery").GetDouble() >= 0);
+        Assert.True(aggregate.GetProperty("minManagedAllocatedBytesPerQuery").GetDouble() >= 0);
+        Assert.True(aggregate.GetProperty("maxManagedAllocatedBytesPerQuery").GetDouble() >= 0);
     }
 }

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using VecNet.BenchmarkRunner;
 
@@ -24,7 +25,7 @@ public sealed class RunnerMetadataIndependentTests
         using JsonDocument document = JsonDocument.Parse(json);
         JsonElement root = document.RootElement;
 
-        Assert.Equal("VEC-012", root.GetProperty("taskId").GetString());
+        Assert.Equal("VEC-013", root.GetProperty("taskId").GetString());
         Assert.Equal("local-evidence", root.GetProperty("claimClass").GetString());
         Assert.Equal("private-raw", root.GetProperty("privacyClass").GetString());
         Assert.Equal("smoke", root.GetProperty("evidence").GetProperty("status").GetString());
@@ -35,7 +36,7 @@ public sealed class RunnerMetadataIndependentTests
         Assert.False(root.GetProperty("validation").GetProperty("publicClaimEligible").GetBoolean());
         Assert.False(root.GetProperty("validation").GetProperty("baselineCandidateEligible").GetBoolean());
 
-        AssertMeasurementAbsence(root);
+        AssertManagedAllocationsMeasuredAndMemoryAbsent(root);
     }
 
     [Fact]
@@ -165,13 +166,21 @@ public sealed class RunnerMetadataIndependentTests
         Assert.False(root.GetProperty("evidence").GetProperty("publicClaimEligible").GetBoolean());
     }
 
-    private static void AssertMeasurementAbsence(JsonElement root)
+    private static void AssertManagedAllocationsMeasuredAndMemoryAbsent(JsonElement root)
     {
         JsonElement measurement = root.GetProperty("measurement");
-        AssertMeasurementStatus(
-            measurement.GetProperty("managedAllocations"),
-            expectedUnit: "bytesPerOperation");
-        AssertMeasurementStatus(
+        JsonElement managedAllocations = measurement.GetProperty("managedAllocations");
+        Assert.Equal("measured", managedAllocations.GetProperty("status").GetString());
+        Assert.Equal("bytesPerQuery", managedAllocations.GetProperty("unit").GetString());
+        Assert.True(double.Parse(
+            managedAllocations.GetProperty("value").GetString() ?? string.Empty,
+            CultureInfo.InvariantCulture) >= 0);
+        Assert.Contains(
+            "ExactFlatIndex.Search",
+            managedAllocations.GetProperty("reason").GetString(),
+            StringComparison.Ordinal);
+
+        AssertMeasurementNotMeasured(
             measurement.GetProperty("memory"),
             expectedUnit: "bytes");
 
@@ -187,7 +196,7 @@ public sealed class RunnerMetadataIndependentTests
         Assert.Contains("warmup", warmup.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
     }
 
-    private static void AssertMeasurementStatus(JsonElement status, string expectedUnit)
+    private static void AssertMeasurementNotMeasured(JsonElement status, string expectedUnit)
     {
         Assert.Equal("notMeasured", status.GetProperty("status").GetString());
         Assert.Equal("absent", status.GetProperty("value").GetString());

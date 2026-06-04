@@ -1,3 +1,4 @@
+using System.Globalization;
 using VecNet.BenchmarkRunner;
 
 namespace VecNet.BenchmarkRunner.Tests;
@@ -35,7 +36,7 @@ public sealed class GeneratedExactSearchScenarioTests
 
         Assert.Equal("VecNet.BenchmarkReport", report.SchemaName);
         Assert.Equal("0.1", report.SchemaVersion);
-        Assert.Equal("VEC-012", report.TaskId);
+        Assert.Equal("VEC-013", report.TaskId);
         Assert.Equal("local-evidence", report.ClaimClass);
         Assert.Equal("private-raw", report.PrivacyClass);
         Assert.Equal("smoke", report.Evidence.Status);
@@ -63,8 +64,16 @@ public sealed class GeneratedExactSearchScenarioTests
         Assert.Equal(1, report.Search.Aggregate.RunCount);
         Assert.Equal(5, report.Search.Aggregate.MeasuredQueryCountPerRun);
         Assert.Equal(report.Search.Runs[0].ElapsedMilliseconds, report.Search.Aggregate.MeanElapsedMilliseconds);
-        Assert.Equal("notMeasured", report.Measurement.ManagedAllocations.Status);
-        Assert.Equal("absent", report.Measurement.ManagedAllocations.Value);
+        Assert.Equal("measured", report.Measurement.ManagedAllocations.Status);
+        Assert.Equal("bytesPerQuery", report.Measurement.ManagedAllocations.Unit);
+        Assert.True(double.Parse(report.Measurement.ManagedAllocations.Value, CultureInfo.InvariantCulture) >= 0);
+        Assert.Contains("GetAllocatedBytesForCurrentThread", report.Measurement.ManagedAllocations.Reason, StringComparison.Ordinal);
+        Assert.True(report.Search.Runs[0].ManagedAllocatedBytes >= 0);
+        Assert.True(report.Search.Runs[0].ManagedAllocatedBytesPerQuery >= 0);
+        Assert.Equal(report.Search.Runs[0].ManagedAllocatedBytes, report.Search.Aggregate.MeanManagedAllocatedBytes);
+        Assert.Equal(report.Search.Runs[0].ManagedAllocatedBytes, report.Search.Aggregate.MinManagedAllocatedBytes);
+        Assert.Equal(report.Search.Runs[0].ManagedAllocatedBytes, report.Search.Aggregate.MaxManagedAllocatedBytes);
+        Assert.Equal(report.Search.Runs[0].ManagedAllocatedBytesPerQuery, report.Search.Aggregate.MeanManagedAllocatedBytesPerQuery);
         Assert.Equal("notMeasured", report.Measurement.Memory.Status);
         Assert.Equal("absent", report.Measurement.Memory.Value);
         Assert.Equal("singleRun", report.Measurement.RepeatedRuns.Status);
@@ -113,7 +122,7 @@ public sealed class GeneratedExactSearchScenarioTests
                 "--warmup-queries", "2"
             ]);
 
-        Assert.Equal("VEC-012", report.TaskId);
+        Assert.Equal("VEC-013", report.TaskId);
         Assert.Equal(4, report.Search.MeasuredQueryCount);
         Assert.Equal(3, report.Search.Runs.Length);
         Assert.Equal(3, report.Search.Aggregate.RunCount);
@@ -127,6 +136,8 @@ public sealed class GeneratedExactSearchScenarioTests
             Assert.True(run.LatencyP95Milliseconds >= run.LatencyP50Milliseconds);
             Assert.True(run.LatencyP99Milliseconds >= run.LatencyP95Milliseconds);
             Assert.True(run.Qps > 0);
+            Assert.True(run.ManagedAllocatedBytes >= 0);
+            Assert.True(run.ManagedAllocatedBytesPerQuery >= 0);
         });
 
         Assert.Equal(
@@ -139,6 +150,26 @@ public sealed class GeneratedExactSearchScenarioTests
             report.Search.Runs.Max(run => run.ElapsedMilliseconds),
             report.Search.Aggregate.MaxElapsedMilliseconds);
         Assert.Equal(report.Search.Aggregate.MeanElapsedMilliseconds, report.Search.ElapsedMilliseconds);
+        Assert.Equal(
+            report.Search.Runs.Average(run => run.ManagedAllocatedBytes),
+            report.Search.Aggregate.MeanManagedAllocatedBytes);
+        Assert.Equal(
+            report.Search.Runs.Min(run => run.ManagedAllocatedBytes),
+            report.Search.Aggregate.MinManagedAllocatedBytes);
+        Assert.Equal(
+            report.Search.Runs.Max(run => run.ManagedAllocatedBytes),
+            report.Search.Aggregate.MaxManagedAllocatedBytes);
+        Assert.Equal(
+            report.Search.Runs.Average(run => run.ManagedAllocatedBytesPerQuery),
+            report.Search.Aggregate.MeanManagedAllocatedBytesPerQuery);
+        Assert.Equal(
+            report.Search.Runs.Min(run => run.ManagedAllocatedBytesPerQuery),
+            report.Search.Aggregate.MinManagedAllocatedBytesPerQuery);
+        Assert.Equal(
+            report.Search.Runs.Max(run => run.ManagedAllocatedBytesPerQuery),
+            report.Search.Aggregate.MaxManagedAllocatedBytesPerQuery);
+        Assert.Equal("measured", report.Measurement.ManagedAllocations.Status);
+        Assert.Equal("bytesPerQuery", report.Measurement.ManagedAllocations.Unit);
         Assert.Equal("measured", report.Measurement.RepeatedRuns.Status);
         Assert.Equal(3, report.Measurement.RepeatedRuns.RunCount);
         Assert.True(report.Measurement.RepeatedRuns.VarianceMeasured);

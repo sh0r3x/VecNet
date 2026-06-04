@@ -8,7 +8,7 @@ namespace VecNet.BenchmarkRunner;
 
 public static class GeneratedExactSearchScenario
 {
-    private const string TaskId = "VEC-012";
+    private const string TaskId = "VEC-013";
 
     public static BenchmarkReport Run(GeneratedExactSearchOptions options, IReadOnlyList<string> commandArguments)
     {
@@ -41,11 +41,11 @@ public static class GeneratedExactSearchScenario
                 "smoke",
                 "local-evidence",
                 false,
-                "Private generated-data runner output lacks allocation and memory measurement and is not reviewed public evidence.",
+                "Private generated-data runner output measures managed allocations but lacks resident/process memory measurement and is not reviewed public evidence.",
                 [
                     "Generated data only; no external dataset source, license, version or checksum applies.",
                     "Repeated measured runs are private local evidence only and do not implement regression comparison math.",
-                    "Allocation and memory values are explicitly not measured.",
+                    "Managed allocations are measured for public ExactFlatIndex.Search calls only; resident/process memory is explicitly not measured.",
                     "Not eligible for public performance, scale, ANN, real-dataset or concurrency claims."
                 ]),
             Repository: repository,
@@ -96,10 +96,10 @@ public static class GeneratedExactSearchScenario
                 measurement.Aggregate),
             Measurement: new MeasurementInfo(
                 ManagedAllocations: new MeasurementStatusInfo(
-                    "notMeasured",
-                    "absent",
-                    "bytesPerOperation",
-                    "The current runner does not use allocation instrumentation or BenchmarkDotNet MemoryDiagnoser."),
+                    "measured",
+                    measurement.Aggregate.MeanManagedAllocatedBytesPerQuery.ToString(CultureInfo.InvariantCulture),
+                    "bytesPerQuery",
+                    "Measured with GC.GetAllocatedBytesForCurrentThread around each public ExactFlatIndex.Search(query, results) call; setup, warmup, result capture, result comparison and report writing are excluded."),
                 Memory: new MeasurementStatusInfo(
                     "notMeasured",
                     "absent",
@@ -145,9 +145,10 @@ public static class GeneratedExactSearchScenario
             Notes:
             [
                 "Private generated-data smoke evidence only; not a public benchmark claim.",
-                "Allocation and memory values are not measured.",
+                "Managed allocations are measured only for the public ExactFlatIndex.Search operation inside measured runs.",
+                "Resident/process memory values are not measured.",
                 "Warmup query timings are deliberately excluded from measured timing totals.",
-                "External datasets, ANN, persistence, filtering, updates and concurrency are out of scope for VEC-012."
+                "External datasets, ANN, persistence, filtering, updates and concurrency are out of scope for VEC-013."
             ]);
     }
 
@@ -215,16 +216,20 @@ public static class GeneratedExactSearchScenario
         SearchResult[][]? allResults = captureResults ? new SearchResult[options.QueryCount][] : null;
         var latencyTicks = new long[options.QueryCount];
         long totalTicks = 0;
+        long totalAllocatedBytes = 0;
 
         for (int queryRow = 0; queryRow < dataset.QueryCount; queryRow++)
         {
             ReadOnlySpan<float> query = dataset.GetQuery(queryRow);
+            long allocationStart = GC.GetAllocatedBytesForCurrentThread();
             long start = Stopwatch.GetTimestamp();
             int written = index.Search(query, results);
             long elapsed = Stopwatch.GetTimestamp() - start;
+            long allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocationStart;
 
             latencyTicks[queryRow] = elapsed;
             totalTicks += elapsed;
+            totalAllocatedBytes += allocatedBytes;
 
             if (captureResults)
             {
@@ -244,7 +249,9 @@ public static class GeneratedExactSearchScenario
                 PercentileMilliseconds(latencyTicks, 0.50),
                 PercentileMilliseconds(latencyTicks, 0.95),
                 PercentileMilliseconds(latencyTicks, 0.99),
-                elapsedSeconds == 0 ? double.PositiveInfinity : options.QueryCount / elapsedSeconds),
+                elapsedSeconds == 0 ? double.PositiveInfinity : options.QueryCount / elapsedSeconds,
+                totalAllocatedBytes,
+                options.QueryCount == 0 ? 0 : (double)totalAllocatedBytes / options.QueryCount),
             allResults);
     }
 
@@ -261,7 +268,13 @@ public static class GeneratedExactSearchScenario
             runs.Average(run => run.LatencyP99Milliseconds),
             runs.Average(run => run.Qps),
             runs.Min(run => run.Qps),
-            runs.Max(run => run.Qps));
+            runs.Max(run => run.Qps),
+            runs.Average(run => run.ManagedAllocatedBytes),
+            runs.Min(run => run.ManagedAllocatedBytes),
+            runs.Max(run => run.ManagedAllocatedBytes),
+            runs.Average(run => run.ManagedAllocatedBytesPerQuery),
+            runs.Min(run => run.ManagedAllocatedBytesPerQuery),
+            runs.Max(run => run.ManagedAllocatedBytesPerQuery));
     }
 
     private sealed record SingleRunMeasurement(

@@ -88,7 +88,9 @@ public sealed record SearchRunInfo(
     double LatencyP50Milliseconds,
     double LatencyP95Milliseconds,
     double LatencyP99Milliseconds,
-    double Qps);
+    double Qps,
+    long ManagedAllocatedBytes,
+    double ManagedAllocatedBytesPerQuery);
 
 public sealed record AggregateTimingInfo(
     int RunCount,
@@ -101,7 +103,13 @@ public sealed record AggregateTimingInfo(
     double MeanLatencyP99Milliseconds,
     double MeanQps,
     double MinQps,
-    double MaxQps);
+    double MaxQps,
+    double MeanManagedAllocatedBytes,
+    long MinManagedAllocatedBytes,
+    long MaxManagedAllocatedBytes,
+    double MeanManagedAllocatedBytesPerQuery,
+    double MinManagedAllocatedBytesPerQuery,
+    double MaxManagedAllocatedBytesPerQuery);
 
 public sealed record MeasurementInfo(
     MeasurementStatusInfo ManagedAllocations,

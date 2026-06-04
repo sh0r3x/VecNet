@@ -13,7 +13,7 @@ public sealed class ReportWriterTests
             SchemaVersion: "0.1",
             ReportId: "test-report",
             GeneratedAtUtc: DateTimeOffset.UnixEpoch,
-            TaskId: "VEC-011",
+            TaskId: "VEC-012",
             ClaimClass: "local-evidence",
             PrivacyClass: "private-raw",
             Evidence: new EvidenceInfo(
@@ -30,7 +30,15 @@ public sealed class ReportWriterTests
             Truth: new TruthInfo("scalar-reference-generated", 2, ScalarGroundTruth.TiePolicy),
             Scenario: new ScenarioInfo("exact-generated", 2, 1, 1, "setup excluded"),
             Index: new IndexInfo("Exact", "ExactFlatIndex", "SquaredEuclidean", 2, 3, "public default"),
-            Search: new SearchInfo(1, 0.5, 0.5, 0.5, 0.5, 2000),
+            Search: new SearchInfo(
+                1,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                2000,
+                [new SearchRunInfo(1, 1, 0.5, 0.5, 0.5, 0.5, 2000)],
+                new AggregateTimingInfo(1, 1, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 2000, 2000, 2000)),
             Measurement: new MeasurementInfo(
                 new MeasurementStatusInfo("notMeasured", "absent", "bytesPerOperation", "not measured"),
                 new MeasurementStatusInfo("notMeasured", "absent", "bytes", "not measured"),
@@ -52,13 +60,15 @@ public sealed class ReportWriterTests
         JsonElement root = document.RootElement;
         Assert.Equal("VecNet.BenchmarkReport", root.GetProperty("schemaName").GetString());
         Assert.Equal("0.1", root.GetProperty("schemaVersion").GetString());
-        Assert.Equal("VEC-011", root.GetProperty("taskId").GetString());
+        Assert.Equal("VEC-012", root.GetProperty("taskId").GetString());
         Assert.Equal("private-raw", root.GetProperty("privacyClass").GetString());
         Assert.Equal("smoke", root.GetProperty("evidence").GetProperty("status").GetString());
         Assert.False(root.GetProperty("evidence").GetProperty("publicClaimEligible").GetBoolean());
         Assert.Equal("generated-uniform", root.GetProperty("dataset").GetProperty("kind").GetString());
         Assert.Equal("notMeasured", root.GetProperty("measurement").GetProperty("managedAllocations").GetProperty("status").GetString());
         Assert.Equal("absent", root.GetProperty("measurement").GetProperty("memory").GetProperty("value").GetString());
+        Assert.Equal(1, root.GetProperty("search").GetProperty("runs").GetArrayLength());
+        Assert.Equal(1, root.GetProperty("search").GetProperty("aggregate").GetProperty("runCount").GetInt32());
         Assert.Equal(1.0, root.GetProperty("metrics").GetProperty("recallAtK").GetDouble());
         Assert.Equal("baseline-report", root.GetProperty("baseline").GetProperty("baselineReportId").GetString());
         Assert.Equal("smoke", root.GetProperty("baseline").GetProperty("suitability").GetString());

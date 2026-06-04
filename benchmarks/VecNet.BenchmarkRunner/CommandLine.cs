@@ -23,7 +23,13 @@ public static class CommandLine
                 throw new ArgumentException($"Expected an option/value pair at '{name}'.");
             }
 
-            values[name[2..]] = args[i + 1];
+            string optionName = name[2..];
+            if (!IsSupportedOption(optionName))
+            {
+                throw new ArgumentException($"Unsupported option '{name}'.");
+            }
+
+            values[optionName] = args[i + 1];
         }
 
         VectorMetric metric = GetEnum(values, "metric", VectorMetric.SquaredEuclidean);
@@ -31,6 +37,8 @@ public static class CommandLine
         int vectorCount = GetPositiveInt(values, "vectors", 10_000);
         int queryCount = GetPositiveInt(values, "queries", 100);
         int topK = GetPositiveInt(values, "top-k", 10);
+        int runs = GetPositiveInt(values, "runs", 1);
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", 0);
         uint seed = GetSeed(values, "seed", 0x5EED2009);
         string outputPath = values.TryGetValue("output", out string? output)
             ? output
@@ -52,7 +60,9 @@ public static class CommandLine
             topK,
             seed,
             outputPath,
-            baselineReportId);
+            baselineReportId,
+            runs,
+            warmupQueries);
     }
 
     private static TEnum GetEnum<TEnum>(Dictionary<string, string> values, string name, TEnum defaultValue)
@@ -85,6 +95,33 @@ public static class CommandLine
 
         return parsed;
     }
+
+    private static int GetNonNegativeInt(Dictionary<string, string> values, string name, int defaultValue)
+    {
+        if (!values.TryGetValue(name, out string? value))
+        {
+            return defaultValue;
+        }
+
+        if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int parsed) || parsed < 0)
+        {
+            throw new ArgumentException($"Option --{name} must be a non-negative integer.");
+        }
+
+        return parsed;
+    }
+
+    private static bool IsSupportedOption(string name) =>
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "dimension", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vectors", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "top-k", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "baseline-report-id", StringComparison.OrdinalIgnoreCase);
 
     private static uint GetSeed(Dictionary<string, string> values, string name, uint defaultValue)
     {

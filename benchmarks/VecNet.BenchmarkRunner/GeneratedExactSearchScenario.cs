@@ -8,7 +8,7 @@ namespace VecNet.BenchmarkRunner;
 
 public static class GeneratedExactSearchScenario
 {
-    private const string TaskId = "VEC-011";
+    private const string TaskId = "VEC-012";
 
     public static BenchmarkReport Run(GeneratedExactSearchOptions options, IReadOnlyList<string> commandArguments)
     {
@@ -18,6 +18,7 @@ public static class GeneratedExactSearchScenario
         TruthSet truth = ScalarGroundTruth.Generate(dataset, options.Metric, options.TopK);
         ExactFlatIndex index = BuildIndex(options, dataset);
 
+        WarmupSearch(options, dataset, index);
         SearchMeasurement measurement = MeasureSearch(options, dataset, index);
         ResultComparison comparison = ResultComparer.Compare(
             truth,
@@ -40,10 +41,10 @@ public static class GeneratedExactSearchScenario
                 "smoke",
                 "local-evidence",
                 false,
-                "Private generated-data runner output lacks allocation, memory and repeated-run variance measurement.",
+                "Private generated-data runner output lacks allocation and memory measurement and is not reviewed public evidence.",
                 [
                     "Generated data only; no external dataset source, license, version or checksum applies.",
-                    "Single process run with no repeated-run orchestration or variance/noise analysis.",
+                    "Repeated measured runs are private local evidence only and do not implement regression comparison math.",
                     "Allocation and memory values are explicitly not measured.",
                     "Not eligible for public performance, scale, ANN, real-dataset or concurrency claims."
                 ]),
@@ -76,7 +77,7 @@ public static class GeneratedExactSearchScenario
                 options.TopK,
                 options.QueryCount,
                 1,
-                "setup, index build, truth generation, result comparison and report writing are excluded from search timing"),
+                "setup, index build, truth generation, warmup queries, result comparison and report writing are excluded from search timing"),
             Index: new IndexInfo(
                 "Exact",
                 nameof(ExactFlatIndex),
@@ -86,11 +87,13 @@ public static class GeneratedExactSearchScenario
                 "public ExactFlatIndex constructor; no persistence, filtering, updates or concurrency"),
             Search: new SearchInfo(
                 options.QueryCount,
-                measurement.ElapsedMilliseconds,
-                measurement.P50Milliseconds,
-                measurement.P95Milliseconds,
-                measurement.P99Milliseconds,
-                measurement.Qps),
+                measurement.Aggregate.MeanElapsedMilliseconds,
+                measurement.Aggregate.MeanLatencyP50Milliseconds,
+                measurement.Aggregate.MeanLatencyP95Milliseconds,
+                measurement.Aggregate.MeanLatencyP99Milliseconds,
+                measurement.Aggregate.MeanQps,
+                measurement.Runs,
+                measurement.Aggregate),
             Measurement: new MeasurementInfo(
                 ManagedAllocations: new MeasurementStatusInfo(
                     "notMeasured",
@@ -103,14 +106,18 @@ public static class GeneratedExactSearchScenario
                     "bytes",
                     "The current runner does not measure resident, managed heap or process memory."),
                 RepeatedRuns: new RepeatedRunInfo(
-                    "notMeasured",
-                    1,
-                    false,
-                    "The current runner executes one command invocation and does not compute cross-run variance."),
+                    options.Runs > 1 ? "measured" : "singleRun",
+                    options.Runs,
+                    options.Runs > 1,
+                    options.Runs > 1
+                        ? "Multiple measured runs executed; aggregate mean/min/max timing metadata is recorded without regression thresholds."
+                        : "Only one measured run executed, so cross-run variance/noise is not measured."),
                 Warmup: new WarmupInfo(
-                    "notMeasured",
-                    0,
-                    "The current runner has no separate warmup phase.")),
+                    options.WarmupQueries > 0 ? "executed" : "absent",
+                    options.WarmupQueries,
+                    options.WarmupQueries > 0
+                        ? "Warmup queries executed before measured runs and excluded from measured timing totals."
+                        : "No warmup queries were requested.")),
             Metrics: new MetricsInfo(
                 comparison.RecallAtK,
                 comparison.OrderedAgreement,
@@ -122,7 +129,7 @@ public static class GeneratedExactSearchScenario
                 "smoke",
                 false,
                 false,
-                "Baseline comparison math, repeated runs and variance thresholds are not implemented."),
+                "Baseline comparison math, regression decisions and variance thresholds are not implemented."),
             Validation: new ValidationInfo(
                 comparison.RecallAtK == 1 &&
                 comparison.OrderedAgreement == 1 &&
@@ -138,8 +145,9 @@ public static class GeneratedExactSearchScenario
             Notes:
             [
                 "Private generated-data smoke evidence only; not a public benchmark claim.",
-                "Allocation, memory, warmup and repeated-run variance values are not measured.",
-                "External datasets, ANN, persistence, filtering, updates and concurrency are out of scope for VEC-011."
+                "Allocation and memory values are not measured.",
+                "Warmup query timings are deliberately excluded from measured timing totals.",
+                "External datasets, ANN, persistence, filtering, updates and concurrency are out of scope for VEC-012."
             ]);
     }
 
@@ -159,8 +167,52 @@ public static class GeneratedExactSearchScenario
         GeneratedDataset dataset,
         ExactFlatIndex index)
     {
+        var runs = new SearchRunInfo[options.Runs];
+        SearchResult[][]? capturedResults = null;
+
+        for (int runIndex = 0; runIndex < options.Runs; runIndex++)
+        {
+            bool captureResults = runIndex == options.Runs - 1;
+            SingleRunMeasurement run = MeasureSingleRun(options, dataset, index, captureResults);
+            runs[runIndex] = run.Summary with { RunNumber = runIndex + 1 };
+            if (captureResults)
+            {
+                capturedResults = run.Results;
+            }
+        }
+
+        return new SearchMeasurement(
+            capturedResults ?? [],
+            runs,
+            AggregateRuns(runs, options.QueryCount));
+    }
+
+    private static void WarmupSearch(
+        GeneratedExactSearchOptions options,
+        GeneratedDataset dataset,
+        ExactFlatIndex index)
+    {
+        if (options.WarmupQueries == 0)
+        {
+            return;
+        }
+
         var results = new SearchResult[options.TopK];
-        var allResults = new SearchResult[options.QueryCount][];
+        for (int i = 0; i < options.WarmupQueries; i++)
+        {
+            ReadOnlySpan<float> query = dataset.GetQuery(i % dataset.QueryCount);
+            index.Search(query, results);
+        }
+    }
+
+    private static SingleRunMeasurement MeasureSingleRun(
+        GeneratedExactSearchOptions options,
+        GeneratedDataset dataset,
+        ExactFlatIndex index,
+        bool captureResults)
+    {
+        var results = new SearchResult[options.TopK];
+        SearchResult[][]? allResults = captureResults ? new SearchResult[options.QueryCount][] : null;
         var latencyTicks = new long[options.QueryCount];
         long totalTicks = 0;
 
@@ -174,21 +226,52 @@ public static class GeneratedExactSearchScenario
             latencyTicks[queryRow] = elapsed;
             totalTicks += elapsed;
 
-            var queryResults = new SearchResult[written];
-            results.AsSpan(0, written).CopyTo(queryResults);
-            allResults[queryRow] = queryResults;
+            if (captureResults)
+            {
+                var queryResults = new SearchResult[written];
+                results.AsSpan(0, written).CopyTo(queryResults);
+                allResults![queryRow] = queryResults;
+            }
         }
 
         Array.Sort(latencyTicks);
         double elapsedSeconds = (double)totalTicks / Stopwatch.Frequency;
-        return new SearchMeasurement(
-            allResults,
-            elapsedSeconds * 1000,
-            PercentileMilliseconds(latencyTicks, 0.50),
-            PercentileMilliseconds(latencyTicks, 0.95),
-            PercentileMilliseconds(latencyTicks, 0.99),
-            elapsedSeconds == 0 ? double.PositiveInfinity : options.QueryCount / elapsedSeconds);
+        return new SingleRunMeasurement(
+            new SearchRunInfo(
+                RunNumber: 0,
+                options.QueryCount,
+                elapsedSeconds * 1000,
+                PercentileMilliseconds(latencyTicks, 0.50),
+                PercentileMilliseconds(latencyTicks, 0.95),
+                PercentileMilliseconds(latencyTicks, 0.99),
+                elapsedSeconds == 0 ? double.PositiveInfinity : options.QueryCount / elapsedSeconds),
+            allResults);
     }
+
+    private static AggregateTimingInfo AggregateRuns(SearchRunInfo[] runs, int measuredQueryCountPerRun)
+    {
+        return new AggregateTimingInfo(
+            runs.Length,
+            measuredQueryCountPerRun,
+            runs.Average(run => run.ElapsedMilliseconds),
+            runs.Min(run => run.ElapsedMilliseconds),
+            runs.Max(run => run.ElapsedMilliseconds),
+            runs.Average(run => run.LatencyP50Milliseconds),
+            runs.Average(run => run.LatencyP95Milliseconds),
+            runs.Average(run => run.LatencyP99Milliseconds),
+            runs.Average(run => run.Qps),
+            runs.Min(run => run.Qps),
+            runs.Max(run => run.Qps));
+    }
+
+    private sealed record SingleRunMeasurement(
+        SearchRunInfo Summary,
+        SearchResult[][]? Results);
+
+    private sealed record SearchMeasurement(
+        SearchResult[][] Results,
+        SearchRunInfo[] Runs,
+        AggregateTimingInfo Aggregate);
 
     private static double PercentileMilliseconds(long[] sortedTicks, double percentile)
     {
@@ -226,14 +309,6 @@ public static class GeneratedExactSearchScenario
         string commitPart = string.IsNullOrWhiteSpace(commit) ? "unknown" : commit[..Math.Min(12, commit.Length)];
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"{GeneratedExactSearchOptions.ScenarioName}-{commitPart}-{options.Metric}-{options.Dimension}d-{options.VectorCount}v-{options.QueryCount}q-{options.TopK}k-{options.Seed:X8}");
+            $"{GeneratedExactSearchOptions.ScenarioName}-{commitPart}-{options.Metric}-{options.Dimension}d-{options.VectorCount}v-{options.QueryCount}q-{options.TopK}k-{options.Runs}r-{options.WarmupQueries}w-{options.Seed:X8}");
     }
-
-    private sealed record SearchMeasurement(
-        SearchResult[][] Results,
-        double ElapsedMilliseconds,
-        double P50Milliseconds,
-        double P95Milliseconds,
-        double P99Milliseconds,
-        double Qps);
 }

@@ -24,7 +24,7 @@ public sealed class RunnerMetadataIndependentTests
         using JsonDocument document = JsonDocument.Parse(json);
         JsonElement root = document.RootElement;
 
-        Assert.Equal("VEC-011", root.GetProperty("taskId").GetString());
+        Assert.Equal("VEC-012", root.GetProperty("taskId").GetString());
         Assert.Equal("local-evidence", root.GetProperty("claimClass").GetString());
         Assert.Equal("private-raw", root.GetProperty("privacyClass").GetString());
         Assert.Equal("smoke", root.GetProperty("evidence").GetProperty("status").GetString());
@@ -127,6 +127,44 @@ public sealed class RunnerMetadataIndependentTests
         Assert.Contains("baseline-report-id", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void Run_WithMultipleRuns_SerializesMeasuredVarianceAndWarmupMetadata()
+    {
+        var options = new GeneratedExactSearchOptions(
+            VectorMetric.SquaredEuclidean,
+            Dimension: 8,
+            VectorCount: 16,
+            QueryCount: 5,
+            TopK: 4,
+            Seed: 0x5EED012B,
+            OutputPath: "VecNet.BenchmarkRunner.Artifacts/independent-multi-run.json",
+            BaselineReportId: null,
+            Runs: 2,
+            WarmupQueries: 3);
+
+        BenchmarkReport report = GeneratedExactSearchScenario.Run(options, ["exact-generated"]);
+        string json = ReportWriter.Serialize(report);
+
+        using JsonDocument document = JsonDocument.Parse(json);
+        JsonElement root = document.RootElement;
+        JsonElement measurement = root.GetProperty("measurement");
+        JsonElement repeatedRuns = measurement.GetProperty("repeatedRuns");
+        JsonElement warmup = measurement.GetProperty("warmup");
+
+        Assert.Equal("measured", repeatedRuns.GetProperty("status").GetString());
+        Assert.Equal(2, repeatedRuns.GetProperty("runCount").GetInt32());
+        Assert.True(repeatedRuns.GetProperty("varianceMeasured").GetBoolean());
+        Assert.Equal("executed", warmup.GetProperty("status").GetString());
+        Assert.Equal(3, warmup.GetProperty("warmupCount").GetInt32());
+
+        JsonElement search = root.GetProperty("search");
+        Assert.Equal(2, search.GetProperty("runs").GetArrayLength());
+        Assert.Equal(2, search.GetProperty("aggregate").GetProperty("runCount").GetInt32());
+        Assert.Equal(5, search.GetProperty("aggregate").GetProperty("measuredQueryCountPerRun").GetInt32());
+        Assert.False(root.GetProperty("baseline").GetProperty("regressionGateEligible").GetBoolean());
+        Assert.False(root.GetProperty("evidence").GetProperty("publicClaimEligible").GetBoolean());
+    }
+
     private static void AssertMeasurementAbsence(JsonElement root)
     {
         JsonElement measurement = root.GetProperty("measurement");
@@ -138,13 +176,13 @@ public sealed class RunnerMetadataIndependentTests
             expectedUnit: "bytes");
 
         JsonElement repeatedRuns = measurement.GetProperty("repeatedRuns");
-        Assert.Equal("notMeasured", repeatedRuns.GetProperty("status").GetString());
+        Assert.Equal("singleRun", repeatedRuns.GetProperty("status").GetString());
         Assert.Equal(1, repeatedRuns.GetProperty("runCount").GetInt32());
         Assert.False(repeatedRuns.GetProperty("varianceMeasured").GetBoolean());
         Assert.Contains("variance", repeatedRuns.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
 
         JsonElement warmup = measurement.GetProperty("warmup");
-        Assert.Equal("notMeasured", warmup.GetProperty("status").GetString());
+        Assert.Equal("absent", warmup.GetProperty("status").GetString());
         Assert.Equal(0, warmup.GetProperty("warmupCount").GetInt32());
         Assert.Contains("warmup", warmup.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
     }

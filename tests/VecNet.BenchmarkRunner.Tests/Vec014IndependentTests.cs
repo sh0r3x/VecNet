@@ -15,7 +15,7 @@ public sealed class Vec014IndependentTests
         GeneratedExactMatrixOptions options = CommandLine.ParseMatrix(args);
 
         Assert.Equal("smoke", options.PresetName, ignoreCase: true);
-        Assert.True(options.VectorCount >= GeneratedExactMatrixOptions.MaxTopK);
+        Assert.True(options.VectorCount >= GeneratedExactMatrixScenario.GetMaxTopK(options.PresetName));
         Assert.True(options.QueryCount > 0);
         Assert.True(options.Runs > 0);
         Assert.True(options.WarmupQueries >= 0);
@@ -143,7 +143,7 @@ public sealed class Vec014IndependentTests
 
         Assert.Equal("VecNet.BenchmarkMatrixManifest", manifestRoot.GetProperty("schemaName").GetString());
         Assert.Equal("0.1", manifestRoot.GetProperty("schemaVersion").GetString());
-        Assert.Equal("VEC-014", manifestRoot.GetProperty("taskId").GetString());
+        Assert.Equal("VEC-015", manifestRoot.GetProperty("taskId").GetString());
         Assert.Equal(18, manifestRoot.GetProperty("caseCount").GetInt32());
         Assert.Equal(18, manifestRoot.GetProperty("aggregate").GetProperty("passedCaseCount").GetInt32());
         Assert.Equal(0, manifestRoot.GetProperty("aggregate").GetProperty("failedCaseCount").GetInt32());

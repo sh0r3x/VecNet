@@ -11,6 +11,22 @@ public sealed record GeneratedExactMatrixOptions(
     string ManifestPath)
 {
     public const string ScenarioName = "exact-generated-matrix";
-    public const string DefaultPresetName = "smoke";
-    public const int MaxTopK = 10;
+    public const string SmokePresetName = "smoke";
+    public const string StandardPresetName = "standard";
+    public const string DefaultPresetName = SmokePresetName;
+
+    public static string NormalizePresetName(string presetName)
+    {
+        if (string.Equals(presetName, SmokePresetName, StringComparison.OrdinalIgnoreCase))
+        {
+            return SmokePresetName;
+        }
+
+        if (string.Equals(presetName, StandardPresetName, StringComparison.OrdinalIgnoreCase))
+        {
+            return StandardPresetName;
+        }
+
+        throw new ArgumentException($"Unsupported matrix preset '{presetName}'.");
+    }
 }

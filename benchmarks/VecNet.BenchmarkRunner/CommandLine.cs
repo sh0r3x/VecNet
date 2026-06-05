@@ -56,11 +56,8 @@ public static class CommandLine
         }
 
         Dictionary<string, string> values = ParseOptionValues(args, 1, IsSupportedMatrixOption);
-        string presetName = GetOptionalNonWhiteSpace(values, "preset") ?? GeneratedExactMatrixOptions.DefaultPresetName;
-        if (!string.Equals(presetName, GeneratedExactMatrixOptions.DefaultPresetName, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new ArgumentException($"Unsupported matrix preset '{presetName}'.");
-        }
+        string presetName = GeneratedExactMatrixOptions.NormalizePresetName(
+            GetOptionalNonWhiteSpace(values, "preset") ?? GeneratedExactMatrixOptions.DefaultPresetName);
 
         int vectorCount = GetPositiveInt(values, "vectors", 128);
         int queryCount = GetPositiveInt(values, "queries", 8);
@@ -76,9 +73,13 @@ public static class CommandLine
             ? manifestValue
             : Path.Combine(outputDirectory, "matrix-manifest.json");
 
-        if (vectorCount < GeneratedExactMatrixOptions.MaxTopK)
+        int maxTopK = GeneratedExactMatrixScenario.GetMaxTopK(presetName);
+        if (vectorCount < maxTopK)
         {
-            throw new ArgumentException("vectors must be greater than or equal to the maximum matrix top-k.");
+            throw new ArgumentException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"vectors must be greater than or equal to the maximum matrix top-k ({maxTopK}) for preset '{presetName}'."));
         }
 
         return new GeneratedExactMatrixOptions(

@@ -4,7 +4,7 @@ namespace VecNet.BenchmarkRunner;
 
 public static class GeneratedExactMatrixScenario
 {
-    private const string TaskId = "VEC-014";
+    private const string TaskId = "VEC-015";
 
     private static readonly VectorMetric[] Metrics =
     [
@@ -13,11 +13,14 @@ public static class GeneratedExactMatrixScenario
         VectorMetric.Cosine
     ];
 
-    private static readonly int[] Dimensions = [32, 128, 386];
-    private static readonly int[] TopKValues = [1, 10];
+    private static readonly int[] SmokeDimensions = [32, 128, 386];
+    private static readonly int[] SmokeTopKValues = [1, 10];
+    private static readonly int[] StandardDimensions = [32, 128, 386, 768];
+    private static readonly int[] StandardTopKValues = [1, 10, 100];
 
     public static GeneratedExactMatrixManifest Run(GeneratedExactMatrixOptions options, IReadOnlyList<string> commandArguments)
     {
+        string presetName = GeneratedExactMatrixOptions.NormalizePresetName(options.PresetName);
         GeneratedExactSearchOptions[] cases = ExpandCases(options);
         var caseManifests = new GeneratedExactMatrixCaseManifest[cases.Length];
         int passed = 0;
@@ -67,7 +70,7 @@ public static class GeneratedExactMatrixScenario
             SchemaVersion: "0.1",
             TaskId: TaskId,
             ScenarioName: GeneratedExactMatrixOptions.ScenarioName,
-            PresetName: options.PresetName,
+            PresetName: presetName,
             GeneratedAtUtc: DateTimeOffset.UtcNow,
             Repository: RepositoryInfo.Create(),
             Runner: new RunnerInfo("VecNet.BenchmarkRunner", "0.1", commandArguments.ToArray()),
@@ -88,20 +91,26 @@ public static class GeneratedExactMatrixScenario
                 "Generated finite data only; no external datasets are used.",
                 "Each case uses scalar-reference truth and public ExactFlatIndex search through the existing exact-generated scenario.",
                 "Repeated-run, warmup and managed allocation measurement semantics are inherited from the per-case schema 0.1 reports.",
-                "Single-query concurrency only; ANN, persistence, filtering, updates and concurrency are out of scope for VEC-014."
+                "Single-query concurrency only; ANN, persistence, filtering, updates and concurrency are out of scope for VEC-015."
             ]);
     }
 
     public static GeneratedExactSearchOptions[] ExpandCases(GeneratedExactMatrixOptions options)
     {
-        var cases = new List<GeneratedExactSearchOptions>(Metrics.Length * Dimensions.Length * TopKValues.Length);
+        MatrixPreset preset = GetPreset(options.PresetName);
+        var cases = new List<GeneratedExactSearchOptions>(Metrics.Length * preset.Dimensions.Length * preset.TopKValues.Length);
         int caseIndex = 0;
         foreach (VectorMetric metric in Metrics)
         {
-            foreach (int dimension in Dimensions)
+            foreach (int dimension in preset.Dimensions)
             {
-                foreach (int topK in TopKValues)
+                foreach (int topK in preset.TopKValues)
                 {
+                    if (topK > options.VectorCount)
+                    {
+                        throw new ArgumentException("top-k must be less than or equal to the vector count for every matrix case.");
+                    }
+
                     uint seed = unchecked(options.Seed + (uint)caseIndex);
                     cases.Add(new GeneratedExactSearchOptions(
                         metric,
@@ -121,6 +130,8 @@ public static class GeneratedExactMatrixScenario
 
         return cases.ToArray();
     }
+
+    public static int GetMaxTopK(string presetName) => GetPreset(presetName).TopKValues.Max();
 
     public static void WriteManifest(GeneratedExactMatrixManifest manifest, string manifestPath)
     {
@@ -181,4 +192,17 @@ public static class GeneratedExactMatrixScenario
             string.Create(
                 CultureInfo.InvariantCulture,
                 $"case-{caseNumber:D2}-{metric.ToString().ToLowerInvariant()}-{dimension}d-{topK}k.json"));
+
+    private static MatrixPreset GetPreset(string presetName)
+    {
+        string normalizedPresetName = GeneratedExactMatrixOptions.NormalizePresetName(presetName);
+        return normalizedPresetName switch
+        {
+            GeneratedExactMatrixOptions.SmokePresetName => new MatrixPreset(SmokeDimensions, SmokeTopKValues),
+            GeneratedExactMatrixOptions.StandardPresetName => new MatrixPreset(StandardDimensions, StandardTopKValues),
+            _ => throw new ArgumentException($"Unsupported matrix preset '{presetName}'.")
+        };
+    }
+
+    private sealed record MatrixPreset(int[] Dimensions, int[] TopKValues);
 }

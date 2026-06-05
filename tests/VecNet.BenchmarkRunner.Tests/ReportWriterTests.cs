@@ -40,6 +40,15 @@ public sealed class ReportWriterTests
                 [new SearchRunInfo(1, 1, 0.5, 0.5, 0.5, 0.5, 2000, 0, 0)],
                 new AggregateTimingInfo(1, 1, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 2000, 2000, 2000, 0, 0, 0, 0, 0, 0)),
             Measurement: new MeasurementInfo(
+                new LatencyMeasurementInfo(
+                    "measured",
+                    "milliseconds",
+                    "perMeasuredQuery",
+                    "public ExactFlatIndex.Search(query, results)",
+                    "setup excluded",
+                    "nearest-rank over sorted per-run samples",
+                    "aggregate means across per-run percentiles, not BenchmarkDotNet statistics",
+                    "raw samples are not emitted"),
                 new MeasurementStatusInfo("measured", "0", "bytesPerQuery", "measured"),
                 new MeasurementStatusInfo("notMeasured", "absent", "bytes", "not measured"),
                 new RepeatedRunInfo("notMeasured", 1, false, "not measured"),
@@ -65,6 +74,12 @@ public sealed class ReportWriterTests
         Assert.Equal("smoke", root.GetProperty("evidence").GetProperty("status").GetString());
         Assert.False(root.GetProperty("evidence").GetProperty("publicClaimEligible").GetBoolean());
         Assert.Equal("generated-uniform", root.GetProperty("dataset").GetProperty("kind").GetString());
+        Assert.Equal("measured", root.GetProperty("measurement").GetProperty("latency").GetProperty("status").GetString());
+        Assert.Equal("milliseconds", root.GetProperty("measurement").GetProperty("latency").GetProperty("unit").GetString());
+        Assert.Contains(
+            "ExactFlatIndex.Search",
+            root.GetProperty("measurement").GetProperty("latency").GetProperty("timedOperation").GetString(),
+            StringComparison.Ordinal);
         Assert.Equal("measured", root.GetProperty("measurement").GetProperty("managedAllocations").GetProperty("status").GetString());
         Assert.Equal("bytesPerQuery", root.GetProperty("measurement").GetProperty("managedAllocations").GetProperty("unit").GetString());
         Assert.Equal("absent", root.GetProperty("measurement").GetProperty("memory").GetProperty("value").GetString());

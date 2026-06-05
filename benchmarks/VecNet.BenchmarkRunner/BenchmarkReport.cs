@@ -112,10 +112,21 @@ public sealed record AggregateTimingInfo(
     double MaxManagedAllocatedBytesPerQuery);
 
 public sealed record MeasurementInfo(
+    LatencyMeasurementInfo Latency,
     MeasurementStatusInfo ManagedAllocations,
     MeasurementStatusInfo Memory,
     RepeatedRunInfo RepeatedRuns,
     WarmupInfo Warmup);
+
+public sealed record LatencyMeasurementInfo(
+    string Status,
+    string Unit,
+    string SampleScope,
+    string TimedOperation,
+    string ExcludedOperations,
+    string PercentileEstimator,
+    string AggregateSemantics,
+    string RawSampleDisclosure);
 
 public sealed record MeasurementStatusInfo(
     string Status,

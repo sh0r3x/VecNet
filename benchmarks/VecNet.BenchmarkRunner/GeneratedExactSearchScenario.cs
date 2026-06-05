@@ -45,6 +45,7 @@ public static class GeneratedExactSearchScenario
                 [
                     "Generated data only; no external dataset source, license, version or checksum applies.",
                     "Repeated measured runs are private local evidence only and do not implement regression comparison math.",
+                    "Latency percentiles are nearest-rank per-run query latency samples aggregated as per-run means, not BenchmarkDotNet statistics.",
                     "Managed allocations are measured for public ExactFlatIndex.Search calls only; resident/process memory is explicitly not measured.",
                     "Not eligible for public performance, scale, ANN, real-dataset or concurrency claims."
                 ]),
@@ -77,7 +78,7 @@ public static class GeneratedExactSearchScenario
                 options.TopK,
                 options.QueryCount,
                 1,
-                "setup, index build, truth generation, warmup queries, result comparison and report writing are excluded from search timing"),
+                "setup, index build, scalar-reference truth generation, warmup queries, result capture/comparison and report writing are excluded from search timing"),
             Index: new IndexInfo(
                 "Exact",
                 nameof(ExactFlatIndex),
@@ -95,11 +96,20 @@ public static class GeneratedExactSearchScenario
                 measurement.Runs,
                 measurement.Aggregate),
             Measurement: new MeasurementInfo(
+                Latency: new LatencyMeasurementInfo(
+                    "measured",
+                    "milliseconds",
+                    "perMeasuredQuery",
+                    "public ExactFlatIndex.Search(query, results)",
+                    "setup, index build, scalar-reference truth generation, warmup queries, result capture/comparison and report writing",
+                    "nearest-rank percentile estimator over sorted per-run query latency samples: index = ceil(sampleCount * percentile) - 1, clamped to [0, sampleCount - 1]",
+                    "Top-level search latency percentile fields and search.aggregate mean latency percentile fields are arithmetic means across per-run percentile values, not BenchmarkDotNet statistics.",
+                    "Raw per-query latency samples are not emitted in report JSON."),
                 ManagedAllocations: new MeasurementStatusInfo(
                     "measured",
                     measurement.Aggregate.MeanManagedAllocatedBytesPerQuery.ToString(CultureInfo.InvariantCulture),
                     "bytesPerQuery",
-                    "Measured with GC.GetAllocatedBytesForCurrentThread around each public ExactFlatIndex.Search(query, results) call; setup, warmup, result capture, result comparison and report writing are excluded."),
+                    "Measured with GC.GetAllocatedBytesForCurrentThread around each public ExactFlatIndex.Search(query, results) call; setup, index build, scalar-reference truth generation, warmup, result capture/comparison and report writing are excluded."),
                 Memory: new MeasurementStatusInfo(
                     "notMeasured",
                     "absent",
@@ -145,10 +155,12 @@ public static class GeneratedExactSearchScenario
             Notes:
             [
                 "Private generated-data smoke evidence only; not a public benchmark claim.",
+                "Latency samples are per measured query around public ExactFlatIndex.Search(query, results); setup, index build, scalar-reference truth, warmup, result capture/comparison and report writing are excluded.",
+                "Latency p50/p95/p99 use nearest-rank per-run samples, with top-level and aggregate fields reported as means across per-run percentiles rather than BenchmarkDotNet statistics.",
                 "Managed allocations are measured only for the public ExactFlatIndex.Search operation inside measured runs.",
                 "Resident/process memory values are not measured.",
                 "Warmup query timings are deliberately excluded from measured timing totals.",
-                "External datasets, ANN, persistence, filtering, updates and concurrency are out of scope for VEC-014."
+                "External datasets, ANN, persistence, filtering, updates and concurrency are out of scope for generated exact runner reports."
             ]);
     }
 
@@ -246,9 +258,9 @@ public static class GeneratedExactSearchScenario
                 RunNumber: 0,
                 options.QueryCount,
                 elapsedSeconds * 1000,
-                PercentileMilliseconds(latencyTicks, 0.50),
-                PercentileMilliseconds(latencyTicks, 0.95),
-                PercentileMilliseconds(latencyTicks, 0.99),
+                LatencyPercentiles.NearestRankMilliseconds(latencyTicks, 0.50, Stopwatch.Frequency),
+                LatencyPercentiles.NearestRankMilliseconds(latencyTicks, 0.95, Stopwatch.Frequency),
+                LatencyPercentiles.NearestRankMilliseconds(latencyTicks, 0.99, Stopwatch.Frequency),
                 elapsedSeconds == 0 ? double.PositiveInfinity : options.QueryCount / elapsedSeconds,
                 totalAllocatedBytes,
                 options.QueryCount == 0 ? 0 : (double)totalAllocatedBytes / options.QueryCount),
@@ -285,18 +297,6 @@ public static class GeneratedExactSearchScenario
         SearchResult[][] Results,
         SearchRunInfo[] Runs,
         AggregateTimingInfo Aggregate);
-
-    private static double PercentileMilliseconds(long[] sortedTicks, double percentile)
-    {
-        if (sortedTicks.Length == 0)
-        {
-            return 0;
-        }
-
-        int index = (int)Math.Ceiling(sortedTicks.Length * percentile) - 1;
-        index = Math.Clamp(index, 0, sortedTicks.Length - 1);
-        return sortedTicks[index] * 1000.0 / Stopwatch.Frequency;
-    }
 
     private static void ValidateFinite(GeneratedDataset dataset)
     {

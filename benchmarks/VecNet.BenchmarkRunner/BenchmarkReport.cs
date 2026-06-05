@@ -116,6 +116,7 @@ public sealed record MeasurementInfo(
     MeasurementStatusInfo ManagedAllocations,
     MeasurementStatusInfo Memory,
     RepeatedRunInfo RepeatedRuns,
+    RunToRunNoiseInfo RunToRunNoise,
     WarmupInfo Warmup);
 
 public sealed record LatencyMeasurementInfo(
@@ -138,6 +139,32 @@ public sealed record RepeatedRunInfo(
     string Status,
     int RunCount,
     bool VarianceMeasured,
+    string Reason);
+
+public sealed record RunToRunNoiseInfo(
+    string Status,
+    int RunCount,
+    bool NoiseMeasured,
+    string Scope,
+    string Statistics,
+    string Reason,
+    string NonGoals,
+    RunToRunMetricNoiseInfo ElapsedMilliseconds,
+    RunToRunMetricNoiseInfo Qps,
+    RunToRunMetricNoiseInfo LatencyP50Milliseconds,
+    RunToRunMetricNoiseInfo LatencyP95Milliseconds,
+    RunToRunMetricNoiseInfo LatencyP99Milliseconds,
+    RunToRunMetricNoiseInfo ManagedAllocatedBytesPerQuery);
+
+public sealed record RunToRunMetricNoiseInfo(
+    string Status,
+    string Unit,
+    double? Mean,
+    double? SampleStandardDeviation,
+    double? CoefficientOfVariation,
+    double? Min,
+    double? Max,
+    double? Spread,
     string Reason);
 
 public sealed record WarmupInfo(

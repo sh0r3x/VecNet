@@ -52,6 +52,20 @@ public sealed class ReportWriterTests
                 new MeasurementStatusInfo("measured", "0", "bytesPerQuery", "measured"),
                 new MeasurementStatusInfo("notMeasured", "absent", "bytes", "not measured"),
                 new RepeatedRunInfo("notMeasured", 1, false, "not measured"),
+                new RunToRunNoiseInfo(
+                    "notMeasured",
+                    1,
+                    false,
+                    "test scope",
+                    "mean; sample standard deviation; coefficient of variation; min/max spread",
+                    "one run cannot measure noise",
+                    "not BenchmarkDotNet statistics or regression decisions",
+                    new RunToRunMetricNoiseInfo("notMeasured", "milliseconds", null, null, null, null, null, null, "one run"),
+                    new RunToRunMetricNoiseInfo("notMeasured", "queriesPerSecond", null, null, null, null, null, null, "one run"),
+                    new RunToRunMetricNoiseInfo("notMeasured", "milliseconds", null, null, null, null, null, null, "one run"),
+                    new RunToRunMetricNoiseInfo("notMeasured", "milliseconds", null, null, null, null, null, null, "one run"),
+                    new RunToRunMetricNoiseInfo("notMeasured", "milliseconds", null, null, null, null, null, null, "one run"),
+                    new RunToRunMetricNoiseInfo("notMeasured", "bytesPerQuery", null, null, null, null, null, null, "one run")),
                 new WarmupInfo("notMeasured", 0, "not measured")),
             Metrics: new MetricsInfo(1, 1, "passed", 0, 0),
             Baseline: new BaselineInfo(
@@ -82,6 +96,8 @@ public sealed class ReportWriterTests
             StringComparison.Ordinal);
         Assert.Equal("measured", root.GetProperty("measurement").GetProperty("managedAllocations").GetProperty("status").GetString());
         Assert.Equal("bytesPerQuery", root.GetProperty("measurement").GetProperty("managedAllocations").GetProperty("unit").GetString());
+        Assert.Equal("notMeasured", root.GetProperty("measurement").GetProperty("runToRunNoise").GetProperty("status").GetString());
+        Assert.False(root.GetProperty("measurement").GetProperty("runToRunNoise").GetProperty("noiseMeasured").GetBoolean());
         Assert.Equal("absent", root.GetProperty("measurement").GetProperty("memory").GetProperty("value").GetString());
         Assert.Equal(1, root.GetProperty("search").GetProperty("runs").GetArrayLength());
         Assert.Equal(0, root.GetProperty("search").GetProperty("runs")[0].GetProperty("managedAllocatedBytes").GetInt64());

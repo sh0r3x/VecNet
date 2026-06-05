@@ -44,7 +44,7 @@ public static class GeneratedExactSearchScenario
                 "Private generated-data runner output measures managed allocations but lacks resident/process memory measurement and is not reviewed public evidence.",
                 [
                     "Generated data only; no external dataset source, license, version or checksum applies.",
-                    "Repeated measured runs are private local evidence only and do not implement regression comparison math.",
+                    "Run-to-run noise summaries are private local descriptive statistics only and do not implement regression comparison math or acceptable-noise thresholds.",
                     "Latency percentiles are nearest-rank per-run query latency samples aggregated as per-run means, not BenchmarkDotNet statistics.",
                     "Managed allocations are measured for public ExactFlatIndex.Search calls only; resident/process memory is explicitly not measured.",
                     "Not eligible for public performance, scale, ANN, real-dataset or concurrency claims."
@@ -122,6 +122,7 @@ public static class GeneratedExactSearchScenario
                     options.Runs > 1
                         ? "Multiple measured runs executed; aggregate mean/min/max timing metadata is recorded without regression thresholds."
                         : "Only one measured run executed, so cross-run variance/noise is not measured."),
+                RunToRunNoise: CreateRunToRunNoise(measurement.Runs),
                 Warmup: new WarmupInfo(
                     options.WarmupQueries > 0 ? "executed" : "absent",
                     options.WarmupQueries,
@@ -157,6 +158,7 @@ public static class GeneratedExactSearchScenario
                 "Private generated-data smoke evidence only; not a public benchmark claim.",
                 "Latency samples are per measured query around public ExactFlatIndex.Search(query, results); setup, index build, scalar-reference truth, warmup, result capture/comparison and report writing are excluded.",
                 "Latency p50/p95/p99 use nearest-rank per-run samples, with top-level and aggregate fields reported as means across per-run percentiles rather than BenchmarkDotNet statistics.",
+                "Run-to-run noise metadata uses simple mean, sample standard deviation, coefficient of variation where available, and min/max spread across measured runs; it is not BenchmarkDotNet statistics, a threshold policy or a regression decision.",
                 "Managed allocations are measured only for the public ExactFlatIndex.Search operation inside measured runs.",
                 "Resident/process memory values are not measured.",
                 "Warmup query timings are deliberately excluded from measured timing totals.",
@@ -288,6 +290,98 @@ public static class GeneratedExactSearchScenario
             runs.Min(run => run.ManagedAllocatedBytesPerQuery),
             runs.Max(run => run.ManagedAllocatedBytesPerQuery));
     }
+
+    private static RunToRunNoiseInfo CreateRunToRunNoise(SearchRunInfo[] runs)
+    {
+        bool measured = runs.Length > 1;
+        string status = measured ? "measured" : "notMeasured";
+        string reason = measured
+            ? "Multiple measured runs executed; simple descriptive run-to-run statistics are recorded for private local noise inspection."
+            : "Only one measured run executed, so run-to-run noise is unavailable and cannot be measured.";
+        string unavailableReason = "Only one measured run exists; this field does not establish run-to-run variation.";
+
+        return new RunToRunNoiseInfo(
+            status,
+            runs.Length,
+            measured,
+            "Across measured generated exact-search runs for public ExactFlatIndex.Search(query, results); warmup, setup, index build, scalar-reference truth, result capture/comparison and report writing are excluded.",
+            "mean; sample standard deviation when run count is greater than one; coefficient of variation = sampleStandardDeviation / abs(mean) when mean is finite and non-zero; min/max spread = max - min.",
+            reason,
+            "Private local descriptive metadata only; not BenchmarkDotNet statistics, not confidence intervals, not baseline comparison math, not an acceptable-noise threshold and not a regression decision.",
+            CreateMetricNoise(
+                runs,
+                "milliseconds",
+                run => run.ElapsedMilliseconds,
+                measured,
+                unavailableReason),
+            CreateMetricNoise(
+                runs,
+                "queriesPerSecond",
+                run => run.Qps,
+                measured,
+                unavailableReason),
+            CreateMetricNoise(
+                runs,
+                "milliseconds",
+                run => run.LatencyP50Milliseconds,
+                measured,
+                unavailableReason),
+            CreateMetricNoise(
+                runs,
+                "milliseconds",
+                run => run.LatencyP95Milliseconds,
+                measured,
+                unavailableReason),
+            CreateMetricNoise(
+                runs,
+                "milliseconds",
+                run => run.LatencyP99Milliseconds,
+                measured,
+                unavailableReason),
+            CreateMetricNoise(
+                runs,
+                "bytesPerQuery",
+                run => run.ManagedAllocatedBytesPerQuery,
+                measured,
+                unavailableReason));
+    }
+
+    private static RunToRunMetricNoiseInfo CreateMetricNoise(
+        SearchRunInfo[] runs,
+        string unit,
+        Func<SearchRunInfo, double> valueSelector,
+        bool measured,
+        string unavailableReason)
+    {
+        if (!measured)
+        {
+            return new RunToRunMetricNoiseInfo(
+                "notMeasured",
+                unit,
+                Mean: null,
+                SampleStandardDeviation: null,
+                CoefficientOfVariation: null,
+                Min: null,
+                Max: null,
+                Spread: null,
+                unavailableReason);
+        }
+
+        double[] values = runs.Select(valueSelector).ToArray();
+        DescriptiveStatistics statistics = RunToRunNoiseStatistics.Calculate(values);
+        return new RunToRunMetricNoiseInfo(
+            "measured",
+            unit,
+            FiniteOrNull(statistics.Mean),
+            statistics.SampleStandardDeviation,
+            statistics.CoefficientOfVariation,
+            FiniteOrNull(statistics.Min),
+            FiniteOrNull(statistics.Max),
+            FiniteOrNull(statistics.Spread),
+            "Computed across measured runs using the documented private descriptive-statistics formula.");
+    }
+
+    private static double? FiniteOrNull(double value) => double.IsFinite(value) ? value : null;
 
     private sealed record SingleRunMeasurement(
         SearchRunInfo Summary,

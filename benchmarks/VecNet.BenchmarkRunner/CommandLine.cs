@@ -4,33 +4,15 @@ namespace VecNet.BenchmarkRunner;
 
 public static class CommandLine
 {
-    private const string ScenarioName = "exact-generated";
-
     public static GeneratedExactSearchOptions Parse(IReadOnlyList<string> args)
     {
-        string scenario = args.Count == 0 ? ScenarioName : args[0];
-        if (!string.Equals(scenario, ScenarioName, StringComparison.OrdinalIgnoreCase))
+        string scenario = args.Count == 0 ? GeneratedExactSearchOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, GeneratedExactSearchOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
         {
             throw new ArgumentException($"Unsupported scenario '{scenario}'.");
         }
 
-        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        for (int i = args.Count == 0 ? 0 : 1; i < args.Count; i += 2)
-        {
-            string name = args[i];
-            if (!name.StartsWith("--", StringComparison.Ordinal) || i + 1 >= args.Count)
-            {
-                throw new ArgumentException($"Expected an option/value pair at '{name}'.");
-            }
-
-            string optionName = name[2..];
-            if (!IsSupportedOption(optionName))
-            {
-                throw new ArgumentException($"Unsupported option '{name}'.");
-            }
-
-            values[optionName] = args[i + 1];
-        }
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedGeneratedOption);
 
         VectorMetric metric = GetEnum(values, "metric", VectorMetric.SquaredEuclidean);
         int dimension = GetPositiveInt(values, "dimension", 128);
@@ -63,6 +45,83 @@ public static class CommandLine
             baselineReportId,
             runs,
             warmupQueries);
+    }
+
+    public static GeneratedExactMatrixOptions ParseMatrix(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? GeneratedExactMatrixOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, GeneratedExactMatrixOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, 1, IsSupportedMatrixOption);
+        string presetName = GetOptionalNonWhiteSpace(values, "preset") ?? GeneratedExactMatrixOptions.DefaultPresetName;
+        if (!string.Equals(presetName, GeneratedExactMatrixOptions.DefaultPresetName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported matrix preset '{presetName}'.");
+        }
+
+        int vectorCount = GetPositiveInt(values, "vectors", 128);
+        int queryCount = GetPositiveInt(values, "queries", 8);
+        int runs = GetPositiveInt(values, "runs", 1);
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", 0);
+        uint seed = GetSeed(values, "seed", 0x5EED2014);
+        string outputDirectory = values.TryGetValue("output-dir", out string? outputDirectoryValue)
+            ? outputDirectoryValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"exact-generated-matrix-{DateTime.UtcNow:yyyyMMdd-HHmmss}");
+        string manifestPath = values.TryGetValue("manifest", out string? manifestValue)
+            ? manifestValue
+            : Path.Combine(outputDirectory, "matrix-manifest.json");
+
+        if (vectorCount < GeneratedExactMatrixOptions.MaxTopK)
+        {
+            throw new ArgumentException("vectors must be greater than or equal to the maximum matrix top-k.");
+        }
+
+        return new GeneratedExactMatrixOptions(
+            presetName,
+            vectorCount,
+            queryCount,
+            runs,
+            warmupQueries,
+            seed,
+            outputDirectory,
+            manifestPath);
+    }
+
+    private static Dictionary<string, string> ParseOptionValues(
+        IReadOnlyList<string> args,
+        int startIndex,
+        Func<string, bool> isSupportedOption)
+    {
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        for (int i = startIndex; i < args.Count; i += 2)
+        {
+            string name = args[i];
+            if (!name.StartsWith("--", StringComparison.Ordinal) || i + 1 >= args.Count)
+            {
+                throw new ArgumentException($"Expected an option/value pair at '{name}'.");
+            }
+
+            string optionName = name[2..];
+            if (!isSupportedOption(optionName))
+            {
+                throw new ArgumentException($"Unsupported option '{name}'.");
+            }
+
+            string value = args[i + 1];
+            if (value.StartsWith("--", StringComparison.Ordinal))
+            {
+                throw new ArgumentException($"Option '{name}' requires a value.");
+            }
+
+            values[optionName] = value;
+        }
+
+        return values;
     }
 
     private static TEnum GetEnum<TEnum>(Dictionary<string, string> values, string name, TEnum defaultValue)
@@ -111,7 +170,7 @@ public static class CommandLine
         return parsed;
     }
 
-    private static bool IsSupportedOption(string name) =>
+    private static bool IsSupportedGeneratedOption(string name) =>
         string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "dimension", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "vectors", StringComparison.OrdinalIgnoreCase) ||
@@ -122,6 +181,16 @@ public static class CommandLine
         string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "baseline-report-id", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedMatrixOption(string name) =>
+        string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vectors", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output-dir", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "manifest", StringComparison.OrdinalIgnoreCase);
 
     private static uint GetSeed(Dictionary<string, string> values, string name, uint defaultValue)
     {

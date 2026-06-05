@@ -13,7 +13,7 @@ public sealed class ReportWriterTests
             SchemaVersion: "0.1",
             ReportId: "test-report",
             GeneratedAtUtc: DateTimeOffset.UnixEpoch,
-            TaskId: "VEC-013",
+            TaskId: "VEC-014",
             ClaimClass: "local-evidence",
             PrivacyClass: "private-raw",
             Evidence: new EvidenceInfo(
@@ -60,7 +60,7 @@ public sealed class ReportWriterTests
         JsonElement root = document.RootElement;
         Assert.Equal("VecNet.BenchmarkReport", root.GetProperty("schemaName").GetString());
         Assert.Equal("0.1", root.GetProperty("schemaVersion").GetString());
-        Assert.Equal("VEC-013", root.GetProperty("taskId").GetString());
+        Assert.Equal("VEC-014", root.GetProperty("taskId").GetString());
         Assert.Equal("private-raw", root.GetProperty("privacyClass").GetString());
         Assert.Equal("smoke", root.GetProperty("evidence").GetProperty("status").GetString());
         Assert.False(root.GetProperty("evidence").GetProperty("publicClaimEligible").GetBoolean());

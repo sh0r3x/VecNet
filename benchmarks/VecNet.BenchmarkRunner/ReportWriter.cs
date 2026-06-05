@@ -10,8 +10,8 @@ public static class ReportWriter
         WriteIndented = true
     };
 
-    public static string Serialize(BenchmarkReport report) =>
-        JsonSerializer.Serialize(report, Options);
+    public static string Serialize<T>(T value) =>
+        JsonSerializer.Serialize(value, Options);
 
     public static void Write(BenchmarkReport report, string outputPath)
     {

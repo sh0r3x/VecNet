@@ -49,7 +49,7 @@ public sealed class Vec012IndependentTests
         using JsonDocument document = JsonDocument.Parse(ReportWriter.Serialize(report));
         JsonElement root = document.RootElement;
 
-        Assert.Equal("VEC-013", root.GetProperty("taskId").GetString());
+        Assert.Equal("VEC-014", root.GetProperty("taskId").GetString());
         Assert.Equal("private-raw", root.GetProperty("privacyClass").GetString());
         Assert.Equal("local-evidence", root.GetProperty("claimClass").GetString());
 

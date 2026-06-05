@@ -8,7 +8,7 @@ namespace VecNet.BenchmarkRunner;
 
 public static class GeneratedExactSearchScenario
 {
-    private const string TaskId = "VEC-013";
+    private const string TaskId = "VEC-014";
 
     public static BenchmarkReport Run(GeneratedExactSearchOptions options, IReadOnlyList<string> commandArguments)
     {
@@ -148,7 +148,7 @@ public static class GeneratedExactSearchScenario
                 "Managed allocations are measured only for the public ExactFlatIndex.Search operation inside measured runs.",
                 "Resident/process memory values are not measured.",
                 "Warmup query timings are deliberately excluded from measured timing totals.",
-                "External datasets, ANN, persistence, filtering, updates and concurrency are out of scope for VEC-013."
+                "External datasets, ANN, persistence, filtering, updates and concurrency are out of scope for VEC-014."
             ]);
     }
 

@@ -36,7 +36,7 @@ public sealed class GeneratedExactSearchScenarioTests
 
         Assert.Equal("VecNet.BenchmarkReport", report.SchemaName);
         Assert.Equal("0.1", report.SchemaVersion);
-        Assert.Equal("VEC-013", report.TaskId);
+        Assert.Equal("VEC-014", report.TaskId);
         Assert.Equal("local-evidence", report.ClaimClass);
         Assert.Equal("private-raw", report.PrivacyClass);
         Assert.Equal("smoke", report.Evidence.Status);
@@ -122,7 +122,7 @@ public sealed class GeneratedExactSearchScenarioTests
                 "--warmup-queries", "2"
             ]);
 
-        Assert.Equal("VEC-013", report.TaskId);
+        Assert.Equal("VEC-014", report.TaskId);
         Assert.Equal(4, report.Search.MeasuredQueryCount);
         Assert.Equal(3, report.Search.Runs.Length);
         Assert.Equal(3, report.Search.Aggregate.RunCount);

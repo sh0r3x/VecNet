@@ -37,6 +37,7 @@ public sealed class CommandLineTests
     [InlineData("exact-generated", "--warmup-queries", "-1")]
     [InlineData("exact-generated", "--warmup-queries", "1.5")]
     [InlineData("exact-generated", "--unknown-option", "123")]
+    [InlineData("exact-generated", "--output", "--queries")]
     [InlineData("exact-generated", "--seed", "0xNOTHEX")]
     [InlineData("exact-generated", "--baseline-report-id", "")]
     public void Parse_RejectsInvalidCommandLines(params string[] args)

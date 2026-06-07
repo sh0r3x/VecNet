@@ -43,4 +43,5 @@ public sealed record GeneratedExactMatrixEligibility(
     bool PublicClaimEligible,
     bool BaselineCandidateEligible,
     bool RegressionGateEligible,
-    string Reason);
+    string Reason,
+    BaselineCandidateEligibilityInfo? CandidateEligibility = null);

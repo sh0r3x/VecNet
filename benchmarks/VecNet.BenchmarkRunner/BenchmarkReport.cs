@@ -184,6 +184,17 @@ public sealed record BaselineInfo(
     string Suitability,
     bool BaselineCandidateEligible,
     bool RegressionGateEligible,
+    string Reason,
+    BaselineCandidateEligibilityInfo? CandidateEligibility = null);
+
+public sealed record BaselineCandidateEligibilityInfo(
+    bool Eligible,
+    string ArtifactKind,
+    string Policy,
+    int MinimumRuns,
+    int MinimumMeasuredQueries,
+    string[] SatisfiedConditions,
+    string[] UnsatisfiedConditions,
     string Reason);
 
 public sealed record ValidationInfo(

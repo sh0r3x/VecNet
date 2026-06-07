@@ -29,7 +29,7 @@ public static class GeneratedExactSearchScenario
 
         RepositoryInfo repository = RepositoryInfo.Create();
 
-        return new BenchmarkReport(
+        var report = new BenchmarkReport(
             SchemaName: "VecNet.BenchmarkReport",
             SchemaVersion: "0.1",
             ReportId: CreateReportId(repository.Commit, options),
@@ -164,6 +164,8 @@ public static class GeneratedExactSearchScenario
                 "Warmup query timings are deliberately excluded from measured timing totals.",
                 "External datasets, ANN, persistence, filtering, updates and concurrency are out of scope for generated exact runner reports."
             ]);
+
+        return BaselineCandidateEligibility.ApplyGeneratedExactReportEligibility(report);
     }
 
     private static ExactFlatIndex BuildIndex(GeneratedExactSearchOptions options, GeneratedDataset dataset)

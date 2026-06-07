@@ -65,7 +65,7 @@ public static class GeneratedExactMatrixScenario
             }
         }
 
-        return new GeneratedExactMatrixManifest(
+        var manifest = new GeneratedExactMatrixManifest(
             SchemaName: "VecNet.BenchmarkMatrixManifest",
             SchemaVersion: "0.1",
             TaskId: TaskId,
@@ -93,6 +93,8 @@ public static class GeneratedExactMatrixScenario
                 "Repeated-run, warmup and managed allocation measurement semantics are inherited from the per-case schema 0.1 reports.",
                 "Single-query concurrency only; ANN, persistence, filtering, updates and concurrency are out of scope for VEC-015."
             ]);
+
+        return BaselineCandidateEligibility.ApplyGeneratedExactMatrixEligibility(manifest);
     }
 
     public static GeneratedExactSearchOptions[] ExpandCases(GeneratedExactMatrixOptions options)

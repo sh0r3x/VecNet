@@ -13,6 +13,9 @@ public static class ReportWriter
     public static string Serialize<T>(T value) =>
         JsonSerializer.Serialize(value, Options);
 
+    public static T? Deserialize<T>(string json) =>
+        JsonSerializer.Deserialize<T>(json, Options);
+
     public static void Write(BenchmarkReport report, string outputPath)
     {
         string? directory = Path.GetDirectoryName(outputPath);

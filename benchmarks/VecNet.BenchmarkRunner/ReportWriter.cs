@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace VecNet.BenchmarkRunner;
 
@@ -7,7 +8,8 @@ public static class ReportWriter
     private static readonly JsonSerializerOptions Options = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = true
+        WriteIndented = true,
+        NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals
     };
 
     public static string Serialize<T>(T value) =>
@@ -18,12 +20,22 @@ public static class ReportWriter
 
     public static void Write(BenchmarkReport report, string outputPath)
     {
+        WriteJson(report, outputPath);
+    }
+
+    public static void WriteComparison(BenchmarkComparisonArtifact comparison, string outputPath)
+    {
+        WriteJson(comparison, outputPath);
+    }
+
+    private static void WriteJson<T>(T value, string outputPath)
+    {
         string? directory = Path.GetDirectoryName(outputPath);
         if (!string.IsNullOrEmpty(directory))
         {
             Directory.CreateDirectory(directory);
         }
 
-        File.WriteAllText(outputPath, Serialize(report));
+        File.WriteAllText(outputPath, Serialize(value));
     }
 }

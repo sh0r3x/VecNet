@@ -93,6 +93,27 @@ public static class CommandLine
             manifestPath);
     }
 
+    public static BenchmarkComparisonOptions ParseComparison(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? BenchmarkComparisonOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, BenchmarkComparisonOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, 1, IsSupportedComparisonOption);
+        string baselinePath = GetRequiredNonWhiteSpace(values, "baseline");
+        string currentPath = GetRequiredNonWhiteSpace(values, "current");
+        string outputPath = values.TryGetValue("output", out string? output)
+            ? output
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                "comparisons",
+                $"benchmark-comparison-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json");
+
+        return new BenchmarkComparisonOptions(baselinePath, currentPath, outputPath);
+    }
+
     private static Dictionary<string, string> ParseOptionValues(
         IReadOnlyList<string> args,
         int startIndex,
@@ -193,6 +214,11 @@ public static class CommandLine
         string.Equals(name, "output-dir", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "manifest", StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsSupportedComparisonOption(string name) =>
+        string.Equals(name, "baseline", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "current", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase);
+
     private static uint GetSeed(Dictionary<string, string> values, string name, uint defaultValue)
     {
         if (!values.TryGetValue(name, out string? value))
@@ -223,6 +249,17 @@ public static class CommandLine
         if (string.IsNullOrWhiteSpace(value))
         {
             throw new ArgumentException($"Option --{name} must not be empty.");
+        }
+
+        return value;
+    }
+
+    private static string GetRequiredNonWhiteSpace(Dictionary<string, string> values, string name)
+    {
+        string? value = GetOptionalNonWhiteSpace(values, name);
+        if (value is null)
+        {
+            throw new ArgumentException($"Option --{name} is required.");
         }
 
         return value;

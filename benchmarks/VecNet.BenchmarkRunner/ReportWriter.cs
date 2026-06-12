@@ -28,7 +28,7 @@ public static class ReportWriter
         WriteJson(comparison, outputPath);
     }
 
-    private static void WriteJson<T>(T value, string outputPath)
+    public static void WriteJson<T>(T value, string outputPath)
     {
         string? directory = Path.GetDirectoryName(outputPath);
         if (!string.IsNullOrEmpty(directory))

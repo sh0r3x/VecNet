@@ -1,4 +1,5 @@
 using System.Globalization;
+using VecNet.BenchmarkRunner.ExternalDatasets;
 
 namespace VecNet.BenchmarkRunner;
 
@@ -114,6 +115,31 @@ public static class CommandLine
         return new BenchmarkComparisonOptions(baselinePath, currentPath, outputPath);
     }
 
+    public static FashionMnistExternalDatasetOptions ParseExternalFashionMnist(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? FashionMnistExternalDatasetOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, FashionMnistExternalDatasetOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, 1, IsSupportedExternalFashionMnistOption);
+        FashionMnistExternalDatasetOptions defaults = FashionMnistExternalDatasetOptions.Default;
+        string cacheRoot = values.TryGetValue("cache-root", out string? cacheRootValue)
+            ? cacheRootValue
+            : defaults.CacheRoot;
+        if (string.IsNullOrWhiteSpace(cacheRoot))
+        {
+            throw new ArgumentException("Option --cache-root must not be empty.");
+        }
+
+        int queryCount = GetPositiveInt(values, "query-count", defaults.QueryCount);
+        int truthDepth = GetPositiveInt(values, "truth-depth", defaults.TruthDepth);
+        bool download = GetBoolean(values, "download", defaults.DownloadRawFiles);
+
+        return new FashionMnistExternalDatasetOptions(cacheRoot, queryCount, truthDepth, download);
+    }
+
     private static Dictionary<string, string> ParseOptionValues(
         IReadOnlyList<string> args,
         int startIndex,
@@ -219,6 +245,12 @@ public static class CommandLine
         string.Equals(name, "current", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "output", StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsSupportedExternalFashionMnistOption(string name) =>
+        string.Equals(name, "cache-root", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "query-count", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "truth-depth", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "download", StringComparison.OrdinalIgnoreCase);
+
     private static uint GetSeed(Dictionary<string, string> values, string name, uint defaultValue)
     {
         if (!values.TryGetValue(name, out string? value))
@@ -263,5 +295,20 @@ public static class CommandLine
         }
 
         return value;
+    }
+
+    private static bool GetBoolean(Dictionary<string, string> values, string name, bool defaultValue)
+    {
+        if (!values.TryGetValue(name, out string? value))
+        {
+            return defaultValue;
+        }
+
+        if (!bool.TryParse(value, out bool parsed))
+        {
+            throw new ArgumentException($"Option --{name} must be true or false.");
+        }
+
+        return parsed;
     }
 }

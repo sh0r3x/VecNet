@@ -5,7 +5,7 @@ namespace VecNet;
 /// <summary>
 /// An in-memory exhaustive index using canonical distance calculation.
 /// </summary>
-public sealed class ExactFlatIndex
+public sealed partial class ExactFlatIndex
 {
     private const int InitialCapacity = 4;
 
@@ -13,6 +13,7 @@ public sealed class ExactFlatIndex
     private ulong[] _ids = [];
     private float[] _vectors = [];
     private int _count;
+    private bool _isReadOnly;
 
     /// <summary>
     /// Initializes a new exact flat index with a fixed dimension and metric.
@@ -73,6 +74,11 @@ public sealed class ExactFlatIndex
     /// </param>
     public void Add(ulong id, ReadOnlySpan<float> vector)
     {
+        if (_isReadOnly)
+        {
+            throw new InvalidOperationException("This exact flat index was opened read-only and cannot be modified.");
+        }
+
         double magnitude = ValidateVector(vector, nameof(vector));
 
         for (int i = 0; i < _count; i++)
@@ -264,6 +270,23 @@ public sealed class ExactFlatIndex
         metric == VectorMetric.SquaredEuclidean
             ? ExactFlatIndexDistanceMode.VectorFloatSquaredL2
             : ExactFlatIndexDistanceMode.ScalarDouble;
+
+    internal static ExactFlatIndex HydrateReadOnly(
+        int dimension,
+        VectorMetric metric,
+        ulong[] ids,
+        float[] vectors)
+    {
+        var index = new ExactFlatIndex(dimension, metric)
+        {
+            _ids = ids,
+            _vectors = vectors,
+            _count = ids.Length,
+            _isReadOnly = true
+        };
+
+        return index;
+    }
 
     private float InnerProductDistance(ReadOnlySpan<float> query, int offset)
     {

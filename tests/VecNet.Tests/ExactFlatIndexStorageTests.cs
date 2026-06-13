@@ -7,6 +7,126 @@ namespace VecNet.Tests;
 
 public sealed class ExactFlatIndexStorageTests
 {
+    [Fact]
+    public void Save_RejectsNullWhitespaceNonEmptyRepeatedAndFileBackedPaths()
+    {
+        var index = new ExactFlatIndex(3, VectorMetric.SquaredEuclidean);
+        index.Add(1, [1f, 2f, 3f]);
+
+        Assert.Throws<ArgumentNullException>(() => index.Save(null!));
+        Assert.Throws<ArgumentException>(() => index.Save(""));
+        Assert.Throws<ArgumentException>(() => index.Save("   "));
+
+        using TempIndexDirectory nonEmpty = TempIndexDirectory.Create();
+        string markerPath = Path.Combine(nonEmpty.Path, "marker.txt");
+        File.WriteAllText(markerPath, "caller-owned");
+        Assert.Throws<IOException>(() => index.Save(nonEmpty.Path));
+        Assert.Equal("caller-owned", File.ReadAllText(markerPath));
+        Assert.False(File.Exists(Path.Combine(nonEmpty.Path, ExactFlatIndexStorage.ManifestFileName)));
+
+        using TempIndexDirectory repeated = TempIndexDirectory.Create();
+        index.Save(repeated.Path);
+        string manifestBefore = File.ReadAllText(Path.Combine(repeated.Path, ExactFlatIndexStorage.ManifestFileName));
+        Assert.Throws<IOException>(() => index.Save(repeated.Path));
+        Assert.Equal(manifestBefore, File.ReadAllText(Path.Combine(repeated.Path, ExactFlatIndexStorage.ManifestFileName)));
+
+        using TempIndexDirectory fileParent = TempIndexDirectory.Create();
+        string filePath = Path.Combine(fileParent.Path, "not-a-directory.vecnet");
+        File.WriteAllText(filePath, "not a directory");
+        Assert.Throws<IOException>(() => index.Save(filePath));
+        Assert.Equal("not a directory", File.ReadAllText(filePath));
+    }
+
+    [Fact]
+    public void Save_CreatesMissingTargetDirectoryAndAcceptsExistingEmptyDirectory()
+    {
+        var index = new ExactFlatIndex(2, VectorMetric.InnerProduct);
+        index.Add(10, [1f, 0.5f]);
+
+        string missingDirectory = Path.Combine(
+            Path.GetTempPath(),
+            "VecNet.Tests",
+            Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            index.Save(missingDirectory);
+
+            Assert.True(Directory.Exists(missingDirectory));
+            Assert.True(File.Exists(Path.Combine(missingDirectory, ExactFlatIndexStorage.ManifestFileName)));
+            Assert.True(File.Exists(Path.Combine(missingDirectory, ExactFlatIndexStorage.IdsFileName)));
+            Assert.True(File.Exists(Path.Combine(missingDirectory, ExactFlatIndexStorage.VectorsFileName)));
+        }
+        finally
+        {
+            if (Directory.Exists(missingDirectory))
+            {
+                Directory.Delete(missingDirectory, recursive: true);
+            }
+        }
+
+        using TempIndexDirectory empty = TempIndexDirectory.Create();
+        index.Save(empty.Path);
+        Assert.True(File.Exists(Path.Combine(empty.Path, ExactFlatIndexStorage.ManifestFileName)));
+        Assert.True(File.Exists(Path.Combine(empty.Path, ExactFlatIndexStorage.IdsFileName)));
+        Assert.True(File.Exists(Path.Combine(empty.Path, ExactFlatIndexStorage.VectorsFileName)));
+    }
+
+    [Fact]
+    public void Save_FailedInternalWriteDeletesTemporaryFilesAndCreatedDirectoryWhenEmpty()
+    {
+        string missingDirectory = Path.Combine(
+            Path.GetTempPath(),
+            "VecNet.Tests",
+            Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            Assert.Throws<InvalidOperationException>(() =>
+                ExactFlatIndexStorage.Save(
+                    missingDirectory,
+                    dimension: 3,
+                    VectorMetric.SquaredEuclidean,
+                    [1UL],
+                    []));
+
+            Assert.False(Directory.Exists(missingDirectory));
+        }
+        finally
+        {
+            if (Directory.Exists(missingDirectory))
+            {
+                Directory.Delete(missingDirectory, recursive: true);
+            }
+        }
+
+        using TempIndexDirectory existingEmpty = TempIndexDirectory.Create();
+        Assert.Throws<InvalidOperationException>(() =>
+            ExactFlatIndexStorage.Save(
+                existingEmpty.Path,
+                dimension: 3,
+                VectorMetric.SquaredEuclidean,
+                [1UL],
+                []));
+
+        Assert.True(Directory.Exists(existingEmpty.Path));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(existingEmpty.Path));
+    }
+
+    [Fact]
+    public void OpenReadOnly_RejectsNullWhitespaceAndFileBackedPaths()
+    {
+        Assert.Throws<ArgumentNullException>(() => ExactFlatIndex.OpenReadOnly(null!));
+        Assert.Throws<ArgumentException>(() => ExactFlatIndex.OpenReadOnly(""));
+        Assert.Throws<ArgumentException>(() => ExactFlatIndex.OpenReadOnly("   "));
+
+        using TempIndexDirectory fileParent = TempIndexDirectory.Create();
+        string filePath = Path.Combine(fileParent.Path, "not-a-directory.vecnet");
+        File.WriteAllText(filePath, "not a directory");
+
+        Assert.Throws<IOException>(() => ExactFlatIndex.OpenReadOnly(filePath));
+    }
+
     [Theory]
     [InlineData(VectorMetric.SquaredEuclidean)]
     [InlineData(VectorMetric.InnerProduct)]

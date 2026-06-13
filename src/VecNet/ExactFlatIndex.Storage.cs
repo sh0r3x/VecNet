@@ -8,9 +8,12 @@ namespace VecNet;
 public sealed partial class ExactFlatIndex
 {
     /// <summary>
-    /// Saves this exact flat index to the durable exact-flat directory format.
+    /// Saves this exact flat index to a new or empty durable exact-flat directory.
     /// </summary>
-    /// <param name="directoryPath">The target directory path.</param>
+    /// <param name="directoryPath">
+    /// The target directory path. It must not be null or whitespace, must not name an existing file,
+    /// and must either not exist or name an empty directory. Existing index directories are not overwritten.
+    /// </param>
     public void Save(string directoryPath)
     {
         ArgumentNullException.ThrowIfNull(directoryPath);
@@ -29,9 +32,12 @@ public sealed partial class ExactFlatIndex
     }
 
     /// <summary>
-    /// Opens a durable exact-flat index as an immutable read-only index.
+    /// Opens a durable exact-flat index directory as an immutable read-only index.
     /// </summary>
-    /// <param name="directoryPath">The exact-flat index directory path.</param>
+    /// <param name="directoryPath">
+    /// The exact-flat index directory path. It must not be null or whitespace and must name an
+    /// existing exact-flat directory containing a valid manifest and binary files.
+    /// </param>
     /// <returns>A searchable read-only exact flat index.</returns>
     public static ExactFlatIndex OpenReadOnly(string directoryPath) =>
         ExactFlatIndexStorage.OpenReadOnly(directoryPath);
@@ -80,7 +86,7 @@ internal static class ExactFlatIndexStorage
         ReadOnlySpan<ulong> ids,
         ReadOnlySpan<float> vectors)
     {
-        string directory = PrepareSaveDirectory(directoryPath);
+        string directory = PrepareSaveDirectory(directoryPath, out bool createdDirectory);
         string tempSuffix = ".tmp-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
         string idsTempPath = Path.Combine(directory, IdsFileName + tempSuffix);
         string vectorsTempPath = Path.Combine(directory, VectorsFileName + tempSuffix);
@@ -110,6 +116,11 @@ internal static class ExactFlatIndexStorage
             TryDelete(idsTempPath);
             TryDelete(vectorsTempPath);
             TryDelete(manifestTempPath);
+            if (createdDirectory)
+            {
+                TryDeleteDirectoryIfEmpty(directory);
+            }
+
             throw;
         }
     }
@@ -122,7 +133,12 @@ internal static class ExactFlatIndexStorage
             throw new ArgumentException("Directory path must not be empty.", nameof(directoryPath));
         }
 
-        string directory = Path.GetFullPath(directoryPath);
+        string directory = GetFullDirectoryPath(directoryPath);
+        if (File.Exists(directory))
+        {
+            throw new IOException("Exact flat index path is an existing file, not a directory.");
+        }
+
         if (!Directory.Exists(directory))
         {
             throw new DirectoryNotFoundException($"Exact flat index directory was not found: {directoryPath}");
@@ -149,22 +165,41 @@ internal static class ExactFlatIndexStorage
         return ExactFlatIndex.HydrateReadOnly(manifest.Dimension, manifest.Metric, ids, vectors);
     }
 
-    private static string PrepareSaveDirectory(string directoryPath)
+    private static string PrepareSaveDirectory(string directoryPath, out bool createdDirectory)
     {
-        string directory = Path.GetFullPath(directoryPath);
+        string directory = GetFullDirectoryPath(directoryPath);
+        if (File.Exists(directory))
+        {
+            throw new IOException("Exact flat index save path is an existing file, not a directory.");
+        }
+
         if (Directory.Exists(directory))
         {
             if (Directory.EnumerateFileSystemEntries(directory).Any())
             {
                 throw new IOException("Exact flat index save directory must be empty.");
             }
+
+            createdDirectory = false;
         }
         else
         {
             Directory.CreateDirectory(directory);
+            createdDirectory = true;
         }
 
         return directory;
+    }
+
+    private static string GetFullDirectoryPath(string directoryPath)
+    {
+        ArgumentNullException.ThrowIfNull(directoryPath);
+        if (string.IsNullOrWhiteSpace(directoryPath))
+        {
+            throw new ArgumentException("Directory path must not be empty.", nameof(directoryPath));
+        }
+
+        return Path.GetFullPath(directoryPath);
     }
 
     private static void WriteIdsFile(string path, ReadOnlySpan<ulong> ids)
@@ -656,6 +691,23 @@ internal static class ExactFlatIndexStorage
             if (File.Exists(path))
             {
                 File.Delete(path);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    private static void TryDeleteDirectoryIfEmpty(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path) && !Directory.EnumerateFileSystemEntries(path).Any())
+            {
+                Directory.Delete(path);
             }
         }
         catch (IOException)

@@ -140,6 +140,46 @@ public static class CommandLine
         return new FashionMnistExternalDatasetOptions(cacheRoot, queryCount, truthDepth, download);
     }
 
+    public static FashionMnistExternalExactBenchmarkOptions ParseExternalFashionMnistExact(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? FashionMnistExternalExactBenchmarkOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, FashionMnistExternalExactBenchmarkOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, 1, IsSupportedExternalFashionMnistExactOption);
+        FashionMnistExternalExactBenchmarkOptions defaults = FashionMnistExternalExactBenchmarkOptions.Default;
+        string cacheRoot = values.TryGetValue("cache-root", out string? cacheRootValue)
+            ? cacheRootValue
+            : defaults.CacheRoot;
+        if (string.IsNullOrWhiteSpace(cacheRoot))
+        {
+            throw new ArgumentException("Option --cache-root must not be empty.");
+        }
+
+        string outputPath = values.TryGetValue("output", out string? outputValue)
+            ? outputValue
+            : defaults.OutputPath;
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("Option --output must not be empty.");
+        }
+
+        int queryCount = GetPositiveInt(values, "query-count", defaults.QueryCount);
+        int topK = GetPositiveInt(values, "top-k", defaults.TopK);
+        int runs = GetPositiveInt(values, "runs", defaults.Runs);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", defaults.WarmupQueries);
+        VectorMetric metric = GetExternalFashionMnistMetric(values, "metric", defaults.Metric);
+
+        return new FashionMnistExternalExactBenchmarkOptions(cacheRoot, outputPath, queryCount, topK, runs, warmupQueries, metric);
+    }
+
     private static Dictionary<string, string> ParseOptionValues(
         IReadOnlyList<string> args,
         int startIndex,
@@ -250,6 +290,31 @@ public static class CommandLine
         string.Equals(name, "query-count", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "truth-depth", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "download", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedExternalFashionMnistExactOption(string name) =>
+        string.Equals(name, "cache-root", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "query-count", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "top-k", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase);
+
+    private static VectorMetric GetExternalFashionMnistMetric(Dictionary<string, string> values, string name, VectorMetric defaultValue)
+    {
+        if (!values.TryGetValue(name, out string? value))
+        {
+            return defaultValue;
+        }
+
+        if (string.Equals(value, "squared-euclidean", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(value, nameof(VectorMetric.SquaredEuclidean), StringComparison.OrdinalIgnoreCase))
+        {
+            return VectorMetric.SquaredEuclidean;
+        }
+
+        throw new ArgumentException($"Option --{name} has unsupported value '{value}'.");
+    }
 
     private static uint GetSeed(Dictionary<string, string> values, string name, uint defaultValue)
     {

@@ -93,12 +93,70 @@ public static class DenseFloat32Matrix
         return new DenseFloat32MatrixHeader(SchemaName, SchemaVersion, rowCount, dimension);
     }
 
+    public static float[] Read(string path, ulong expectedRowCount, uint expectedDimension)
+    {
+        using FileStream stream = File.OpenRead(path);
+        DenseFloat32MatrixHeader header = ReadHeader(stream);
+        if (header.RowCount != expectedRowCount)
+        {
+            throw new InvalidDataException($"Dense matrix row count mismatch for '{path}'. Expected {expectedRowCount}, got {header.RowCount}.");
+        }
+
+        if (header.Dimension != expectedDimension)
+        {
+            throw new InvalidDataException($"Dense matrix dimension mismatch for '{path}'. Expected {expectedDimension}, got {header.Dimension}.");
+        }
+
+        ulong elementCount = checked(header.RowCount * header.Dimension);
+        if (elementCount > int.MaxValue)
+        {
+            throw new InvalidDataException("Dense matrix is too large to load into the benchmark runner process.");
+        }
+
+        ulong payloadBytes = checked(elementCount * sizeof(float));
+        if (payloadBytes > int.MaxValue)
+        {
+            throw new InvalidDataException("Dense matrix payload is too large to load into the benchmark runner process.");
+        }
+
+        if (stream.CanSeek && stream.Length - stream.Position != (long)payloadBytes)
+        {
+            throw new InvalidDataException("Dense matrix payload byte length does not match header row count and dimension.");
+        }
+
+        byte[] payload = new byte[(int)payloadBytes];
+        ReadExactly(stream, payload);
+        if (stream.ReadByte() != -1)
+        {
+            throw new InvalidDataException("Dense matrix contains extra bytes after the expected payload.");
+        }
+
+        var values = new float[(int)elementCount];
+        for (int i = 0; i < values.Length; i++)
+        {
+            values[i] = BitConverter.Int32BitsToSingle(BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(i * sizeof(float), sizeof(float))));
+        }
+
+        return values;
+    }
+
     private static void ReadExactly(Stream stream, Span<byte> destination)
     {
-        int read = stream.Read(destination);
-        if (read != destination.Length)
+        int totalRead = 0;
+        while (totalRead < destination.Length)
         {
-            throw new EndOfStreamException("Dense matrix header is truncated.");
+            int read = stream.Read(destination[totalRead..]);
+            if (read == 0)
+            {
+                break;
+            }
+
+            totalRead += read;
+        }
+
+        if (totalRead != destination.Length)
+        {
+            throw new EndOfStreamException("Dense matrix content is truncated.");
         }
     }
 }

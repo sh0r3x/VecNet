@@ -53,6 +53,19 @@ public static class BenchmarkRunnerProgram
                 return string.Equals(result.Evidence.Validation.Status, "passed", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
             }
 
+            if (args.Length > 0 && string.Equals(args[0], FashionMnistExternalExactBenchmarkOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+            {
+                FashionMnistExternalExactBenchmarkOptions externalOptions = CommandLine.ParseExternalFashionMnistExact(args);
+                ExternalBenchmarkReport externalReport = FashionMnistExternalExactBenchmarkScenario.Run(externalOptions, args);
+                FashionMnistExternalExactBenchmarkScenario.Write(externalReport, externalOptions.OutputPath);
+
+                Console.WriteLine(
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"Wrote private Fashion-MNIST external exact benchmark report to {externalOptions.OutputPath} with validation status {externalReport.Validation.Status}."));
+                return string.Equals(externalReport.Validation.Status, "passed", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+            }
+
             GeneratedExactSearchOptions options = CommandLine.Parse(args);
             BenchmarkReport report = GeneratedExactSearchScenario.Run(options, args);
             ReportWriter.Write(report, options.OutputPath);
@@ -63,7 +76,7 @@ public static class BenchmarkRunnerProgram
                     $"Wrote private benchmark report to {options.OutputPath}"));
             return 0;
         }
-        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or HttpRequestException)
+        catch (Exception ex) when (ex is ArgumentException or InvalidDataException or IOException or UnauthorizedAccessException or HttpRequestException)
         {
             Console.Error.WriteLine(ex.Message);
             WriteUsage(Console.Error);
@@ -82,5 +95,6 @@ public static class BenchmarkRunnerProgram
         writer.WriteLine("  exact-generated-matrix --preset smoke|standard --vectors 128 --queries 8 --runs 1 --warmup-queries 0 --seed 0x5EED2014 --output-dir VecNet.BenchmarkRunner.Artifacts/matrix --manifest VecNet.BenchmarkRunner.Artifacts/matrix/matrix-manifest.json");
         writer.WriteLine("  compare-generated-exact --baseline VecNet.BenchmarkRunner.Artifacts/baseline.json --current VecNet.BenchmarkRunner.Artifacts/current.json --output VecNet.BenchmarkRunner.Artifacts/comparisons/comparison.json");
         writer.WriteLine("  external-fashion-mnist --cache-root VecNet.DatasetCache --query-count 100 --truth-depth 10 --download false");
+        writer.WriteLine("  external-fashion-mnist-exact --cache-root VecNet.DatasetCache --output VecNet.BenchmarkRunner.Artifacts/fashion-mnist-external-exact.json --query-count 3 --top-k 10 --runs 3 --warmup-queries 3 --metric squared-euclidean");
     }
 }

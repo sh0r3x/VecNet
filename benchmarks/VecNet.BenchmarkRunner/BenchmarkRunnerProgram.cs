@@ -41,6 +41,19 @@ public static class BenchmarkRunnerProgram
                 return 0;
             }
 
+            if (args.Length > 0 && string.Equals(args[0], HnswGeneratedOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+            {
+                HnswGeneratedOptions hnswOptions = CommandLine.ParseHnswGenerated(args);
+                HnswBenchmarkReport hnswReport = HnswGeneratedScenario.Run(hnswOptions, args);
+                HnswGeneratedScenario.Write(hnswReport, hnswOptions.OutputPath);
+
+                Console.WriteLine(
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"Wrote private generated HNSW benchmark report to {hnswOptions.OutputPath} with validation status {hnswReport.Validation.Status}."));
+                return string.Equals(hnswReport.Validation.Status, "passed", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+            }
+
             if (args.Length > 0 && string.Equals(args[0], FashionMnistExternalDatasetOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
             {
                 FashionMnistExternalDatasetOptions externalOptions = CommandLine.ParseExternalFashionMnist(args);
@@ -94,6 +107,7 @@ public static class BenchmarkRunnerProgram
         writer.WriteLine("  exact-generated --metric SquaredEuclidean --dimension 128 --vectors 10000 --queries 100 --top-k 10 --runs 1 --warmup-queries 0 --seed 0x5EED2009 --output VecNet.BenchmarkRunner.Artifacts/report.json [--baseline-report-id report-id]");
         writer.WriteLine("  exact-generated-matrix --preset smoke|standard --vectors 128 --queries 8 --runs 1 --warmup-queries 0 --seed 0x5EED2014 --output-dir VecNet.BenchmarkRunner.Artifacts/matrix --manifest VecNet.BenchmarkRunner.Artifacts/matrix/matrix-manifest.json");
         writer.WriteLine("  compare-generated-exact --baseline VecNet.BenchmarkRunner.Artifacts/baseline.json --current VecNet.BenchmarkRunner.Artifacts/current.json --output VecNet.BenchmarkRunner.Artifacts/comparisons/comparison.json");
+        writer.WriteLine("  hnsw-generated --metric SquaredEuclidean --dimension 128 --vectors 10000 --queries 100 --top-k 10 --runs 1 --warmup-queries 0 --seed 0x5EED2036 --m 16 --ef-construction 200 --ef-search 50 --hnsw-seed 0x0000000564543034 --output VecNet.BenchmarkRunner.Artifacts/hnsw-generated.json");
         writer.WriteLine("  external-fashion-mnist --cache-root VecNet.DatasetCache --query-count 100 --truth-depth 10 --download false");
         writer.WriteLine("  external-fashion-mnist-exact --cache-root VecNet.DatasetCache --output VecNet.BenchmarkRunner.Artifacts/fashion-mnist-external-exact.json --query-count 3 --top-k 10 --runs 3 --warmup-queries 3 --metric squared-euclidean");
     }

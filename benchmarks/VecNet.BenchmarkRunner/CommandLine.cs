@@ -115,6 +115,90 @@ public static class CommandLine
         return new BenchmarkComparisonOptions(baselinePath, currentPath, outputPath);
     }
 
+    public static HnswGeneratedOptions ParseHnswGenerated(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? HnswGeneratedOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, HnswGeneratedOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedHnswGeneratedOption);
+        HnswGeneratedOptions defaults = HnswGeneratedOptions.Default;
+        VectorMetric metric = GetEnum(values, "metric", defaults.Metric);
+        int dimension = GetPositiveInt(values, "dimension", defaults.Dimension);
+        int vectorCount = GetPositiveInt(values, "vectors", defaults.VectorCount);
+        int queryCount = GetPositiveInt(values, "queries", defaults.QueryCount);
+        int topK = GetPositiveInt(values, "top-k", defaults.TopK);
+        int runs = GetPositiveInt(values, "runs", defaults.Runs);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", defaults.WarmupQueries);
+        uint seed = GetSeed(values, "seed", defaults.Seed);
+        int m = GetPositiveInt(values, "m", defaults.M);
+        int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
+        int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
+        ulong hnswSeed = GetUInt64Seed(values, "hnsw-seed", defaults.HnswSeed);
+        string outputPath = values.TryGetValue("output", out string? outputValue)
+            ? outputValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"hnsw-generated-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json");
+
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("Option --output must not be empty.");
+        }
+
+        if (metric != VectorMetric.SquaredEuclidean)
+        {
+            throw new ArgumentException("hnsw-generated supports only SquaredEuclidean.");
+        }
+
+        if (topK > vectorCount)
+        {
+            throw new ArgumentException("top-k must be less than or equal to the vector count.");
+        }
+
+        if (efSearch < topK)
+        {
+            throw new ArgumentException("ef-search must be greater than or equal to top-k.");
+        }
+
+        if (m is < 2 or > 64)
+        {
+            throw new ArgumentException("Option --m must be in the range 2..64.");
+        }
+
+        if (efConstruction < m || efConstruction > 4096)
+        {
+            throw new ArgumentException("Option --ef-construction must be at least --m and no more than 4096.");
+        }
+
+        if (efSearch > 4096)
+        {
+            throw new ArgumentException("Option --ef-search must be in the range 1..4096.");
+        }
+
+        return new HnswGeneratedOptions(
+            metric,
+            dimension,
+            vectorCount,
+            queryCount,
+            topK,
+            seed,
+            outputPath,
+            runs,
+            warmupQueries,
+            m,
+            efConstruction,
+            efSearch,
+            hnswSeed);
+    }
+
     public static FashionMnistExternalDatasetOptions ParseExternalFashionMnist(IReadOnlyList<string> args)
     {
         string scenario = args.Count == 0 ? FashionMnistExternalDatasetOptions.ScenarioName : args[0];
@@ -300,6 +384,21 @@ public static class CommandLine
         string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsSupportedHnswGeneratedOption(string name) =>
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "dimension", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vectors", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "top-k", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "m", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+
     private static VectorMetric GetExternalFashionMnistMetric(Dictionary<string, string> values, string name, VectorMetric defaultValue)
     {
         if (!values.TryGetValue(name, out string? value))
@@ -372,6 +471,26 @@ public static class CommandLine
         if (!bool.TryParse(value, out bool parsed))
         {
             throw new ArgumentException($"Option --{name} must be true or false.");
+        }
+
+        return parsed;
+    }
+
+    private static ulong GetUInt64Seed(Dictionary<string, string> values, string name, ulong defaultValue)
+    {
+        if (!values.TryGetValue(name, out string? value))
+        {
+            return defaultValue;
+        }
+
+        NumberStyles styles = value.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+            ? NumberStyles.AllowHexSpecifier
+            : NumberStyles.None;
+        string normalized = styles == NumberStyles.AllowHexSpecifier ? value[2..] : value;
+
+        if (!ulong.TryParse(normalized, styles, CultureInfo.InvariantCulture, out ulong parsed))
+        {
+            throw new ArgumentException($"Option --{name} must be an unsigned integer or hexadecimal value.");
         }
 
         return parsed;

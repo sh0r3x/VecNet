@@ -115,6 +115,66 @@ public static class CommandLine
         return new BenchmarkComparisonOptions(baselinePath, currentPath, outputPath);
     }
 
+    public static HnswGeneratedMatrixOptions ParseHnswGeneratedMatrix(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? HnswGeneratedMatrixOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, HnswGeneratedMatrixOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedHnswGeneratedMatrixOption);
+        string presetName = HnswGeneratedMatrixOptions.NormalizePresetName(
+            GetOptionalNonWhiteSpace(values, "preset") ?? HnswGeneratedMatrixOptions.DefaultPresetName);
+
+        int vectorCount = GetPositiveInt(values, "vectors", 128);
+        int queryCount = GetPositiveInt(values, "queries", 4);
+        int runs = GetPositiveInt(values, "runs", 1);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", 0);
+        uint seed = GetSeed(values, "seed", 0x5EED2037);
+        string outputDirectory = values.TryGetValue("output-dir", out string? outputDirectoryValue)
+            ? outputDirectoryValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"hnsw-generated-matrix-{DateTime.UtcNow:yyyyMMdd-HHmmss}");
+        if (string.IsNullOrWhiteSpace(outputDirectory))
+        {
+            throw new ArgumentException("Option --output-dir must not be empty.");
+        }
+
+        string manifestPath = values.TryGetValue("manifest", out string? manifestValue)
+            ? manifestValue
+            : Path.Combine(outputDirectory, "hnsw-matrix-manifest.json");
+        if (string.IsNullOrWhiteSpace(manifestPath))
+        {
+            throw new ArgumentException("Option --manifest must not be empty.");
+        }
+
+        int maxTopK = HnswGeneratedMatrixScenario.GetMaxTopK(presetName);
+        if (vectorCount < maxTopK)
+        {
+            throw new ArgumentException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"vectors must be greater than or equal to the maximum HNSW matrix top-k ({maxTopK}) for preset '{presetName}'."));
+        }
+
+        return new HnswGeneratedMatrixOptions(
+            presetName,
+            vectorCount,
+            queryCount,
+            runs,
+            warmupQueries,
+            seed,
+            outputDirectory,
+            manifestPath);
+    }
+
     public static HnswGeneratedOptions ParseHnswGenerated(IReadOnlyList<string> args)
     {
         string scenario = args.Count == 0 ? HnswGeneratedOptions.ScenarioName : args[0];
@@ -398,6 +458,16 @@ public static class CommandLine
         string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedHnswGeneratedMatrixOption(string name) =>
+        string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vectors", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output-dir", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "manifest", StringComparison.OrdinalIgnoreCase);
 
     private static VectorMetric GetExternalFashionMnistMetric(Dictionary<string, string> values, string name, VectorMetric defaultValue)
     {

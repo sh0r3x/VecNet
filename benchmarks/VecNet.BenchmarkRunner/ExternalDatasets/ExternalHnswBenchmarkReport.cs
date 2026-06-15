@@ -1,0 +1,41 @@
+namespace VecNet.BenchmarkRunner.ExternalDatasets;
+
+public sealed record ExternalHnswBenchmarkReport(
+    string SchemaName,
+    string SchemaVersion,
+    string ReportId,
+    DateTimeOffset GeneratedAtUtc,
+    string TaskId,
+    string ScenarioName,
+    string ClaimClass,
+    string PrivacyClass,
+    ExternalBenchmarkEvidenceInfo Evidence,
+    RepositoryInfo Repository,
+    RunnerInfo Runner,
+    CommandInfo Command,
+    EnvironmentInfo Environment,
+    ExternalBenchmarkDatasetInfo Dataset,
+    ExternalBenchmarkWorkloadInfo Workload,
+    ExternalBenchmarkTruthInfo Truth,
+    ScenarioInfo Scenario,
+    IndexInfo Index,
+    HnswConfigurationInfo Hnsw,
+    HnswBuildInfo Build,
+    SearchInfo Search,
+    MeasurementInfo Measurement,
+    HnswMemoryEstimateInfo MemoryEstimate,
+    HnswMetricsInfo Metrics,
+    ExternalHnswBenchmarkValidationInfo Validation,
+    ExternalBenchmarkEligibilityInfo Eligibility,
+    string[] Notes);
+
+public sealed record ExternalHnswBenchmarkValidationInfo(
+    string Status,
+    string EvidenceStatus,
+    bool LoadedExistingTruth,
+    bool FinalRunComparedToTruth,
+    bool AllowsApproximateRecallBelowOne,
+    bool PublicClaimEligible,
+    bool BaselineCandidateEligible,
+    bool RegressionGateEligible,
+    bool ReportIsPrivateRaw);

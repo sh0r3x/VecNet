@@ -324,6 +324,81 @@ public static class CommandLine
         return new FashionMnistExternalExactBenchmarkOptions(cacheRoot, outputPath, queryCount, topK, runs, warmupQueries, metric);
     }
 
+    public static FashionMnistExternalHnswBenchmarkOptions ParseExternalFashionMnistHnsw(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? FashionMnistExternalHnswBenchmarkOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, FashionMnistExternalHnswBenchmarkOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedExternalFashionMnistHnswOption);
+        FashionMnistExternalHnswBenchmarkOptions defaults = FashionMnistExternalHnswBenchmarkOptions.Default;
+        string cacheRoot = values.TryGetValue("cache-root", out string? cacheRootValue)
+            ? cacheRootValue
+            : defaults.CacheRoot;
+        if (string.IsNullOrWhiteSpace(cacheRoot))
+        {
+            throw new ArgumentException("Option --cache-root must not be empty.");
+        }
+
+        string outputPath = values.TryGetValue("output", out string? outputValue)
+            ? outputValue
+            : defaults.OutputPath;
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("Option --output must not be empty.");
+        }
+
+        int queryCount = GetPositiveInt(values, "query-count", defaults.QueryCount);
+        int topK = GetPositiveInt(values, "top-k", defaults.TopK);
+        int runs = GetPositiveInt(values, "runs", defaults.Runs);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", defaults.WarmupQueries);
+        VectorMetric metric = GetExternalFashionMnistMetric(values, "metric", defaults.Metric);
+        int m = GetPositiveInt(values, "m", defaults.M);
+        int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
+        int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
+        ulong hnswSeed = GetUInt64Seed(values, "hnsw-seed", defaults.HnswSeed);
+
+        if (m is < 2 or > 64)
+        {
+            throw new ArgumentException("Option --m must be in the range 2..64.");
+        }
+
+        if (efConstruction < m || efConstruction > 4096)
+        {
+            throw new ArgumentException("Option --ef-construction must be at least --m and no more than 4096.");
+        }
+
+        if (efSearch < topK)
+        {
+            throw new ArgumentException("Option --ef-search must be greater than or equal to --top-k.");
+        }
+
+        if (efSearch > 4096)
+        {
+            throw new ArgumentException("Option --ef-search must be in the range 1..4096.");
+        }
+
+        return new FashionMnistExternalHnswBenchmarkOptions(
+            cacheRoot,
+            outputPath,
+            queryCount,
+            topK,
+            runs,
+            warmupQueries,
+            metric,
+            m,
+            efConstruction,
+            efSearch,
+            hnswSeed);
+    }
+
     private static Dictionary<string, string> ParseOptionValues(
         IReadOnlyList<string> args,
         int startIndex,
@@ -443,6 +518,19 @@ public static class CommandLine
         string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedExternalFashionMnistHnswOption(string name) =>
+        string.Equals(name, "cache-root", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "query-count", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "top-k", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "m", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedHnswGeneratedOption(string name) =>
         string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||

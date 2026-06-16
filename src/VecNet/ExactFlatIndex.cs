@@ -66,6 +66,11 @@ public sealed partial class ExactFlatIndex
     public VectorMetric Metric { get; }
 
     /// <summary>
+    /// Gets the current number of vectors stored by this index.
+    /// </summary>
+    public int VectorCount => _count;
+
+    /// <summary>
     /// Inserts a vector associated with a caller-provided external identifier.
     /// </summary>
     /// <param name="id">The opaque external vector identifier.</param>
@@ -126,24 +131,70 @@ public sealed partial class ExactFlatIndex
         for (int row = 0; row < _count; row++)
         {
             var candidate = new SearchResult(_ids[row], CalculateDistance(row, query, queryMagnitude));
-            int insertionIndex = FindInsertionIndex(results[..written], candidate);
-            if (insertionIndex >= results.Length)
+            written = InsertCandidate(results, written, candidate);
+        }
+
+        return written;
+    }
+
+    /// <summary>
+    /// Searches only vectors whose external identifiers are present in the caller-supplied allowlist.
+    /// </summary>
+    /// <param name="query">The query vector. Cosine queries are normalized during search.</param>
+    /// <param name="allowedIds">
+    /// Caller-supplied external identifiers allowed for this search. Unknown identifiers are ignored and duplicates
+    /// are coalesced.
+    /// </param>
+    /// <param name="results">
+    /// The caller-owned destination buffer. Its length specifies the requested result count.
+    /// </param>
+    /// <param name="workspace">The caller-owned reusable exact-flat filter workspace.</param>
+    /// <returns>The number of filtered results written.</returns>
+    public int Search(
+        ReadOnlySpan<float> query,
+        ReadOnlySpan<ulong> allowedIds,
+        Span<SearchResult> results,
+        ExactFlatSearchFilterWorkspace workspace)
+    {
+        double queryMagnitude = ValidateVector(query, nameof(query));
+        ArgumentNullException.ThrowIfNull(workspace);
+        if (workspace.MaxVectorCount < _count)
+        {
+            throw new ArgumentException(
+                "Filter workspace capacity must be at least the current vector count.",
+                nameof(workspace));
+        }
+
+        if (_count == 0 || allowedIds.IsEmpty || results.IsEmpty)
+        {
+            return 0;
+        }
+
+        int searchMark = workspace.BeginSearch();
+        int[] rowMarks = workspace.RowMarks;
+        for (int allowIndex = 0; allowIndex < allowedIds.Length; allowIndex++)
+        {
+            ulong allowedId = allowedIds[allowIndex];
+            for (int row = 0; row < _count; row++)
+            {
+                if (_ids[row] == allowedId)
+                {
+                    rowMarks[row] = searchMark;
+                    break;
+                }
+            }
+        }
+
+        int written = 0;
+        for (int row = 0; row < _count; row++)
+        {
+            if (rowMarks[row] != searchMark)
             {
                 continue;
             }
 
-            int valuesToShift = Math.Min(written, results.Length - 1) - insertionIndex;
-            if (valuesToShift > 0)
-            {
-                results.Slice(insertionIndex, valuesToShift)
-                    .CopyTo(results.Slice(insertionIndex + 1));
-            }
-
-            results[insertionIndex] = candidate;
-            if (written < results.Length)
-            {
-                written++;
-            }
+            var candidate = new SearchResult(_ids[row], CalculateDistance(row, query, queryMagnitude));
+            written = InsertCandidate(results, written, candidate);
         }
 
         return written;
@@ -323,5 +374,24 @@ public sealed partial class ExactFlatIndex
         }
 
         return results.Length;
+    }
+
+    private static int InsertCandidate(Span<SearchResult> results, int written, SearchResult candidate)
+    {
+        int insertionIndex = FindInsertionIndex(results[..written], candidate);
+        if (insertionIndex >= results.Length)
+        {
+            return written;
+        }
+
+        int valuesToShift = Math.Min(written, results.Length - 1) - insertionIndex;
+        if (valuesToShift > 0)
+        {
+            results.Slice(insertionIndex, valuesToShift)
+                .CopyTo(results.Slice(insertionIndex + 1));
+        }
+
+        results[insertionIndex] = candidate;
+        return written < results.Length ? written + 1 : written;
     }
 }

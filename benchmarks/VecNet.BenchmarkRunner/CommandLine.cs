@@ -115,6 +115,68 @@ public static class CommandLine
         return new BenchmarkComparisonOptions(baselinePath, currentPath, outputPath);
     }
 
+    public static GeneratedExactFilteredOptions ParseGeneratedExactFiltered(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? GeneratedExactFilteredOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, GeneratedExactFilteredOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedGeneratedExactFilteredOption);
+
+        VectorMetric metric = GetEnum(values, "metric", VectorMetric.SquaredEuclidean);
+        int dimension = GetPositiveInt(values, "dimension", 128);
+        int vectorCount = GetPositiveInt(values, "vectors", 10_000);
+        int queryCount = GetPositiveInt(values, "queries", 100);
+        int topK = GetPositiveInt(values, "top-k", 10);
+        int runs = GetPositiveInt(values, "runs", 1);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", 0);
+        uint seed = GetSeed(values, "seed", 0x5EED2046);
+        string filterKind = GeneratedExactFilteredOptions.NormalizeFilterKind(
+            GetOptionalNonWhiteSpace(values, "filter") ?? GeneratedExactFilteredOptions.DefaultFilterKind);
+        int duplicateIdsPerQuery = GetNonNegativeInt(values, "duplicate-ids", 0);
+        int unknownIdsPerQuery = GetNonNegativeInt(values, "unknown-ids", 0);
+        string outputPath = values.TryGetValue("output", out string? outputValue)
+            ? outputValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"exact-generated-filtered-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json");
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("Option --output must not be empty.");
+        }
+
+        if (topK > vectorCount)
+        {
+            throw new ArgumentException("top-k must be less than or equal to the vector count.");
+        }
+
+        if (filterKind == "very-selective" && topK <= 1)
+        {
+            throw new ArgumentException("Option --filter very-selective requires --top-k greater than 1.");
+        }
+
+        return new GeneratedExactFilteredOptions(
+            metric,
+            dimension,
+            vectorCount,
+            queryCount,
+            topK,
+            seed,
+            filterKind,
+            duplicateIdsPerQuery,
+            unknownIdsPerQuery,
+            outputPath,
+            runs,
+            warmupQueries);
+    }
+
     public static HnswGeneratedMatrixOptions ParseHnswGeneratedMatrix(IReadOnlyList<string> args)
     {
         string scenario = args.Count == 0 ? HnswGeneratedMatrixOptions.ScenarioName : args[0];
@@ -502,6 +564,20 @@ public static class CommandLine
     private static bool IsSupportedComparisonOption(string name) =>
         string.Equals(name, "baseline", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "current", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedGeneratedExactFilteredOption(string name) =>
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "dimension", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vectors", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "top-k", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "filter", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "duplicate-ids", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "unknown-ids", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "output", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedExternalFashionMnistOption(string name) =>

@@ -14,6 +14,7 @@ public sealed partial class ExactFlatIndex
     private float[] _vectors = [];
     private Dictionary<ulong, int> _idToOrdinal = new();
     private int _count;
+    private long _generation;
     private bool _isReadOnly;
 
     /// <summary>
@@ -107,6 +108,7 @@ public sealed partial class ExactFlatIndex
         _ids[_count] = id;
         _idToOrdinal.Add(id, _count);
         _count++;
+        _generation++;
     }
 
     /// <summary>
@@ -129,6 +131,88 @@ public sealed partial class ExactFlatIndex
         int written = 0;
         for (int row = 0; row < _count; row++)
         {
+            var candidate = new SearchResult(_ids[row], CalculateDistance(row, query, queryMagnitude));
+            written = InsertCandidate(results, written, candidate);
+        }
+
+        return written;
+    }
+
+    /// <summary>
+    /// Creates a reusable opaque candidate set from caller-supplied external identifiers.
+    /// </summary>
+    /// <param name="allowedIds">
+    /// Caller-supplied external identifiers to compile. Unknown identifiers are ignored and duplicates are coalesced.
+    /// </param>
+    /// <returns>An exact-flat candidate set bound to this index instance and its current generation.</returns>
+    public ExactFlatCandidateSet CreateCandidateSet(ReadOnlySpan<ulong> allowedIds)
+    {
+        if (_count == 0 || allowedIds.IsEmpty)
+        {
+            return new ExactFlatCandidateSet(this, _generation, []);
+        }
+
+        var rowOrdinals = new int[allowedIds.Length];
+        int matched = 0;
+        for (int allowIndex = 0; allowIndex < allowedIds.Length; allowIndex++)
+        {
+            if (_idToOrdinal.TryGetValue(allowedIds[allowIndex], out int row))
+            {
+                rowOrdinals[matched++] = row;
+            }
+        }
+
+        if (matched == 0)
+        {
+            return new ExactFlatCandidateSet(this, _generation, []);
+        }
+
+        Array.Sort(rowOrdinals, 0, matched);
+
+        int uniqueCount = 1;
+        for (int i = 1; i < matched; i++)
+        {
+            if (rowOrdinals[i] != rowOrdinals[uniqueCount - 1])
+            {
+                rowOrdinals[uniqueCount++] = rowOrdinals[i];
+            }
+        }
+
+        if (uniqueCount != rowOrdinals.Length)
+        {
+            Array.Resize(ref rowOrdinals, uniqueCount);
+        }
+
+        return new ExactFlatCandidateSet(this, _generation, rowOrdinals);
+    }
+
+    /// <summary>
+    /// Searches only vectors present in a reusable exact-flat candidate set.
+    /// </summary>
+    /// <param name="query">The query vector. Cosine queries are normalized during search.</param>
+    /// <param name="candidates">The candidate set created by this exact-flat index.</param>
+    /// <param name="results">
+    /// The caller-owned destination buffer. Its length specifies the requested result count.
+    /// </param>
+    /// <returns>The number of candidate-set filtered results written.</returns>
+    public int Search(
+        ReadOnlySpan<float> query,
+        ExactFlatCandidateSet candidates,
+        Span<SearchResult> results)
+    {
+        double queryMagnitude = ValidateVector(query, nameof(query));
+        ValidateCandidateSet(candidates);
+
+        if (_count == 0 || candidates.Count == 0 || results.IsEmpty)
+        {
+            return 0;
+        }
+
+        int written = 0;
+        ReadOnlySpan<int> rowOrdinals = candidates.RowOrdinals;
+        for (int i = 0; i < rowOrdinals.Length; i++)
+        {
+            int row = rowOrdinals[i];
             var candidate = new SearchResult(_ids[row], CalculateDistance(row, query, queryMagnitude));
             written = InsertCandidate(results, written, candidate);
         }
@@ -221,6 +305,23 @@ public sealed partial class ExactFlatIndex
         }
 
         return Metric == VectorMetric.Cosine ? Math.Sqrt(squaredMagnitude) : 0;
+    }
+
+    private void ValidateCandidateSet(ExactFlatCandidateSet candidates)
+    {
+        ArgumentNullException.ThrowIfNull(candidates);
+
+        if (!ReferenceEquals(candidates.Owner, this))
+        {
+            throw new InvalidOperationException(
+                "Candidate set was created by a different exact flat index.");
+        }
+
+        if (candidates.Generation != _generation)
+        {
+            throw new InvalidOperationException(
+                "Candidate set was created for an older exact flat index generation and must be rebuilt.");
+        }
     }
 
     private void EnsureCapacity(int requiredCount)

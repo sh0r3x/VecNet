@@ -12,6 +12,7 @@ public sealed partial class ExactFlatIndex
     private readonly ExactFlatIndexDistanceMode _distanceMode;
     private ulong[] _ids = [];
     private float[] _vectors = [];
+    private Dictionary<ulong, int> _idToOrdinal = new();
     private int _count;
     private bool _isReadOnly;
 
@@ -86,12 +87,9 @@ public sealed partial class ExactFlatIndex
 
         double magnitude = ValidateVector(vector, nameof(vector));
 
-        for (int i = 0; i < _count; i++)
+        if (_idToOrdinal.ContainsKey(id))
         {
-            if (_ids[i] == id)
-            {
-                throw new ArgumentException("An item with the same identifier already exists.", nameof(id));
-            }
+            throw new ArgumentException("An item with the same identifier already exists.", nameof(id));
         }
 
         EnsureCapacity(_count + 1);
@@ -107,6 +105,7 @@ public sealed partial class ExactFlatIndex
         }
 
         _ids[_count] = id;
+        _idToOrdinal.Add(id, _count);
         _count++;
     }
 
@@ -174,14 +173,9 @@ public sealed partial class ExactFlatIndex
         int[] rowMarks = workspace.RowMarks;
         for (int allowIndex = 0; allowIndex < allowedIds.Length; allowIndex++)
         {
-            ulong allowedId = allowedIds[allowIndex];
-            for (int row = 0; row < _count; row++)
+            if (_idToOrdinal.TryGetValue(allowedIds[allowIndex], out int row))
             {
-                if (_ids[row] == allowedId)
-                {
-                    rowMarks[row] = searchMark;
-                    break;
-                }
+                rowMarks[row] = searchMark;
             }
         }
 
@@ -332,11 +326,23 @@ public sealed partial class ExactFlatIndex
         {
             _ids = ids,
             _vectors = vectors,
+            _idToOrdinal = BuildIdToOrdinalMap(ids),
             _count = ids.Length,
             _isReadOnly = true
         };
 
         return index;
+    }
+
+    private static Dictionary<ulong, int> BuildIdToOrdinalMap(ReadOnlySpan<ulong> ids)
+    {
+        var idToOrdinal = new Dictionary<ulong, int>(ids.Length);
+        for (int row = 0; row < ids.Length; row++)
+        {
+            idToOrdinal.Add(ids[row], row);
+        }
+
+        return idToOrdinal;
     }
 
     private float InnerProductDistance(ReadOnlySpan<float> query, int offset)

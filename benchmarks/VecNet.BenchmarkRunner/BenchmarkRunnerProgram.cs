@@ -67,6 +67,19 @@ public static class BenchmarkRunnerProgram
                 return manifest.Aggregate.FailedCaseCount == 0 ? 0 : 1;
             }
 
+            if (args.Length > 0 && string.Equals(args[0], GeneratedExactCandidateSetOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+            {
+                GeneratedExactCandidateSetOptions candidateSetOptions = CommandLine.ParseGeneratedExactCandidateSet(args);
+                GeneratedExactCandidateSetBenchmarkReport candidateSetReport = GeneratedExactCandidateSetScenario.Run(candidateSetOptions, args);
+                GeneratedExactCandidateSetScenario.Write(candidateSetReport, candidateSetOptions.OutputPath);
+
+                Console.WriteLine(
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"Wrote private generated exact candidate-set benchmark report to {candidateSetOptions.OutputPath} with validation status {candidateSetReport.Validation.Status}."));
+                return string.Equals(candidateSetReport.Validation.Status, "passed", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+            }
+
             if (args.Length > 0 && string.Equals(args[0], HnswGeneratedMatrixOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
             {
                 HnswGeneratedMatrixOptions matrixOptions = CommandLine.ParseHnswGeneratedMatrix(args);
@@ -160,6 +173,7 @@ public static class BenchmarkRunnerProgram
         writer.WriteLine("  exact-generated-matrix --preset smoke|standard --vectors 128 --queries 8 --runs 1 --warmup-queries 0 --seed 0x5EED2014 --output-dir VecNet.BenchmarkRunner.Artifacts/matrix --manifest VecNet.BenchmarkRunner.Artifacts/matrix/matrix-manifest.json");
         writer.WriteLine("  exact-generated-filtered --metric SquaredEuclidean --dimension 128 --vectors 10000 --queries 100 --top-k 10 --filter all|broad|selective|very-selective|empty --duplicate-ids 0 --unknown-ids 0 --runs 1 --warmup-queries 0 --seed 0x5EED2046 --output VecNet.BenchmarkRunner.Artifacts/exact-generated-filtered.json");
         writer.WriteLine("  exact-generated-filtered-matrix --preset smoke|standard --vectors 128 --queries 4 --duplicate-ids 0 --unknown-ids 0 --runs 1 --warmup-queries 0 --seed 0x5EED2047 --output-dir VecNet.BenchmarkRunner.Artifacts/exact-filtered-matrix --manifest VecNet.BenchmarkRunner.Artifacts/exact-filtered-matrix/exact-filtered-matrix-manifest.json");
+        writer.WriteLine("  generated-exact-candidate-set --metric SquaredEuclidean --dimension 128 --vectors 10000 --queries 100 --top-k 10 --candidate-set all|broad|selective|very-selective|empty --duplicate-ids 0 --unknown-ids 0 --runs 1 --warmup-queries 0 --seed 0x5EED2053 --output VecNet.BenchmarkRunner.Artifacts/generated-exact-candidate-set.json");
         writer.WriteLine("  compare-generated-exact --baseline VecNet.BenchmarkRunner.Artifacts/baseline.json --current VecNet.BenchmarkRunner.Artifacts/current.json --output VecNet.BenchmarkRunner.Artifacts/comparisons/comparison.json");
         writer.WriteLine("  hnsw-generated --metric SquaredEuclidean --dimension 128 --vectors 10000 --queries 100 --top-k 10 --runs 1 --warmup-queries 0 --seed 0x5EED2036 --m 16 --ef-construction 200 --ef-search 50 --hnsw-seed 0x0000000564543034 --output VecNet.BenchmarkRunner.Artifacts/hnsw-generated.json");
         writer.WriteLine("  hnsw-generated-matrix --preset smoke|standard --vectors 128 --queries 4 --runs 1 --warmup-queries 0 --seed 0x5EED2037 --output-dir VecNet.BenchmarkRunner.Artifacts/hnsw-matrix --manifest VecNet.BenchmarkRunner.Artifacts/hnsw-matrix/hnsw-matrix-manifest.json");

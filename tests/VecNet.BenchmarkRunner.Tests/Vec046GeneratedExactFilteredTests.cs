@@ -140,8 +140,13 @@ public sealed class Vec046GeneratedExactFilteredTests
         Assert.Equal(0, report.Metrics.FilteredResultIntegrity.ExtraResultCount);
         Assert.Equal(0, report.Metrics.FilteredResultIntegrity.WrongIdCount);
         Assert.Equal(0, report.Metrics.FilteredResultIntegrity.OrderMismatchCount);
+        Assert.Equal(0, report.Metrics.FilteredResultIntegrity.ToleratedNearTieOrderMismatchCount);
+        Assert.Equal(0, report.Metrics.FilteredResultIntegrity.UnresolvedWrongIdCount);
+        Assert.Equal(0, report.Metrics.FilteredResultIntegrity.UnresolvedOrderMismatchCount);
         Assert.Equal(0, report.Metrics.FilteredResultIntegrity.NonFiniteDistanceCount);
         Assert.Equal(0, report.Metrics.FilteredResultIntegrity.DistanceMismatchCount);
+        Assert.Equal("notApplicable", report.Metrics.FilteredResultIntegrity.OrderEquivalenceStatus);
+        Assert.Equal("exact filtered result match", report.Metrics.FilteredResultIntegrity.Classification);
         Assert.Equal("passed", report.Validation.Status);
         Assert.True(report.Validation.FinalRunComparedToTruth);
         Assert.False(report.Validation.PublicClaimEligible);
@@ -247,10 +252,57 @@ public sealed class Vec046GeneratedExactFilteredTests
         Assert.Equal(2, comparison.Integrity.ExtraResultCount);
         Assert.Equal(2, comparison.Integrity.WrongIdCount);
         Assert.Equal(2, comparison.Integrity.OrderMismatchCount);
+        Assert.Equal(0, comparison.Integrity.ToleratedNearTieOrderMismatchCount);
+        Assert.Equal(2, comparison.Integrity.UnresolvedWrongIdCount);
+        Assert.Equal(2, comparison.Integrity.UnresolvedOrderMismatchCount);
         Assert.Equal(1, comparison.Integrity.NonFiniteDistanceCount);
-        Assert.Equal(2, comparison.Integrity.DistanceMismatchCount);
+        Assert.Equal(1, comparison.Integrity.DistanceMismatchCount);
+        Assert.Equal("notApplicable", comparison.Integrity.OrderEquivalenceStatus);
+        Assert.Equal("filtered result validation failure", comparison.Integrity.Classification);
         Assert.InRange(comparison.RecallAtK, 0.99, 1.0);
         Assert.Equal(0, comparison.OrderedAgreement);
+    }
+
+    [Theory]
+    [InlineData("selective", 0x5EED049Bu, 0.99875)]
+    [InlineData("very-selective", 0x5EED049Cu, 0.9987373737373737)]
+    public void Run_ClassifiesVec048SquaredL2FailuresAsAcceptedNearTieOrderEquivalence(
+        string filterKind,
+        uint seed,
+        double expectedOrderedAgreement)
+    {
+        GeneratedExactFilteredBenchmarkReport report = GeneratedExactFilteredScenario.Run(
+            new GeneratedExactFilteredOptions(
+                VectorMetric.SquaredEuclidean,
+                Dimension: 386,
+                VectorCount: 1000,
+                QueryCount: 16,
+                TopK: 100,
+                Seed: seed,
+                FilterKind: filterKind,
+                DuplicateIdsPerQuery: 1,
+                UnknownIdsPerQuery: 1,
+                OutputPath: "VecNet.BenchmarkRunner.Artifacts/vec049-repro.json",
+                Runs: 3,
+                WarmupQueries: 8),
+            ["exact-generated-filtered", "--filter", filterKind]);
+
+        Assert.Equal("passed", report.Validation.Status);
+        Assert.Equal("passed", report.Metrics.FilteredResultIntegrity.Status);
+        Assert.Equal(1.0, report.Metrics.RecallAtK);
+        Assert.Equal(expectedOrderedAgreement, report.Metrics.OrderedAgreement, precision: 15);
+        Assert.Equal("passed", report.Metrics.DistanceToleranceStatus);
+        Assert.Equal(0, report.Metrics.FilteredResultIntegrity.MissingResultCount);
+        Assert.Equal(0, report.Metrics.FilteredResultIntegrity.ExtraResultCount);
+        Assert.Equal(2, report.Metrics.FilteredResultIntegrity.WrongIdCount);
+        Assert.Equal(2, report.Metrics.FilteredResultIntegrity.OrderMismatchCount);
+        Assert.Equal(2, report.Metrics.FilteredResultIntegrity.ToleratedNearTieOrderMismatchCount);
+        Assert.Equal(0, report.Metrics.FilteredResultIntegrity.UnresolvedWrongIdCount);
+        Assert.Equal(0, report.Metrics.FilteredResultIntegrity.UnresolvedOrderMismatchCount);
+        Assert.Equal(0, report.Metrics.FilteredResultIntegrity.DistanceMismatchCount);
+        Assert.Equal("acceptedNearTie", report.Metrics.FilteredResultIntegrity.OrderEquivalenceStatus);
+        Assert.Equal("accepted D-026 near-tie/order-equivalence case", report.Metrics.FilteredResultIntegrity.Classification);
+        Assert.Contains("D-026", report.Metrics.FilteredResultIntegrity.Policy, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -151,7 +151,7 @@ public static class GeneratedExactFilteredScenario
                 comparison.Integrity.ExtraResultCount,
                 comparison.Integrity,
                 "set recall@k = returned ids intersect exact filtered top-k ids divided by exact filtered result count, summed across measured queries; empty exact filtered truth contributes a perfect denominator-free query",
-                "Final measured run is compared against independently generated scalar-reference filtered truth; IDs, order, result count and distances are all validation failures when incorrect."),
+                "Final measured run is compared against independently generated scalar-reference filtered truth; result count, set membership, finite distances and distance tolerance are hard validation failures. Squared-L2 positional order differences are accepted only when the returned IDs are still in the scalar top-k set and the involved scalar-reference distances are inside the D-026 near-tie tolerance envelope."),
             new GeneratedExactFilteredValidationInfo(
                 validationStatus,
                 "generated-exact-filtered-smoke",
@@ -195,6 +195,9 @@ public static class GeneratedExactFilteredScenario
         int extraResultCount = 0;
         int wrongIdCount = 0;
         int orderMismatchCount = 0;
+        int toleratedNearTieOrderMismatchCount = 0;
+        int unresolvedWrongIdCount = 0;
+        int unresolvedOrderMismatchCount = 0;
         int nonFiniteDistanceCount = 0;
         int distanceMismatchCount = 0;
         int denominator = 0;
@@ -212,10 +215,16 @@ public static class GeneratedExactFilteredScenario
             extraResultCount += Math.Max(0, returned.Length - expectedCount);
 
             var returnedIds = new HashSet<ulong>();
+            var expectedById = new Dictionary<ulong, TruthItem>();
             int comparableCount = Math.Min(expectedCount, returned.Length);
             for (int i = 0; i < Math.Min(expectedCount, returned.Length); i++)
             {
                 returnedIds.Add(returned[i].Id);
+            }
+
+            for (int i = 0; i < expectedCount; i++)
+            {
+                expectedById[expected[i].Id] = expected[i];
             }
 
             for (int i = 0; i < expectedCount; i++)
@@ -232,7 +241,8 @@ public static class GeneratedExactFilteredScenario
 
                 SearchResult result = returned[i];
                 checkedResultCount++;
-                if (!float.IsFinite(result.Distance))
+                bool distanceIsFinite = float.IsFinite(result.Distance);
+                if (!distanceIsFinite)
                 {
                     nonFiniteDistanceCount++;
                 }
@@ -245,9 +255,21 @@ public static class GeneratedExactFilteredScenario
                 {
                     wrongIdCount++;
                     orderMismatchCount++;
+                    if (IsAcceptedNearTieOrderDifference(expected[i], result, expectedById, dimension, metric))
+                    {
+                        toleratedNearTieOrderMismatchCount++;
+                    }
+                    else
+                    {
+                        unresolvedWrongIdCount++;
+                        unresolvedOrderMismatchCount++;
+                    }
                 }
 
-                if (!DistanceMatches(expected[i].Distance, result.Distance, dimension, metric))
+                TruthItem distanceExpected = expectedById.TryGetValue(result.Id, out TruthItem? actualExpected)
+                    ? actualExpected
+                    : expected[i];
+                if (!DistanceMatches(distanceExpected.Distance, result.Distance, dimension, metric))
                 {
                     distanceMismatchCount++;
                 }
@@ -266,10 +288,19 @@ public static class GeneratedExactFilteredScenario
         bool passed = queryCountMismatchCount == 0 &&
             missingResultCount == 0 &&
             extraResultCount == 0 &&
-            wrongIdCount == 0 &&
-            orderMismatchCount == 0 &&
+            setMatches == denominator &&
+            unresolvedWrongIdCount == 0 &&
+            unresolvedOrderMismatchCount == 0 &&
             nonFiniteDistanceCount == 0 &&
             distanceMismatchCount == 0;
+        string orderEquivalenceStatus = toleratedNearTieOrderMismatchCount > 0
+            ? (passed ? "acceptedNearTie" : "unresolved")
+            : "notApplicable";
+        string classification = passed
+            ? toleratedNearTieOrderMismatchCount > 0
+                ? "accepted D-026 near-tie/order-equivalence case"
+                : "exact filtered result match"
+            : "filtered result validation failure";
 
         var integrity = new GeneratedExactFilteredResultIntegrityInfo(
             passed ? "passed" : "failed",
@@ -279,17 +310,56 @@ public static class GeneratedExactFilteredScenario
             extraResultCount,
             wrongIdCount,
             orderMismatchCount,
+            toleratedNearTieOrderMismatchCount,
+            unresolvedWrongIdCount,
+            unresolvedOrderMismatchCount,
             nonFiniteDistanceCount,
             distanceMismatchCount,
-            "Filtered exact results must match independently generated exact filtered truth for query count, result count, IDs, order and distances within the accepted metric tolerance.",
+            orderEquivalenceStatus,
+            classification,
+            "Filtered exact results must match independently generated exact filtered truth for query count, result count, result ID set and distances within the accepted metric tolerance. Squared-L2 order mismatches are accepted only for D-026 near-tie/order-equivalent positions where the returned ID is in the scalar top-k set and its distance matches its own scalar-reference result within tolerance.",
             passed
-                ? "All filtered exact results matched independent filtered truth."
+                ? toleratedNearTieOrderMismatchCount == 0
+                    ? "All filtered exact results matched independent filtered truth."
+                    : "All hard filtered-result checks passed; positional order differences were classified as accepted squared-L2 near-tie/order-equivalence cases under D-026."
                 : "One or more filtered exact results failed count, ID, order, finite-distance or distance-integrity validation.");
 
         return new GeneratedExactFilteredResultComparison(
             denominator == 0 ? 1 : (double)setMatches / denominator,
             denominator == 0 ? 1 : (double)orderedMatches / denominator,
             integrity);
+    }
+
+    private static bool IsAcceptedNearTieOrderDifference(
+        TruthItem expectedAtPosition,
+        SearchResult returnedAtPosition,
+        Dictionary<ulong, TruthItem> expectedById,
+        int dimension,
+        VectorMetric metric)
+    {
+        if (metric != VectorMetric.SquaredEuclidean ||
+            !expectedById.TryGetValue(returnedAtPosition.Id, out TruthItem? returnedTruth))
+        {
+            return false;
+        }
+
+        if (!DistanceMatches(returnedTruth.Distance, returnedAtPosition.Distance, dimension, metric))
+        {
+            return false;
+        }
+
+        return IsWithinCombinedD026Tolerance(expectedAtPosition.Distance, returnedTruth.Distance, dimension);
+    }
+
+    private static bool IsWithinCombinedD026Tolerance(float left, float right, int dimension)
+    {
+        if (!float.IsFinite(left) || !float.IsFinite(right))
+        {
+            return false;
+        }
+
+        float combinedTolerance = CalculateD026Tolerance(dimension, left) + CalculateD026Tolerance(dimension, right);
+        return MathF.Abs(left - right) <= combinedTolerance;
     }
 
     private static GeneratedExactSearchOptions ToGeneratedOptions(GeneratedExactFilteredOptions options) =>

@@ -76,8 +76,13 @@ public sealed record GeneratedExactFilteredResultIntegrityInfo(
     int ExtraResultCount,
     int WrongIdCount,
     int OrderMismatchCount,
+    int ToleratedNearTieOrderMismatchCount,
+    int UnresolvedWrongIdCount,
+    int UnresolvedOrderMismatchCount,
     int NonFiniteDistanceCount,
     int DistanceMismatchCount,
+    string OrderEquivalenceStatus,
+    string Classification,
     string Policy,
     string Reason);
 

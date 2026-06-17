@@ -182,6 +182,9 @@ public sealed class Vec046GeneratedExactFilteredIndependentTests
         Assert.Equal(0, report.Metrics.FilteredResultIntegrity.CheckedResultCount);
         Assert.Equal(0, report.Metrics.FilteredResultIntegrity.MissingResultCount);
         Assert.Equal(0, report.Metrics.FilteredResultIntegrity.ExtraResultCount);
+        Assert.Equal(0, report.Metrics.FilteredResultIntegrity.ToleratedNearTieOrderMismatchCount);
+        Assert.Equal(0, report.Metrics.FilteredResultIntegrity.UnresolvedWrongIdCount);
+        Assert.Equal(0, report.Metrics.FilteredResultIntegrity.UnresolvedOrderMismatchCount);
         Assert.Equal(1.0, report.Metrics.RecallAtK);
         Assert.Equal(1.0, report.Metrics.OrderedAgreement);
     }
@@ -286,8 +289,13 @@ public sealed class Vec046GeneratedExactFilteredIndependentTests
         Assert.Equal(0, comparison.Integrity.ExtraResultCount);
         Assert.Equal(1, comparison.Integrity.WrongIdCount);
         Assert.Equal(1, comparison.Integrity.OrderMismatchCount);
+        Assert.Equal(0, comparison.Integrity.ToleratedNearTieOrderMismatchCount);
+        Assert.Equal(1, comparison.Integrity.UnresolvedWrongIdCount);
+        Assert.Equal(1, comparison.Integrity.UnresolvedOrderMismatchCount);
         Assert.Equal(1, comparison.Integrity.NonFiniteDistanceCount);
         Assert.Equal(1, comparison.Integrity.DistanceMismatchCount);
+        Assert.Equal("notApplicable", comparison.Integrity.OrderEquivalenceStatus);
+        Assert.Equal("filtered result validation failure", comparison.Integrity.Classification);
         Assert.Equal(0.25, comparison.RecallAtK);
         Assert.Equal(0.25, comparison.OrderedAgreement);
     }
@@ -319,6 +327,112 @@ public sealed class Vec046GeneratedExactFilteredIndependentTests
         Assert.Equal(1, beyondTolerance.Integrity.DistanceMismatchCount);
         Assert.Equal(1.0, beyondTolerance.RecallAtK);
         Assert.Equal(1.0, beyondTolerance.OrderedAgreement);
+    }
+
+    [Fact]
+    public void ValidateFilteredResults_AcceptsSquaredL2NearTieOrderPermutationOnlyWhenSetAndDistancesMatch()
+    {
+        const int dimension = 386;
+        const float leftDistance = 1000f;
+        float rightDistance = leftDistance + SquaredEuclideanTolerance(dimension, leftDistance);
+        var truth = new TruthSet(
+            [[new TruthItem(1, leftDistance), new TruthItem(2, rightDistance)]],
+            depth: 2);
+
+        GeneratedExactFilteredResultComparison comparison = GeneratedExactFilteredScenario.ValidateFilteredResults(
+            truth,
+            [[new SearchResult(2, rightDistance), new SearchResult(1, leftDistance)]],
+            topK: 2,
+            dimension,
+            VectorMetric.SquaredEuclidean);
+
+        Assert.Equal("passed", comparison.Integrity.Status);
+        Assert.Equal(1.0, comparison.RecallAtK);
+        Assert.Equal(0.0, comparison.OrderedAgreement);
+        Assert.Equal(2, comparison.Integrity.WrongIdCount);
+        Assert.Equal(2, comparison.Integrity.OrderMismatchCount);
+        Assert.Equal(2, comparison.Integrity.ToleratedNearTieOrderMismatchCount);
+        Assert.Equal(0, comparison.Integrity.UnresolvedWrongIdCount);
+        Assert.Equal(0, comparison.Integrity.UnresolvedOrderMismatchCount);
+        Assert.Equal(0, comparison.Integrity.DistanceMismatchCount);
+        Assert.Equal("acceptedNearTie", comparison.Integrity.OrderEquivalenceStatus);
+        Assert.Equal("accepted D-026 near-tie/order-equivalence case", comparison.Integrity.Classification);
+    }
+
+    [Fact]
+    public void ValidateFilteredResults_RejectsWrongIdEvenWhenDistanceIsNearExpected()
+    {
+        const int dimension = 386;
+        const float distance = 1000f;
+        var truth = new TruthSet([[new TruthItem(1, distance), new TruthItem(2, distance)]], depth: 2);
+
+        GeneratedExactFilteredResultComparison comparison = GeneratedExactFilteredScenario.ValidateFilteredResults(
+            truth,
+            [[new SearchResult(1, distance), new SearchResult(999, distance)]],
+            topK: 2,
+            dimension,
+            VectorMetric.SquaredEuclidean);
+
+        Assert.Equal("failed", comparison.Integrity.Status);
+        Assert.Equal(0.5, comparison.RecallAtK);
+        Assert.Equal(0.5, comparison.OrderedAgreement);
+        Assert.Equal(1, comparison.Integrity.WrongIdCount);
+        Assert.Equal(1, comparison.Integrity.OrderMismatchCount);
+        Assert.Equal(0, comparison.Integrity.ToleratedNearTieOrderMismatchCount);
+        Assert.Equal(1, comparison.Integrity.UnresolvedWrongIdCount);
+        Assert.Equal(1, comparison.Integrity.UnresolvedOrderMismatchCount);
+        Assert.Equal("notApplicable", comparison.Integrity.OrderEquivalenceStatus);
+        Assert.Equal("filtered result validation failure", comparison.Integrity.Classification);
+    }
+
+    [Fact]
+    public void ValidateFilteredResults_RejectsSafelySeparatedSquaredL2OrderPermutation()
+    {
+        var truth = new TruthSet([[new TruthItem(1, 1f), new TruthItem(2, 10f)]], depth: 2);
+
+        GeneratedExactFilteredResultComparison comparison = GeneratedExactFilteredScenario.ValidateFilteredResults(
+            truth,
+            [[new SearchResult(2, 10f), new SearchResult(1, 1f)]],
+            topK: 2,
+            dimension: 386,
+            VectorMetric.SquaredEuclidean);
+
+        Assert.Equal("failed", comparison.Integrity.Status);
+        Assert.Equal(1.0, comparison.RecallAtK);
+        Assert.Equal(0.0, comparison.OrderedAgreement);
+        Assert.Equal(2, comparison.Integrity.WrongIdCount);
+        Assert.Equal(2, comparison.Integrity.OrderMismatchCount);
+        Assert.Equal(0, comparison.Integrity.ToleratedNearTieOrderMismatchCount);
+        Assert.Equal(2, comparison.Integrity.UnresolvedWrongIdCount);
+        Assert.Equal(2, comparison.Integrity.UnresolvedOrderMismatchCount);
+        Assert.Equal("notApplicable", comparison.Integrity.OrderEquivalenceStatus);
+        Assert.Equal("filtered result validation failure", comparison.Integrity.Classification);
+    }
+
+    [Fact]
+    public void ValidateFilteredResults_RejectsNearTiePermutationWithWrongReturnedDistance()
+    {
+        const int dimension = 386;
+        const float leftDistance = 1000f;
+        float rightDistance = leftDistance + SquaredEuclideanTolerance(dimension, leftDistance);
+        var truth = new TruthSet([[new TruthItem(1, leftDistance), new TruthItem(2, rightDistance)]], depth: 2);
+
+        GeneratedExactFilteredResultComparison comparison = GeneratedExactFilteredScenario.ValidateFilteredResults(
+            truth,
+            [[new SearchResult(2, rightDistance + (SquaredEuclideanTolerance(dimension, rightDistance) * 4f)), new SearchResult(1, leftDistance)]],
+            topK: 2,
+            dimension,
+            VectorMetric.SquaredEuclidean);
+
+        Assert.Equal("failed", comparison.Integrity.Status);
+        Assert.Equal(1.0, comparison.RecallAtK);
+        Assert.Equal(0.0, comparison.OrderedAgreement);
+        Assert.Equal(1, comparison.Integrity.ToleratedNearTieOrderMismatchCount);
+        Assert.Equal(1, comparison.Integrity.UnresolvedWrongIdCount);
+        Assert.Equal(1, comparison.Integrity.UnresolvedOrderMismatchCount);
+        Assert.Equal(1, comparison.Integrity.DistanceMismatchCount);
+        Assert.Equal("unresolved", comparison.Integrity.OrderEquivalenceStatus);
+        Assert.Equal("filtered result validation failure", comparison.Integrity.Classification);
     }
 
     [Fact]

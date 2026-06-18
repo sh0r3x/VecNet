@@ -13,7 +13,9 @@ public sealed partial class ExactFlatIndex
     private ulong[] _ids = [];
     private float[] _vectors = [];
     private Dictionary<ulong, int> _idToOrdinal = new();
+    private HashSet<ulong> _deletedIds = [];
     private int _count;
+    private int _baseRowCount = int.MaxValue;
     private long _generation;
     private bool _isReadOnly;
 
@@ -73,6 +75,11 @@ public sealed partial class ExactFlatIndex
     public int VectorCount => _count;
 
     /// <summary>
+    /// Gets the current opaque instance-local generation stamp.
+    /// </summary>
+    public long Generation => _generation;
+
+    /// <summary>
     /// Inserts a vector associated with a caller-provided external identifier.
     /// </summary>
     /// <param name="id">The opaque external vector identifier.</param>
@@ -88,11 +95,72 @@ public sealed partial class ExactFlatIndex
 
         double magnitude = ValidateVector(vector, nameof(vector));
 
-        if (_idToOrdinal.ContainsKey(id))
+        if (IsKnownOrReserved(id))
         {
             throw new ArgumentException("An item with the same identifier already exists.", nameof(id));
         }
 
+        AddValidated(id, vector, magnitude);
+        _generation++;
+    }
+
+    /// <summary>
+    /// Attempts to insert a vector associated with a caller-provided external identifier.
+    /// </summary>
+    /// <param name="id">The opaque external vector identifier.</param>
+    /// <param name="vector">
+    /// The vector values to copy into index storage. Cosine vectors are normalized during insertion.
+    /// </param>
+    /// <returns>A mutation result describing whether the insert committed.</returns>
+    public VectorMutationResult TryAdd(ulong id, ReadOnlySpan<float> vector)
+    {
+        if (_isReadOnly)
+        {
+            return CreateMutationResult(VectorMutationStatus.ReadOnly);
+        }
+
+        double magnitude = ValidateVector(vector, nameof(vector));
+        if (IsKnownOrReserved(id))
+        {
+            return CreateMutationResult(VectorMutationStatus.DuplicateId);
+        }
+
+        EnsureDeltaBoundary();
+        AddValidated(id, vector, magnitude);
+        _generation++;
+        return CreateMutationResult(VectorMutationStatus.Committed);
+    }
+
+    /// <summary>
+    /// Attempts to delete a visible vector by external identifier.
+    /// </summary>
+    /// <param name="id">The opaque external vector identifier to delete.</param>
+    /// <returns>A mutation result describing whether the delete committed.</returns>
+    public VectorMutationResult TryDelete(ulong id)
+    {
+        if (_isReadOnly)
+        {
+            return CreateMutationResult(VectorMutationStatus.ReadOnly);
+        }
+
+        if (_deletedIds.Contains(id))
+        {
+            return CreateMutationResult(VectorMutationStatus.AlreadyDeleted);
+        }
+
+        if (!_idToOrdinal.ContainsKey(id))
+        {
+            return CreateMutationResult(VectorMutationStatus.UnknownId);
+        }
+
+        EnsureDeltaBoundary();
+        _deletedIds.Add(id);
+        _generation++;
+        return CreateMutationResult(VectorMutationStatus.Committed);
+    }
+
+    private void AddValidated(ulong id, ReadOnlySpan<float> vector, double magnitude)
+    {
         EnsureCapacity(_count + 1);
 
         int offset = _count * Dimension;
@@ -108,7 +176,6 @@ public sealed partial class ExactFlatIndex
         _ids[_count] = id;
         _idToOrdinal.Add(id, _count);
         _count++;
-        _generation++;
     }
 
     /// <summary>
@@ -131,6 +198,11 @@ public sealed partial class ExactFlatIndex
         int written = 0;
         for (int row = 0; row < _count; row++)
         {
+            if (IsDeleted(row))
+            {
+                continue;
+            }
+
             var candidate = new SearchResult(_ids[row], CalculateDistance(row, query, queryMagnitude));
             written = InsertCandidate(results, written, candidate);
         }
@@ -156,7 +228,7 @@ public sealed partial class ExactFlatIndex
         int matched = 0;
         for (int allowIndex = 0; allowIndex < allowedIds.Length; allowIndex++)
         {
-            if (_idToOrdinal.TryGetValue(allowedIds[allowIndex], out int row))
+            if (_idToOrdinal.TryGetValue(allowedIds[allowIndex], out int row) && !IsDeleted(row))
             {
                 rowOrdinals[matched++] = row;
             }
@@ -213,6 +285,11 @@ public sealed partial class ExactFlatIndex
         for (int i = 0; i < rowOrdinals.Length; i++)
         {
             int row = rowOrdinals[i];
+            if (IsDeleted(row))
+            {
+                continue;
+            }
+
             var candidate = new SearchResult(_ids[row], CalculateDistance(row, query, queryMagnitude));
             written = InsertCandidate(results, written, candidate);
         }
@@ -259,6 +336,11 @@ public sealed partial class ExactFlatIndex
         {
             if (_idToOrdinal.TryGetValue(allowedIds[allowIndex], out int row))
             {
+                if (IsDeleted(row))
+                {
+                    continue;
+                }
+
                 rowMarks[row] = searchMark;
             }
         }
@@ -267,6 +349,11 @@ public sealed partial class ExactFlatIndex
         for (int row = 0; row < _count; row++)
         {
             if (rowMarks[row] != searchMark)
+            {
+                continue;
+            }
+
+            if (IsDeleted(row))
             {
                 continue;
             }
@@ -345,6 +432,47 @@ public sealed partial class ExactFlatIndex
         _ids = newIds;
         _vectors = newVectors;
     }
+
+    private void EnsureDeltaBoundary()
+    {
+        if (_baseRowCount > _count)
+        {
+            _baseRowCount = _count;
+        }
+    }
+
+    private bool IsKnownOrReserved(ulong id) =>
+        _idToOrdinal.ContainsKey(id) || _deletedIds.Contains(id);
+
+    private bool IsDeleted(int row) =>
+        _deletedIds.Count != 0 && _deletedIds.Contains(_ids[row]);
+
+    private int LiveVectorCount => _count - _deletedIds.Count;
+
+    private int DeltaCount
+    {
+        get
+        {
+            if (_baseRowCount >= _count)
+            {
+                return 0;
+            }
+
+            int deltaCount = 0;
+            for (int row = _baseRowCount; row < _count; row++)
+            {
+                if (!IsDeleted(row))
+                {
+                    deltaCount++;
+                }
+            }
+
+            return deltaCount;
+        }
+    }
+
+    private VectorMutationResult CreateMutationResult(VectorMutationStatus status) =>
+        new(status, _generation, LiveVectorCount, DeltaCount, _deletedIds.Count);
 
     private void StoreNormalizedVector(ReadOnlySpan<float> vector, double magnitude, int offset)
     {
@@ -429,6 +557,7 @@ public sealed partial class ExactFlatIndex
             _vectors = vectors,
             _idToOrdinal = BuildIdToOrdinalMap(ids),
             _count = ids.Length,
+            _baseRowCount = ids.Length,
             _isReadOnly = true
         };
 

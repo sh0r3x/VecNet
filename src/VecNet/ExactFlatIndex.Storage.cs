@@ -22,11 +22,23 @@ public sealed partial class ExactFlatIndex
             throw new ArgumentException("Directory path must not be empty.", nameof(directoryPath));
         }
 
-        int count = _count;
+        int count = LiveVectorCount;
         var ids = new ulong[count];
         var vectors = new float[checked(count * Dimension)];
-        _ids.AsSpan(0, count).CopyTo(ids);
-        _vectors.AsSpan(0, count * Dimension).CopyTo(vectors);
+        int destinationRow = 0;
+        for (int sourceRow = 0; sourceRow < _count; sourceRow++)
+        {
+            if (IsDeleted(sourceRow))
+            {
+                continue;
+            }
+
+            ids[destinationRow] = _ids[sourceRow];
+            _vectors
+                .AsSpan(sourceRow * Dimension, Dimension)
+                .CopyTo(vectors.AsSpan(destinationRow * Dimension, Dimension));
+            destinationRow++;
+        }
 
         ExactFlatIndexStorage.Save(directoryPath, Dimension, Metric, ids, vectors);
     }

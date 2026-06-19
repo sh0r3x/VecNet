@@ -176,7 +176,7 @@ public sealed class ExactFlatIndexRetainedIdMapIndependentTests
             .Where(static method => !method.IsSpecialName)
             .ToArray();
         Assert.Equal(
-            ["Add", "CreateCandidateSet", "OpenReadOnly", "Save", "Search", "Search", "Search", "TryAdd", "TryDelete"],
+            ["Add", "Checkpoint", "CreateCandidateSet", "OpenReadOnly", "Save", "Search", "Search", "Search", "TryAdd", "TryDelete"],
             publicMethods.Select(static method => method.Name).Order(StringComparer.Ordinal).ToArray());
         Assert.DoesNotContain(
             publicMethods.SelectMany(static method => method.GetParameters()),

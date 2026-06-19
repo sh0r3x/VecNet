@@ -8,6 +8,54 @@ namespace VecNet;
 public sealed partial class ExactFlatIndex
 {
     /// <summary>
+    /// Writes a compact live exact-flat checkpoint to a new or empty directory and publishes it in memory.
+    /// </summary>
+    /// <param name="directoryPath">
+    /// The target directory path. It must not be null or whitespace, must not name an existing file,
+    /// and must either not exist or name an empty directory. Existing index directories are not overwritten.
+    /// </param>
+    /// <returns>A checkpoint result describing whether a compact generation was published.</returns>
+    public ExactFlatCheckpointResult Checkpoint(string directoryPath)
+    {
+        if (_isReadOnly)
+        {
+            throw new InvalidOperationException("This exact flat index was opened read-only and cannot be checkpointed.");
+        }
+
+        ExactFlatIndexStorage.ValidateNewOrEmptyDirectoryPath(directoryPath);
+
+        int foldedDeltaCount = DeltaCount;
+        int foldedTombstoneCount = _visibilityTombstoneIds.Count;
+        if (foldedDeltaCount == 0 && foldedTombstoneCount == 0)
+        {
+            return CreateCheckpointResult(
+                ExactFlatCheckpointStatus.NoChanges,
+                foldedDeltaCount,
+                foldedTombstoneCount);
+        }
+
+        (ulong[] compactIds, float[] compactVectors) = CreateLiveSnapshot();
+        ExactFlatIndexStorage.Save(directoryPath, Dimension, Metric, compactIds, compactVectors);
+
+        ExactFlatIndex validated = ExactFlatIndexStorage.OpenReadOnly(directoryPath);
+        ValidateCheckpointOutput(validated, compactIds, compactVectors);
+
+        Dictionary<ulong, int> compactMap = BuildIdToOrdinalMap(compactIds);
+        _ids = compactIds;
+        _vectors = compactVectors;
+        _idToOrdinal = compactMap;
+        _count = compactIds.Length;
+        _baseRowCount = compactIds.Length;
+        _visibilityTombstoneIds.Clear();
+        _generation++;
+
+        return CreateCheckpointResult(
+            ExactFlatCheckpointStatus.Published,
+            foldedDeltaCount,
+            foldedTombstoneCount);
+    }
+
+    /// <summary>
     /// Saves this exact flat index to a new or empty durable exact-flat directory.
     /// </summary>
     /// <param name="directoryPath">
@@ -16,12 +64,24 @@ public sealed partial class ExactFlatIndex
     /// </param>
     public void Save(string directoryPath)
     {
-        ArgumentNullException.ThrowIfNull(directoryPath);
-        if (string.IsNullOrWhiteSpace(directoryPath))
-        {
-            throw new ArgumentException("Directory path must not be empty.", nameof(directoryPath));
-        }
+        ExactFlatIndexStorage.ValidateNewOrEmptyDirectoryPath(directoryPath);
+        (ulong[] ids, float[] vectors) = CreateLiveSnapshot();
+        ExactFlatIndexStorage.Save(directoryPath, Dimension, Metric, ids, vectors);
+    }
 
+    /// <summary>
+    /// Opens a durable exact-flat index directory as an immutable read-only index.
+    /// </summary>
+    /// <param name="directoryPath">
+    /// The exact-flat index directory path. It must not be null or whitespace and must name an
+    /// existing exact-flat directory containing a valid manifest and binary files.
+    /// </param>
+    /// <returns>A searchable read-only exact flat index.</returns>
+    public static ExactFlatIndex OpenReadOnly(string directoryPath) =>
+        ExactFlatIndexStorage.OpenReadOnly(directoryPath);
+
+    private (ulong[] Ids, float[] Vectors) CreateLiveSnapshot()
+    {
         int count = LiveVectorCount;
         var ids = new ulong[count];
         var vectors = new float[checked(count * Dimension)];
@@ -40,19 +100,39 @@ public sealed partial class ExactFlatIndex
             destinationRow++;
         }
 
-        ExactFlatIndexStorage.Save(directoryPath, Dimension, Metric, ids, vectors);
+        return (ids, vectors);
     }
 
-    /// <summary>
-    /// Opens a durable exact-flat index directory as an immutable read-only index.
-    /// </summary>
-    /// <param name="directoryPath">
-    /// The exact-flat index directory path. It must not be null or whitespace and must name an
-    /// existing exact-flat directory containing a valid manifest and binary files.
-    /// </param>
-    /// <returns>A searchable read-only exact flat index.</returns>
-    public static ExactFlatIndex OpenReadOnly(string directoryPath) =>
-        ExactFlatIndexStorage.OpenReadOnly(directoryPath);
+    private ExactFlatCheckpointResult CreateCheckpointResult(
+        ExactFlatCheckpointStatus status,
+        int foldedDeltaCount,
+        int foldedTombstoneCount) =>
+        new(
+            status,
+            _generation,
+            _count,
+            LiveVectorCount,
+            BaseVectorCount,
+            DeltaCount,
+            _visibilityTombstoneIds.Count,
+            _deletedReservedIds.Count,
+            foldedDeltaCount,
+            foldedTombstoneCount);
+
+    private void ValidateCheckpointOutput(
+        ExactFlatIndex validated,
+        ReadOnlySpan<ulong> expectedIds,
+        ReadOnlySpan<float> expectedVectors)
+    {
+        if (validated.Dimension != Dimension ||
+            validated.Metric != Metric ||
+            validated.VectorCount != expectedIds.Length ||
+            !validated._ids.AsSpan(0, validated._count).SequenceEqual(expectedIds) ||
+            !validated._vectors.AsSpan(0, checked(expectedIds.Length * Dimension)).SequenceEqual(expectedVectors))
+        {
+            throw new InvalidDataException("Exact flat checkpoint output failed read-only validation.");
+        }
+    }
 }
 
 internal static class ExactFlatIndexStorage
@@ -175,6 +255,20 @@ internal static class ExactFlatIndexStorage
         ValidateHydratedRows(ids, vectors, manifest.Dimension, manifest.Metric);
 
         return ExactFlatIndex.HydrateReadOnly(manifest.Dimension, manifest.Metric, ids, vectors);
+    }
+
+    internal static void ValidateNewOrEmptyDirectoryPath(string directoryPath)
+    {
+        string directory = GetFullDirectoryPath(directoryPath);
+        if (File.Exists(directory))
+        {
+            throw new IOException("Exact flat index save path is an existing file, not a directory.");
+        }
+
+        if (Directory.Exists(directory) && Directory.EnumerateFileSystemEntries(directory).Any())
+        {
+            throw new IOException("Exact flat index save directory must be empty.");
+        }
     }
 
     private static string PrepareSaveDirectory(string directoryPath, out bool createdDirectory)

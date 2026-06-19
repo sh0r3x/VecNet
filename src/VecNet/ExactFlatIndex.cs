@@ -13,7 +13,8 @@ public sealed partial class ExactFlatIndex
     private ulong[] _ids = [];
     private float[] _vectors = [];
     private Dictionary<ulong, int> _idToOrdinal = new();
-    private HashSet<ulong> _deletedIds = [];
+    private HashSet<ulong> _visibilityTombstoneIds = [];
+    private HashSet<ulong> _deletedReservedIds = [];
     private int _count;
     private int _baseRowCount = int.MaxValue;
     private long _generation;
@@ -143,7 +144,7 @@ public sealed partial class ExactFlatIndex
             return CreateMutationResult(VectorMutationStatus.ReadOnly);
         }
 
-        if (_deletedIds.Contains(id))
+        if (_deletedReservedIds.Contains(id))
         {
             return CreateMutationResult(VectorMutationStatus.AlreadyDeleted);
         }
@@ -154,7 +155,8 @@ public sealed partial class ExactFlatIndex
         }
 
         EnsureDeltaBoundary();
-        _deletedIds.Add(id);
+        _visibilityTombstoneIds.Add(id);
+        _deletedReservedIds.Add(id);
         _generation++;
         return CreateMutationResult(VectorMutationStatus.Committed);
     }
@@ -442,12 +444,30 @@ public sealed partial class ExactFlatIndex
     }
 
     private bool IsKnownOrReserved(ulong id) =>
-        _idToOrdinal.ContainsKey(id) || _deletedIds.Contains(id);
+        _idToOrdinal.ContainsKey(id) || _deletedReservedIds.Contains(id);
 
     private bool IsDeleted(int row) =>
-        _deletedIds.Count != 0 && _deletedIds.Contains(_ids[row]);
+        _visibilityTombstoneIds.Count != 0 && _visibilityTombstoneIds.Contains(_ids[row]);
 
-    private int LiveVectorCount => _count - _deletedIds.Count;
+    private int LiveVectorCount => _count - _visibilityTombstoneIds.Count;
+
+    private int BaseVectorCount
+    {
+        get
+        {
+            int baseLimit = _baseRowCount > _count ? _count : _baseRowCount;
+            int baseCount = 0;
+            for (int row = 0; row < baseLimit; row++)
+            {
+                if (!IsDeleted(row))
+                {
+                    baseCount++;
+                }
+            }
+
+            return baseCount;
+        }
+    }
 
     private int DeltaCount
     {
@@ -472,7 +492,7 @@ public sealed partial class ExactFlatIndex
     }
 
     private VectorMutationResult CreateMutationResult(VectorMutationStatus status) =>
-        new(status, _generation, LiveVectorCount, DeltaCount, _deletedIds.Count);
+        new(status, _generation, LiveVectorCount, DeltaCount, _visibilityTombstoneIds.Count);
 
     private void StoreNormalizedVector(ReadOnlySpan<float> vector, double magnitude, int offset)
     {

@@ -2,7 +2,7 @@ using System.Numerics;
 
 namespace VecNet;
 
-internal sealed class HnswIndex
+internal sealed partial class HnswIndex
 {
     private const int InitialCapacity = 4;
     private const int MinM = 2;
@@ -24,6 +24,7 @@ internal sealed class HnswIndex
     private int _count;
     private int _entryPoint = -1;
     private int _maxLayer = -1;
+    private bool _isReadOnly;
 
     internal HnswIndex(int dimension, VectorMetric metric)
         : this(dimension, metric, HnswIndexOptions.Default)
@@ -71,8 +72,21 @@ internal sealed class HnswIndex
 
     internal HnswIndexOptions Options => _options;
 
+    internal void Save(string directoryPath)
+    {
+        HnswIndexStorage.Save(directoryPath, CreateStorageSnapshot());
+    }
+
+    internal static HnswIndex OpenReadOnly(string directoryPath) =>
+        HnswIndexStorage.OpenReadOnly(directoryPath);
+
     internal void Add(ulong id, ReadOnlySpan<float> vector)
     {
+        if (_isReadOnly)
+        {
+            throw new InvalidOperationException("This HNSW index was opened read-only and cannot be modified.");
+        }
+
         ValidateVector(vector, nameof(vector));
         if (_idToOrdinal.ContainsKey(id))
         {
@@ -704,6 +718,96 @@ internal sealed class HnswIndex
         int idComparison = leftId.CompareTo(rightId);
         return idComparison != 0 ? idComparison : leftOrdinal.CompareTo(rightOrdinal);
     }
+
+    private HnswStorageSnapshot CreateStorageSnapshot()
+    {
+        var ids = new ulong[_count];
+        var vectors = new float[checked(_count * Dimension)];
+        var levels = new int[_count];
+        _ids.AsSpan(0, _count).CopyTo(ids);
+        _vectors.AsSpan(0, _count * Dimension).CopyTo(vectors);
+        _levels.AsSpan(0, _count).CopyTo(levels);
+
+        var layers = new HnswLayerSnapshot[_layers.Length];
+        for (int layer = 0; layer < _layers.Length; layer++)
+        {
+            HnswGraphLayer source = _layers[layer];
+            var counts = new int[_count];
+            var neighbors = new int[checked(_count * source.Stride)];
+            source.Counts.AsSpan(0, _count).CopyTo(counts);
+            for (int ordinal = 0; ordinal < _count; ordinal++)
+            {
+                source.Neighbors.AsSpan(ordinal * source.Stride, source.Stride)
+                    .CopyTo(neighbors.AsSpan(ordinal * source.Stride, source.Stride));
+            }
+
+            layers[layer] = new HnswLayerSnapshot(source.Stride, counts, neighbors);
+        }
+
+        return new HnswStorageSnapshot(
+            Dimension,
+            Metric,
+            _options,
+            _mMax,
+            _mMax0,
+            _levelMultiplier,
+            _entryPoint,
+            _maxLayer,
+            ids,
+            vectors,
+            levels,
+            layers);
+    }
+
+    internal static HnswIndex HydrateReadOnly(HnswStorageSnapshot snapshot)
+    {
+        var index = new HnswIndex(snapshot.Dimension, snapshot.Metric, snapshot.Options)
+        {
+            _ids = snapshot.Ids,
+            _vectors = snapshot.Vectors,
+            _levels = snapshot.Levels,
+            _layers = new HnswGraphLayer[snapshot.Layers.Length],
+            _count = snapshot.Ids.Length,
+            _entryPoint = snapshot.EntryPoint,
+            _maxLayer = snapshot.MaxLayer,
+            _isReadOnly = true
+        };
+
+        for (int layer = 0; layer < snapshot.Layers.Length; layer++)
+        {
+            HnswLayerSnapshot source = snapshot.Layers[layer];
+            var graphLayer = new HnswGraphLayer(source.Stride, snapshot.Ids.Length);
+            source.Counts.CopyTo(graphLayer.Counts, 0);
+            source.Neighbors.CopyTo(graphLayer.Neighbors, 0);
+            index._layers[layer] = graphLayer;
+        }
+
+        for (int ordinal = 0; ordinal < snapshot.Ids.Length; ordinal++)
+        {
+            index._idToOrdinal.Add(snapshot.Ids[ordinal], ordinal);
+        }
+
+        return index;
+    }
+
+    internal sealed record HnswStorageSnapshot(
+        int Dimension,
+        VectorMetric Metric,
+        HnswIndexOptions Options,
+        int MMax,
+        int MMax0,
+        double LevelMultiplier,
+        int EntryPoint,
+        int MaxLayer,
+        ulong[] Ids,
+        float[] Vectors,
+        int[] Levels,
+        HnswLayerSnapshot[] Layers);
+
+    internal sealed record HnswLayerSnapshot(
+        int Stride,
+        int[] Counts,
+        int[] Neighbors);
 
     private sealed class HnswGraphLayer
     {

@@ -733,6 +733,41 @@ public static class CommandLine
             hnswSeed);
     }
 
+    public static DurableHnswGeneratedMatrixOptions ParseDurableHnswGeneratedMatrix(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? DurableHnswGeneratedMatrixOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, DurableHnswGeneratedMatrixOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedDurableHnswGeneratedMatrixOption);
+        string presetName = DurableHnswGeneratedMatrixOptions.NormalizePresetName(
+            GetOptionalNonWhiteSpace(values, "preset") ?? DurableHnswGeneratedMatrixOptions.DefaultPresetName);
+        uint seed = GetSeed(values, "seed", 0x5EED0750);
+        string outputDirectory = values.TryGetValue("output-dir", out string? outputDirectoryValue)
+            ? outputDirectoryValue
+            : Path.Combine("VecNet.BenchmarkRunner.Artifacts", "hnsw-generated-durable-matrix");
+        if (string.IsNullOrWhiteSpace(outputDirectory))
+        {
+            throw new ArgumentException("Option --output-dir must not be empty.");
+        }
+
+        string manifestPath = values.TryGetValue("manifest", out string? manifestValue)
+            ? manifestValue
+            : Path.Combine(outputDirectory, "durable-hnsw-matrix-manifest.json");
+        if (string.IsNullOrWhiteSpace(manifestPath))
+        {
+            throw new ArgumentException("Option --manifest must not be empty.");
+        }
+
+        return new DurableHnswGeneratedMatrixOptions(
+            presetName,
+            seed,
+            outputDirectory,
+            manifestPath);
+    }
+
     public static HnswGeneratedMatrixOptions ParseHnswGeneratedMatrix(IReadOnlyList<string> args)
     {
         string scenario = args.Count == 0 ? HnswGeneratedMatrixOptions.ScenarioName : args[0];
@@ -1283,6 +1318,12 @@ public static class CommandLine
         string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedDurableHnswGeneratedMatrixOption(string name) =>
+        string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output-dir", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "manifest", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedHnswGeneratedOption(string name) =>
         string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||

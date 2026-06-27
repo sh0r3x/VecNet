@@ -5,6 +5,12 @@ namespace VecNet;
 /// <summary>
 /// Opaque reusable candidate set for exact-flat filtered search.
 /// </summary>
+/// <remarks>
+/// Candidate sets are caller-owned immutable search inputs created by
+/// <see cref="ExactFlatIndex.CreateCandidateSet(ReadOnlySpan{ulong})"/>. They are bound to the
+/// creating index instance and its generation; using a candidate set with the wrong index or after
+/// the creating index changes is rejected before results are written.
+/// </remarks>
 [DebuggerDisplay("Count = {Count}")]
 public sealed class ExactFlatCandidateSet
 {

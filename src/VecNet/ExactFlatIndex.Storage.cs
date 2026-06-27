@@ -10,6 +10,12 @@ public sealed partial class ExactFlatIndex
     /// <summary>
     /// Writes a compact live exact-flat checkpoint to a new or empty directory and publishes it in memory.
     /// </summary>
+    /// <remarks>
+    /// Checkpoint writes the current live view only, validates the newly written output, and then
+    /// publishes the compact view in this index instance. It does not replace an active directory,
+    /// coordinate with other processes, provide crash recovery for caller-managed replacement, or
+    /// make the opened directory writable.
+    /// </remarks>
     /// <param name="directoryPath">
     /// The target directory path. It must not be null or whitespace, must not name an existing file,
     /// and must either not exist or name an empty directory. Existing index directories are not overwritten.
@@ -24,7 +30,7 @@ public sealed partial class ExactFlatIndex
 
         ExactFlatIndexStorage.ValidateNewOrEmptyDirectoryPath(directoryPath);
 
-        int foldedDeltaCount = DeltaCount;
+        int foldedDeltaCount = DeltaVectorCount;
         int foldedTombstoneCount = _visibilityTombstoneIds.Count;
         if (foldedDeltaCount == 0 && foldedTombstoneCount == 0)
         {
@@ -58,6 +64,11 @@ public sealed partial class ExactFlatIndex
     /// <summary>
     /// Saves this exact flat index to a new or empty durable exact-flat directory.
     /// </summary>
+    /// <remarks>
+    /// Save writes the current live view only. It requires a new or empty target location and does
+    /// not replace an active index directory, coordinate with other processes, or provide
+    /// caller-level crash recovery for directory swaps.
+    /// </remarks>
     /// <param name="directoryPath">
     /// The target directory path. It must not be null or whitespace, must not name an existing file,
     /// and must either not exist or name an empty directory. Existing index directories are not overwritten.
@@ -72,6 +83,11 @@ public sealed partial class ExactFlatIndex
     /// <summary>
     /// Opens a durable exact-flat index directory as an immutable read-only index.
     /// </summary>
+    /// <remarks>
+    /// Open validates the manifest and binary files using broad preview failure categories such as
+    /// invalid data, missing files, unsupported format, or I/O errors. It does not establish a
+    /// stable complete exception taxonomy and does not open the index for mutation.
+    /// </remarks>
     /// <param name="directoryPath">
     /// The exact-flat index directory path. It must not be null or whitespace and must name an
     /// existing exact-flat directory containing a valid manifest and binary files.
@@ -113,7 +129,7 @@ public sealed partial class ExactFlatIndex
             _count,
             LiveVectorCount,
             BaseVectorCount,
-            DeltaCount,
+            DeltaVectorCount,
             _visibilityTombstoneIds.Count,
             _deletedReservedIds.Count,
             foldedDeltaCount,

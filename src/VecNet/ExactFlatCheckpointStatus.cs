@@ -1,8 +1,12 @@
 namespace VecNet;
 
 /// <summary>
-/// Status returned by an exact-flat checkpoint operation.
+/// Broad preview status returned by an exact-flat checkpoint operation.
 /// </summary>
+/// <remarks>
+/// These values describe current exact-flat checkpoint outcomes and are not a complete stable
+/// exception or failure taxonomy.
+/// </remarks>
 public enum ExactFlatCheckpointStatus
 {
     /// <summary>

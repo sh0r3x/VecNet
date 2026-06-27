@@ -3,14 +3,22 @@ namespace VecNet;
 /// <summary>
 /// Caller-owned reusable workspace for exact-flat allowlist filtered search.
 /// </summary>
+/// <remarks>
+/// A workspace stores transient row marks for one exact-flat search at a time. The caller owns
+/// its lifetime and must provide separate workspace instances for concurrent searches.
+/// </remarks>
 public sealed class ExactFlatSearchFilterWorkspace
 {
     private int _searchMark;
 
     /// <summary>
-    /// Initializes a reusable filter workspace sized for an exact-flat index vector count.
+    /// Initializes a reusable filter workspace sized for an exact-flat physical vector count.
     /// </summary>
-    /// <param name="maxVectorCount">The maximum vector count this workspace can support.</param>
+    /// <param name="maxVectorCount">
+    /// The maximum physical stored-row count this workspace can support. Use
+    /// <see cref="ExactFlatIndex.PhysicalVectorCount"/> or <see cref="ExactFlatIndex.VectorCount"/>
+    /// for the index being searched.
+    /// </param>
     public ExactFlatSearchFilterWorkspace(int maxVectorCount)
     {
         if (maxVectorCount < 0)
@@ -25,7 +33,7 @@ public sealed class ExactFlatSearchFilterWorkspace
     }
 
     /// <summary>
-    /// Gets the maximum exact-flat vector count supported by this workspace.
+    /// Gets the maximum exact-flat physical stored-row count supported by this workspace.
     /// </summary>
     public int MaxVectorCount { get; }
 

@@ -1,8 +1,12 @@
 namespace VecNet;
 
 /// <summary>
-/// Status returned by a status-reporting vector mutation operation.
+/// Broad preview status returned by a status-reporting vector mutation operation.
 /// </summary>
+/// <remarks>
+/// These values describe supported exact-flat mutation outcomes. They are not a complete stable
+/// exception or failure taxonomy for every future index mode.
+/// </remarks>
 public enum VectorMutationStatus
 {
     /// <summary>

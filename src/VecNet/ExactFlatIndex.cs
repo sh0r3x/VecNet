@@ -71,13 +71,94 @@ public sealed partial class ExactFlatIndex
     public VectorMetric Metric { get; }
 
     /// <summary>
-    /// Gets the current number of vectors stored by this index.
+    /// Gets the physical stored-row count used to size exact-flat row workspaces.
     /// </summary>
-    public int VectorCount => _count;
+    /// <remarks>
+    /// This count includes live visible rows and rows hidden by tombstones. Use
+    /// <see cref="LiveVectorCount"/> when caller-visible search cardinality is required.
+    /// </remarks>
+    public int VectorCount => PhysicalVectorCount;
+
+    /// <summary>
+    /// Gets the physical stored-row count used to size exact-flat row workspaces.
+    /// </summary>
+    /// <remarks>
+    /// This count includes live visible rows and rows hidden by tombstones. Raw allowlist
+    /// searches require an <see cref="ExactFlatSearchFilterWorkspace"/> whose
+    /// <see cref="ExactFlatSearchFilterWorkspace.MaxVectorCount"/> is at least this value.
+    /// Checkpoint publication compacts this value to the current live view.
+    /// </remarks>
+    public int PhysicalVectorCount => _count;
+
+    /// <summary>
+    /// Gets the current number of live visible vectors returned by search.
+    /// </summary>
+    public int LiveVectorCount => _count - _visibilityTombstoneIds.Count;
+
+    /// <summary>
+    /// Gets the current live base vector count.
+    /// </summary>
+    public int BaseVectorCount
+    {
+        get
+        {
+            int baseLimit = _baseRowCount > _count ? _count : _baseRowCount;
+            int baseCount = 0;
+            for (int row = 0; row < baseLimit; row++)
+            {
+                if (!IsDeleted(row))
+                {
+                    baseCount++;
+                }
+            }
+
+            return baseCount;
+        }
+    }
+
+    /// <summary>
+    /// Gets the current live in-memory delta vector count.
+    /// </summary>
+    public int DeltaVectorCount
+    {
+        get
+        {
+            if (_baseRowCount >= _count)
+            {
+                return 0;
+            }
+
+            int deltaCount = 0;
+            for (int row = _baseRowCount; row < _count; row++)
+            {
+                if (!IsDeleted(row))
+                {
+                    deltaCount++;
+                }
+            }
+
+            return deltaCount;
+        }
+    }
+
+    /// <summary>
+    /// Gets the current visibility tombstone count.
+    /// </summary>
+    public int TombstoneCount => _visibilityTombstoneIds.Count;
+
+    /// <summary>
+    /// Gets the current deleted or otherwise reserved external identifier count.
+    /// </summary>
+    public int DeletedReservedIdCount => _deletedReservedIds.Count;
 
     /// <summary>
     /// Gets the current opaque instance-local generation stamp.
     /// </summary>
+    /// <remarks>
+    /// The generation is for detecting stale reusable exact-flat candidate sets created by this
+    /// process and index instance. It is not a durable version, timestamp, ordering token across
+    /// index instances, or cross-process coordination mechanism.
+    /// </remarks>
     public long Generation => _generation;
 
     /// <summary>
@@ -112,7 +193,10 @@ public sealed partial class ExactFlatIndex
     /// <param name="vector">
     /// The vector values to copy into index storage. Cosine vectors are normalized during insertion.
     /// </param>
-    /// <returns>A mutation result describing whether the insert committed.</returns>
+    /// <returns>
+    /// A mutation result describing the broad preview mutation status and current live/count
+    /// inspection values. The status values are not a complete stable exception taxonomy.
+    /// </returns>
     public VectorMutationResult TryAdd(ulong id, ReadOnlySpan<float> vector)
     {
         if (_isReadOnly)
@@ -136,7 +220,10 @@ public sealed partial class ExactFlatIndex
     /// Attempts to delete a visible vector by external identifier.
     /// </summary>
     /// <param name="id">The opaque external vector identifier to delete.</param>
-    /// <returns>A mutation result describing whether the delete committed.</returns>
+    /// <returns>
+    /// A mutation result describing the broad preview mutation status and current live/count
+    /// inspection values. The status values are not a complete stable exception taxonomy.
+    /// </returns>
     public VectorMutationResult TryDelete(ulong id)
     {
         if (_isReadOnly)
@@ -218,7 +305,10 @@ public sealed partial class ExactFlatIndex
     /// <param name="allowedIds">
     /// Caller-supplied external identifiers to compile. Unknown identifiers are ignored and duplicates are coalesced.
     /// </param>
-    /// <returns>An exact-flat candidate set bound to this index instance and its current generation.</returns>
+    /// <returns>
+    /// An opaque candidate set bound to this index instance and its current generation. It must be
+    /// rebuilt after a committed mutation or checkpoint publication.
+    /// </returns>
     public ExactFlatCandidateSet CreateCandidateSet(ReadOnlySpan<ulong> allowedIds)
     {
         if (_count == 0 || allowedIds.IsEmpty)
@@ -264,7 +354,11 @@ public sealed partial class ExactFlatIndex
     /// Searches only vectors present in a reusable exact-flat candidate set.
     /// </summary>
     /// <param name="query">The query vector. Cosine queries are normalized during search.</param>
-    /// <param name="candidates">The candidate set created by this exact-flat index.</param>
+    /// <param name="candidates">
+    /// The candidate set created by this exact-flat index for its current generation.
+    /// Candidate sets created by another index or an older generation are rejected before results
+    /// are written.
+    /// </param>
     /// <param name="results">
     /// The caller-owned destination buffer. Its length specifies the requested result count.
     /// </param>
@@ -310,7 +404,11 @@ public sealed partial class ExactFlatIndex
     /// <param name="results">
     /// The caller-owned destination buffer. Its length specifies the requested result count.
     /// </param>
-    /// <param name="workspace">The caller-owned reusable exact-flat filter workspace.</param>
+    /// <param name="workspace">
+    /// The caller-owned reusable exact-flat filter workspace. It is temporary caller storage and
+    /// may be reused by the caller after the method returns. Its capacity must be at least
+    /// <see cref="PhysicalVectorCount"/>, not merely <see cref="LiveVectorCount"/>.
+    /// </param>
     /// <returns>The number of filtered results written.</returns>
     public int Search(
         ReadOnlySpan<float> query,
@@ -449,50 +547,8 @@ public sealed partial class ExactFlatIndex
     private bool IsDeleted(int row) =>
         _visibilityTombstoneIds.Count != 0 && _visibilityTombstoneIds.Contains(_ids[row]);
 
-    private int LiveVectorCount => _count - _visibilityTombstoneIds.Count;
-
-    private int BaseVectorCount
-    {
-        get
-        {
-            int baseLimit = _baseRowCount > _count ? _count : _baseRowCount;
-            int baseCount = 0;
-            for (int row = 0; row < baseLimit; row++)
-            {
-                if (!IsDeleted(row))
-                {
-                    baseCount++;
-                }
-            }
-
-            return baseCount;
-        }
-    }
-
-    private int DeltaCount
-    {
-        get
-        {
-            if (_baseRowCount >= _count)
-            {
-                return 0;
-            }
-
-            int deltaCount = 0;
-            for (int row = _baseRowCount; row < _count; row++)
-            {
-                if (!IsDeleted(row))
-                {
-                    deltaCount++;
-                }
-            }
-
-            return deltaCount;
-        }
-    }
-
     private VectorMutationResult CreateMutationResult(VectorMutationStatus status) =>
-        new(status, _generation, LiveVectorCount, DeltaCount, _visibilityTombstoneIds.Count);
+        new(status, _generation, LiveVectorCount, DeltaVectorCount, TombstoneCount);
 
     private void StoreNormalizedVector(ReadOnlySpan<float> vector, double magnitude, int offset)
     {

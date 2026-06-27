@@ -13,6 +13,13 @@
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://github.com/sh0r3x/VecNet.git</PackageProjectUrl>
     <PackageTags>vector-search;vector-indexing;dotnet;embedded;managed;preview</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="" />
+    <None Include="../../LICENSE" Pack="true" PackagePath="" />
+  </ItemGroup>
 
 </Project>

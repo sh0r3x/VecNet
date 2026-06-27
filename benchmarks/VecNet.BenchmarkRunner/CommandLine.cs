@@ -529,6 +529,98 @@ public static class CommandLine
             warmupQueries);
     }
 
+    public static GeneratedExactPracticalUpdateOptions ParseGeneratedExactPracticalUpdate(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? GeneratedExactPracticalUpdateOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, GeneratedExactPracticalUpdateOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedGeneratedExactPracticalUpdateOption);
+
+        VectorMetric metric = GetEnum(values, "metric", VectorMetric.SquaredEuclidean);
+        int dimension = GetPositiveInt(values, "dimension", 128);
+        int baseVectorCount = GetPositiveInt(values, "vectors", 10_000);
+        int queryCount = GetPositiveInt(values, "queries", 100);
+        int topK = GetPositiveInt(values, "top-k", 10);
+        int runs = GetPositiveInt(values, "runs", 1);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", 0);
+        uint seed = GetSeed(values, "seed", 0x5EED2079);
+        int insertedDeltaCount = GetPositiveInt(values, "insertions", Math.Max(1, baseVectorCount / 10));
+        int deletedBaseCount = GetPositiveInt(values, "deletes", Math.Max(1, baseVectorCount / 10));
+        int duplicateInsertAttempts = GetNonNegativeInt(values, "duplicate-inserts", 1);
+        int unknownDeleteAttempts = GetNonNegativeInt(values, "unknown-deletes", 1);
+        int repeatedDeleteAttempts = GetNonNegativeInt(values, "repeated-deletes", 1);
+        string allowlistKind = GeneratedExactPracticalUpdateOptions.NormalizeSelectivityKind(
+            GetOptionalNonWhiteSpace(values, "allowlist") ?? GeneratedExactPracticalUpdateOptions.DefaultAllowlistKind);
+        string candidateSetKind = GeneratedExactPracticalUpdateOptions.NormalizeSelectivityKind(
+            GetOptionalNonWhiteSpace(values, "candidate-set") ?? GeneratedExactPracticalUpdateOptions.DefaultCandidateSetKind);
+        int duplicateIdsPerQuery = GetNonNegativeInt(values, "duplicate-ids", 0);
+        int unknownIdsPerQuery = GetNonNegativeInt(values, "unknown-ids", 0);
+        string outputPath = values.TryGetValue("output", out string? outputValue)
+            ? outputValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"generated-exact-practical-update-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json");
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("Option --output must not be empty.");
+        }
+
+        string checkpointDirectory = values.TryGetValue("checkpoint-directory", out string? checkpointDirectoryValue)
+            ? checkpointDirectoryValue
+            : Path.Combine(
+                Path.GetDirectoryName(outputPath) ?? "VecNet.BenchmarkRunner.Artifacts",
+                $"generated-exact-practical-update-checkpoint-{DateTime.UtcNow:yyyyMMdd-HHmmss}");
+        if (string.IsNullOrWhiteSpace(checkpointDirectory))
+        {
+            throw new ArgumentException("Option --checkpoint-directory must not be empty.");
+        }
+
+        if (deletedBaseCount > baseVectorCount)
+        {
+            throw new ArgumentException("Option --deletes must be less than or equal to --vectors.");
+        }
+
+        int liveVectorCount = checked(baseVectorCount + insertedDeltaCount - deletedBaseCount);
+        if (topK > liveVectorCount)
+        {
+            throw new ArgumentException("top-k must be less than or equal to the post-mutation live vector count.");
+        }
+
+        if ((allowlistKind == "very-selective" || candidateSetKind == "very-selective") && topK <= 1)
+        {
+            throw new ArgumentException("Option --allowlist/--candidate-set very-selective requires --top-k greater than 1.");
+        }
+
+        return new GeneratedExactPracticalUpdateOptions(
+            metric,
+            dimension,
+            baseVectorCount,
+            queryCount,
+            topK,
+            seed,
+            insertedDeltaCount,
+            deletedBaseCount,
+            duplicateInsertAttempts,
+            unknownDeleteAttempts,
+            repeatedDeleteAttempts,
+            allowlistKind,
+            candidateSetKind,
+            duplicateIdsPerQuery,
+            unknownIdsPerQuery,
+            outputPath,
+            checkpointDirectory,
+            runs,
+            warmupQueries);
+    }
+
     public static GeneratedExactUpdateMatrixOptions ParseGeneratedExactUpdateMatrix(IReadOnlyList<string> args)
     {
         string scenario = args.Count == 0 ? GeneratedExactUpdateMatrixOptions.ScenarioName : args[0];
@@ -1248,6 +1340,27 @@ public static class CommandLine
         string.Equals(name, "duplicate-ids", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "unknown-ids", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "output", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedGeneratedExactPracticalUpdateOption(string name) =>
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "dimension", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vectors", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "top-k", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "insertions", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "duplicate-inserts", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "unknown-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "repeated-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "allowlist", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "candidate-set", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "duplicate-ids", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "unknown-ids", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "checkpoint-directory", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedGeneratedExactUpdateMatrixOption(string name) =>
         string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||

@@ -67,5 +67,8 @@ nunit-*.xml
 # Local benchmark runner reports may contain machine and working-tree details
 /VecNet.BenchmarkRunner.Artifacts/
 
+# Local package audit outputs may contain private package and consumer-smoke artifacts
+/VecNet.PackageAudit.Artifacts/
+
 # Local external dataset caches contain downloaded, converted and private evidence artifacts
 /VecNet.DatasetCache/

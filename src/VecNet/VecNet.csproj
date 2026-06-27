@@ -4,6 +4,15 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackageId>VecNet</PackageId>
+    <Version>0.1.0-preview.1</Version>
+    <Title>VecNet</Title>
+    <Authors>VecNet Contributors</Authors>
+    <Description>Pure-managed embedded .NET vector indexing library in preview-packageability preparation. Current metadata does not indicate stable API admission, production readiness or public performance claims.</Description>
+    <RepositoryUrl>https://github.com/sh0r3x/VecNet.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/sh0r3x/VecNet.git</PackageProjectUrl>
+    <PackageTags>vector-search;vector-indexing;dotnet;embedded;managed;preview</PackageTags>
   </PropertyGroup>
 
 </Project>

@@ -621,6 +621,67 @@ public static class CommandLine
             warmupQueries);
     }
 
+    public static GeneratedExactOpenedSearchOptions ParseGeneratedExactOpenedSearch(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? GeneratedExactOpenedSearchOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, GeneratedExactOpenedSearchOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedGeneratedExactOpenedSearchOption);
+
+        VectorMetric metric = GetEnum(values, "metric", VectorMetric.SquaredEuclidean);
+        int dimension = GetPositiveInt(values, "dimension", 128);
+        int vectorCount = GetPositiveInt(values, "vectors", 10_000);
+        int queryCount = GetPositiveInt(values, "queries", 100);
+        int topK = GetPositiveInt(values, "top-k", 10);
+        int runs = GetPositiveInt(values, "runs", 1);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", 0);
+        uint seed = GetSeed(values, "seed", 0x5EED2092);
+        string outputPath = values.TryGetValue("output", out string? outputValue)
+            ? outputValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"generated-exact-opened-search-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json");
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("Option --output must not be empty.");
+        }
+
+        string indexDirectory = values.TryGetValue("index-directory", out string? indexDirectoryValue)
+            ? indexDirectoryValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"generated-exact-opened-search-index-{DateTime.UtcNow:yyyyMMdd-HHmmss}");
+        if (string.IsNullOrWhiteSpace(indexDirectory))
+        {
+            throw new ArgumentException("Option --index-directory must not be empty.");
+        }
+
+        if (topK > vectorCount)
+        {
+            throw new ArgumentException("top-k must be less than or equal to the vector count.");
+        }
+
+        return new GeneratedExactOpenedSearchOptions(
+            metric,
+            dimension,
+            vectorCount,
+            queryCount,
+            topK,
+            seed,
+            outputPath,
+            indexDirectory,
+            runs,
+            warmupQueries);
+    }
+
     public static GeneratedExactUpdateMatrixOptions ParseGeneratedExactUpdateMatrix(IReadOnlyList<string> args)
     {
         string scenario = args.Count == 0 ? GeneratedExactUpdateMatrixOptions.ScenarioName : args[0];
@@ -1361,6 +1422,18 @@ public static class CommandLine
         string.Equals(name, "unknown-ids", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "checkpoint-directory", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedGeneratedExactOpenedSearchOption(string name) =>
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "dimension", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vectors", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "top-k", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "index-directory", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedGeneratedExactUpdateMatrixOption(string name) =>
         string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||

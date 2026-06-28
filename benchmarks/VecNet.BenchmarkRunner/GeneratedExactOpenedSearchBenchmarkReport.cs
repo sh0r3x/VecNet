@@ -1,0 +1,101 @@
+namespace VecNet.BenchmarkRunner;
+
+public sealed record GeneratedExactOpenedSearchBenchmarkReport(
+    string SchemaName,
+    string SchemaVersion,
+    string ReportId,
+    DateTimeOffset GeneratedAtUtc,
+    string TaskId,
+    string ScenarioName,
+    string ClaimClass,
+    string PrivacyClass,
+    GeneratedExactOpenedSearchEvidenceInfo Evidence,
+    RepositoryInfo Repository,
+    RunnerInfo Runner,
+    CommandInfo Command,
+    EnvironmentInfo Environment,
+    DatasetInfo Dataset,
+    TruthInfo Truth,
+    ScenarioInfo Scenario,
+    IndexInfo Index,
+    GeneratedExactOpenedSearchLifecycleInfo Lifecycle,
+    SearchInfo OpenedReadOnlySearch,
+    GeneratedExactOpenedSearchMeasurementInfo Measurement,
+    MetricsInfo Metrics,
+    GeneratedExactOpenedSearchValidationInfo Validation,
+    GeneratedExactOpenedSearchEligibilityInfo Eligibility,
+    string[] Notes);
+
+public sealed record GeneratedExactOpenedSearchEvidenceInfo(
+    string Status,
+    string Scope,
+    bool PublicClaimEligible,
+    bool PreviewReadinessEligible,
+    bool BaselineCandidateEligible,
+    bool ComparisonArtifactEligible,
+    bool RegressionGateEligible,
+    string PublicClaimReason,
+    string PreviewReadinessReason,
+    string BaselineCandidateReason,
+    string ComparisonArtifactReason,
+    string RegressionGateReason,
+    string[] Limitations);
+
+public sealed record GeneratedExactOpenedSearchLifecycleInfo(
+    string SourceIndexConstruction,
+    string SaveOperation,
+    string OpenOperation,
+    string SavedIndexDirectoryPath,
+    string SavedIndexDirectoryPathPolicy,
+    bool SourceIndexBuiltBeforeMeasurement,
+    bool SavedBeforeMeasurement,
+    bool OpenedReadOnlyBeforeMeasurement,
+    bool CallerOwnedResultBuffers,
+    string Boundary);
+
+public sealed record GeneratedExactOpenedSearchMeasurementInfo(
+    LatencyMeasurementInfo OpenedReadOnlySearchLatency,
+    MeasurementStatusInfo OpenedReadOnlySearchManagedAllocations,
+    MeasurementStatusInfo SourceIndexConstruction,
+    MeasurementStatusInfo Save,
+    MeasurementStatusInfo OpenReadOnly,
+    MeasurementStatusInfo TruthConstruction,
+    MeasurementStatusInfo Validation,
+    MeasurementStatusInfo ResultCaptureComparison,
+    MeasurementStatusInfo ReportWriting,
+    MeasurementStatusInfo ResidentProcessMemory,
+    RepeatedRunInfo RepeatedRuns,
+    RunToRunNoiseInfo RunToRunNoise,
+    WarmupInfo Warmup,
+    string SharedExcludedOperations);
+
+public sealed record GeneratedExactOpenedSearchValidationInfo(
+    string Status,
+    string EvidenceStatus,
+    bool FiniteVectors,
+    bool TruthGenerated,
+    bool SourceIndexSaved,
+    bool OpenedReadOnlyIndexCreated,
+    bool OpenedReadOnlySearchComparedToTruth,
+    bool CallerOwnedResultBuffers,
+    bool SaveOpenSetupExcludedFromMeasurement,
+    bool WarmupExcludedFromMeasurement,
+    bool ResultCaptureComparisonExcludedFromMeasurement,
+    bool PublicClaimEligible,
+    bool PreviewReadinessEligible,
+    bool BaselineCandidateEligible,
+    bool ComparisonArtifactEligible,
+    bool RegressionGateEligible,
+    bool ReportIsPrivateRaw);
+
+public sealed record GeneratedExactOpenedSearchEligibilityInfo(
+    bool PublicClaimEligible,
+    bool PreviewReadinessEligible,
+    bool BaselineCandidateEligible,
+    bool ComparisonArtifactEligible,
+    bool RegressionGateEligible,
+    string PublicClaimReason,
+    string PreviewReadinessReason,
+    string BaselineCandidateReason,
+    string ComparisonArtifactReason,
+    string RegressionGateReason);

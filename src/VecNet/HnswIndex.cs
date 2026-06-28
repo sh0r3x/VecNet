@@ -25,6 +25,7 @@ internal sealed partial class HnswIndex
     private int _entryPoint = -1;
     private int _maxLayer = -1;
     private bool _isReadOnly;
+    private HnswBuildScratch? _buildScratch;
 
     internal HnswIndex(int dimension, VectorMetric metric)
         : this(dimension, metric, HnswIndexOptions.Default)
@@ -96,6 +97,17 @@ internal sealed partial class HnswIndex
         int level = GenerateLevel();
         int ordinal = _count;
         EnsureCapacity(checked(_count + 1), level);
+        _idToOrdinal.EnsureCapacity(checked(_count + 1));
+
+        HnswBuildScratch? scratch = null;
+        if (_count > 0)
+        {
+            scratch = EnsureBuildScratch(
+                _ids.Length,
+                Math.Max(_options.EfConstruction, _mMax0 + 1),
+                _mMax0,
+                Math.Max(_options.EfConstruction, _mMax0 + 1));
+        }
 
         _ids[ordinal] = id;
         vector.CopyTo(_vectors.AsSpan(ordinal * Dimension, Dimension));
@@ -110,7 +122,7 @@ internal sealed partial class HnswIndex
             return;
         }
 
-        var workspace = new HnswSearchWorkspace(_count, Math.Max(_options.EfConstruction, 1));
+        HnswSearchWorkspace workspace = scratch!.Workspace;
         int entryPoint = _entryPoint;
         int previousMaxLayer = _maxLayer;
 
@@ -126,14 +138,20 @@ internal sealed partial class HnswIndex
         for (int layer = Math.Min(previousMaxLayer, level); layer >= 0; layer--)
         {
             int found = SearchLayer(vector, entryPoint, _options.EfConstruction, layer, workspace, _count);
-            int[] candidates = new int[found];
-            Array.Copy(workspace.ResultOrdinals, candidates, found);
+            int selectedCount = SelectNeighbors(
+                ordinal,
+                workspace.ResultOrdinals.AsSpan(0, found),
+                scratch.SelectedOrdinals.AsSpan(0, _options.M),
+                layer,
+                _count,
+                scratch.NeighborCandidates);
+            SetNeighbors(ordinal, layer, scratch.SelectedOrdinals, selectedCount);
 
-            int selectedCount = SelectNeighbors(ordinal, candidates, candidates.Length, _options.M, layer, _count, out int[] selected);
-            SetNeighbors(ordinal, layer, selected, selectedCount);
+            HnswGraphLayer graphLayer = _layers[layer];
+            int newOrdinalOffset = ordinal * graphLayer.Stride;
             for (int i = 0; i < selectedCount; i++)
             {
-                AddOrPruneNeighbor(selected[i], ordinal, layer);
+                AddOrPruneNeighbor(graphLayer.Neighbors[newOrdinalOffset + i], ordinal, layer, scratch);
             }
 
             if (found > 0)
@@ -223,11 +241,15 @@ internal sealed partial class HnswIndex
             throw new ArgumentOutOfRangeException(nameof(baseOrdinal));
         }
 
-        int[] candidateArray = candidates.ToArray();
-        int selectedCount = SelectNeighbors(baseOrdinal, candidateArray, candidateArray.Length, selected.Length, layer, _count, out int[] selectedArray);
-        selectedArray.AsSpan(0, selectedCount).CopyTo(selected);
-        return selectedCount;
+        HnswBuildScratch scratch = EnsureBuildScratch(
+            Math.Max(_ids.Length, _count),
+            Math.Max(candidates.Length, _mMax0 + 1),
+            Math.Max(selected.Length, _mMax0),
+            Math.Max(candidates.Length, _mMax0 + 1));
+        return SelectNeighbors(baseOrdinal, candidates, selected, layer, _count, scratch.NeighborCandidates);
     }
+
+    internal HnswSearchWorkspace? DebugBuildSearchWorkspace => _buildScratch?.Workspace;
 
     private static void ValidateOptions(HnswIndexOptions options)
     {
@@ -315,6 +337,32 @@ internal sealed partial class HnswIndex
         }
     }
 
+    private HnswBuildScratch EnsureBuildScratch(
+        int maxElements,
+        int candidateOrdinalCapacity,
+        int selectedCapacity,
+        int neighborCandidateCapacity)
+    {
+        HnswBuildScratch? scratch = _buildScratch;
+        if (scratch is null ||
+            scratch.Workspace.MaxElements < maxElements ||
+            scratch.Workspace.MaxEf < _options.EfConstruction ||
+            scratch.CandidateOrdinals.Length < candidateOrdinalCapacity ||
+            scratch.SelectedOrdinals.Length < selectedCapacity ||
+            scratch.NeighborCandidates.Length < neighborCandidateCapacity)
+        {
+            scratch = new HnswBuildScratch(
+                maxElements,
+                _options.EfConstruction,
+                candidateOrdinalCapacity,
+                selectedCapacity,
+                neighborCandidateCapacity);
+            _buildScratch = scratch;
+        }
+
+        return scratch;
+    }
+
     private int GenerateLevel()
     {
         if (_levelProvider is not null)
@@ -358,19 +406,35 @@ internal sealed partial class HnswIndex
 
         float entryDistance = SquaredEuclideanDistance(query, entryPoint);
         workspace.VisitMarks[entryPoint] = visitMark;
-        AddCandidate(workspace, ref candidateCount, entryPoint, entryDistance);
-        AddBest(workspace, ref bestCount, ef, entryPoint, entryDistance);
+        HnswPriorityQueues.PushNearest(
+            workspace.CandidateOrdinals,
+            workspace.CandidateDistances,
+            _ids,
+            ref candidateCount,
+            entryPoint,
+            entryDistance);
+        HnswPriorityQueues.AddBoundedNearest(
+            workspace.BestOrdinals,
+            workspace.BestDistances,
+            _ids,
+            ref bestCount,
+            ef,
+            entryPoint,
+            entryDistance);
 
         HnswGraphLayer graphLayer = _layers[layer];
         while (candidateCount > 0)
         {
-            int candidateIndex = FindNearestCandidateIndex(workspace, candidateCount);
-            int current = workspace.CandidateOrdinals[candidateIndex];
-            float currentDistance = workspace.CandidateDistances[candidateIndex];
-            RemoveAt(workspace.CandidateOrdinals, workspace.CandidateDistances, ref candidateCount, candidateIndex);
+            HnswQueueItem currentCandidate = HnswPriorityQueues.PopNearest(
+                workspace.CandidateOrdinals,
+                workspace.CandidateDistances,
+                _ids,
+                ref candidateCount);
+            int current = currentCandidate.Ordinal;
+            float currentDistance = currentCandidate.Distance;
 
-            int worstIndex = FindWorstBestIndex(workspace, bestCount);
-            if (currentDistance > workspace.BestDistances[worstIndex])
+            HnswQueueItem worst = HnswPriorityQueues.PeekWorst(workspace.BestOrdinals, workspace.BestDistances, bestCount);
+            if (currentDistance > worst.Distance)
             {
                 break;
             }
@@ -387,23 +451,26 @@ internal sealed partial class HnswIndex
 
                 workspace.VisitMarks[neighbor] = visitMark;
                 float distance = SquaredEuclideanDistance(query, neighbor);
-                worstIndex = FindWorstBestIndex(workspace, bestCount);
-                bool shouldAdd = bestCount < ef ||
-                    CompareNearest(
-                        distance,
-                        _ids[neighbor],
-                        neighbor,
-                        workspace.BestDistances[worstIndex],
-                        _ids[workspace.BestOrdinals[worstIndex]],
-                        workspace.BestOrdinals[worstIndex]) < 0;
-
-                if (!shouldAdd)
+                bool accepted = HnswPriorityQueues.AddBoundedNearest(
+                    workspace.BestOrdinals,
+                    workspace.BestDistances,
+                    _ids,
+                    ref bestCount,
+                    ef,
+                    neighbor,
+                    distance);
+                if (!accepted)
                 {
                     continue;
                 }
 
-                AddCandidate(workspace, ref candidateCount, neighbor, distance);
-                AddBest(workspace, ref bestCount, ef, neighbor, distance);
+                HnswPriorityQueues.PushNearest(
+                    workspace.CandidateOrdinals,
+                    workspace.CandidateDistances,
+                    _ids,
+                    ref candidateCount,
+                    neighbor,
+                    distance);
             }
         }
 
@@ -417,41 +484,17 @@ internal sealed partial class HnswIndex
         return bestCount;
     }
 
-    private void AddCandidate(HnswSearchWorkspace workspace, ref int count, int ordinal, float distance)
-    {
-        workspace.CandidateOrdinals[count] = ordinal;
-        workspace.CandidateDistances[count] = distance;
-        count++;
-    }
-
-    private void AddBest(HnswSearchWorkspace workspace, ref int count, int ef, int ordinal, float distance)
-    {
-        if (count < ef)
-        {
-            workspace.BestOrdinals[count] = ordinal;
-            workspace.BestDistances[count] = distance;
-            count++;
-            return;
-        }
-
-        int worstIndex = FindWorstBestIndex(workspace, count);
-        workspace.BestOrdinals[worstIndex] = ordinal;
-        workspace.BestDistances[worstIndex] = distance;
-    }
-
     private int SelectNeighbors(
         int baseOrdinal,
-        int[] candidates,
-        int candidateCount,
-        int maxSelected,
+        ReadOnlySpan<int> candidates,
+        Span<int> selected,
         int layer,
         int validExistingCount,
-        out int[] selected)
+        NeighborCandidate[] unique)
     {
-        var unique = new NeighborCandidate[candidateCount];
         int uniqueCount = 0;
 
-        for (int i = 0; i < candidateCount; i++)
+        for (int i = 0; i < candidates.Length; i++)
         {
             int candidate = candidates[i];
             int validExclusive = baseOrdinal == _count ? _count : validExistingCount;
@@ -487,8 +530,8 @@ internal sealed partial class HnswIndex
         }
 
         Array.Sort(unique, 0, uniqueCount);
-        selected = new int[Math.Min(maxSelected, uniqueCount)];
         int selectedCount = 0;
+        int maxSelected = selected.Length;
 
         for (int i = 0; i < uniqueCount && selectedCount < maxSelected; i++)
         {
@@ -514,15 +557,14 @@ internal sealed partial class HnswIndex
         return selectedCount;
     }
 
-    private void SetNeighbors(int ordinal, int layer, int[] selected, int selectedCount)
+    private void SetNeighbors(int ordinal, int layer, ReadOnlySpan<int> selected, int selectedCount)
     {
         HnswGraphLayer graphLayer = _layers[layer];
         graphLayer.Counts[ordinal] = selectedCount;
-        selected.AsSpan(0, selectedCount).CopyTo(
-            graphLayer.Neighbors.AsSpan(ordinal * graphLayer.Stride, selectedCount));
+        selected[..selectedCount].CopyTo(graphLayer.Neighbors.AsSpan(ordinal * graphLayer.Stride, selectedCount));
     }
 
-    private void AddOrPruneNeighbor(int baseOrdinal, int newNeighbor, int layer)
+    private void AddOrPruneNeighbor(int baseOrdinal, int newNeighbor, int layer, HnswBuildScratch scratch)
     {
         HnswGraphLayer graphLayer = _layers[layer];
         int offset = baseOrdinal * graphLayer.Stride;
@@ -543,11 +585,17 @@ internal sealed partial class HnswIndex
             return;
         }
 
-        int[] candidates = new int[count + 1];
+        Span<int> candidates = scratch.CandidateOrdinals.AsSpan(0, count + 1);
         graphLayer.Neighbors.AsSpan(offset, count).CopyTo(candidates);
         candidates[count] = newNeighbor;
-        int selectedCount = SelectNeighbors(baseOrdinal, candidates, candidates.Length, graphLayer.Stride, layer, _count + 1, out int[] selected);
-        SetNeighbors(baseOrdinal, layer, selected, selectedCount);
+        int selectedCount = SelectNeighbors(
+            baseOrdinal,
+            candidates,
+            scratch.SelectedOrdinals.AsSpan(0, graphLayer.Stride),
+            layer,
+            _count + 1,
+            scratch.NeighborCandidates);
+        SetNeighbors(baseOrdinal, layer, scratch.SelectedOrdinals, selectedCount);
     }
 
     private float SquaredEuclideanDistance(ReadOnlySpan<float> query, int ordinal)
@@ -611,46 +659,6 @@ internal sealed partial class HnswIndex
         return sum;
     }
 
-    private int FindNearestCandidateIndex(HnswSearchWorkspace workspace, int count)
-    {
-        int bestIndex = 0;
-        for (int i = 1; i < count; i++)
-        {
-            if (CompareNearest(
-                    workspace.CandidateDistances[i],
-                    _ids[workspace.CandidateOrdinals[i]],
-                    workspace.CandidateOrdinals[i],
-                    workspace.CandidateDistances[bestIndex],
-                    _ids[workspace.CandidateOrdinals[bestIndex]],
-                    workspace.CandidateOrdinals[bestIndex]) < 0)
-            {
-                bestIndex = i;
-            }
-        }
-
-        return bestIndex;
-    }
-
-    private int FindWorstBestIndex(HnswSearchWorkspace workspace, int count)
-    {
-        int worstIndex = 0;
-        for (int i = 1; i < count; i++)
-        {
-            if (CompareWorst(
-                    workspace.BestDistances[i],
-                    _ids[workspace.BestOrdinals[i]],
-                    workspace.BestOrdinals[i],
-                    workspace.BestDistances[worstIndex],
-                    _ids[workspace.BestOrdinals[worstIndex]],
-                    workspace.BestOrdinals[worstIndex]) > 0)
-            {
-                worstIndex = i;
-            }
-        }
-
-        return worstIndex;
-    }
-
     private void SortNearest(int[] ordinals, float[] distances, int count)
     {
         for (int i = 1; i < count; i++)
@@ -659,7 +667,7 @@ internal sealed partial class HnswIndex
             float distance = distances[i];
             int j = i - 1;
             while (j >= 0 &&
-                   CompareNearest(distance, _ids[ordinal], ordinal, distances[j], _ids[ordinals[j]], ordinals[j]) < 0)
+                   HnswPriorityQueues.CompareNearest(distance, _ids[ordinal], ordinal, distances[j], _ids[ordinals[j]], ordinals[j]) < 0)
             {
                 ordinals[j + 1] = ordinals[j];
                 distances[j + 1] = distances[j];
@@ -669,54 +677,6 @@ internal sealed partial class HnswIndex
             ordinals[j + 1] = ordinal;
             distances[j + 1] = distance;
         }
-    }
-
-    private static void RemoveAt(int[] ordinals, float[] distances, ref int count, int index)
-    {
-        int itemsToMove = count - index - 1;
-        if (itemsToMove > 0)
-        {
-            ordinals.AsSpan(index + 1, itemsToMove).CopyTo(ordinals.AsSpan(index, itemsToMove));
-            distances.AsSpan(index + 1, itemsToMove).CopyTo(distances.AsSpan(index, itemsToMove));
-        }
-
-        count--;
-    }
-
-    private static int CompareNearest(
-        float leftDistance,
-        ulong leftId,
-        int leftOrdinal,
-        float rightDistance,
-        ulong rightId,
-        int rightOrdinal)
-    {
-        int distanceComparison = leftDistance.CompareTo(rightDistance);
-        if (distanceComparison != 0)
-        {
-            return distanceComparison;
-        }
-
-        int idComparison = leftId.CompareTo(rightId);
-        return idComparison != 0 ? idComparison : leftOrdinal.CompareTo(rightOrdinal);
-    }
-
-    private static int CompareWorst(
-        float leftDistance,
-        ulong leftId,
-        int leftOrdinal,
-        float rightDistance,
-        ulong rightId,
-        int rightOrdinal)
-    {
-        int distanceComparison = leftDistance.CompareTo(rightDistance);
-        if (distanceComparison != 0)
-        {
-            return distanceComparison;
-        }
-
-        int idComparison = leftId.CompareTo(rightId);
-        return idComparison != 0 ? idComparison : leftOrdinal.CompareTo(rightOrdinal);
     }
 
     private HnswStorageSnapshot CreateStorageSnapshot()
@@ -847,6 +807,30 @@ internal sealed partial class HnswIndex
         }
     }
 
+    private sealed class HnswBuildScratch
+    {
+        internal HnswBuildScratch(
+            int maxElements,
+            int maxEf,
+            int candidateOrdinalCapacity,
+            int selectedCapacity,
+            int neighborCandidateCapacity)
+        {
+            Workspace = new HnswSearchWorkspace(maxElements, maxEf);
+            CandidateOrdinals = new int[candidateOrdinalCapacity];
+            SelectedOrdinals = new int[selectedCapacity];
+            NeighborCandidates = new NeighborCandidate[neighborCandidateCapacity];
+        }
+
+        internal HnswSearchWorkspace Workspace { get; }
+
+        internal int[] CandidateOrdinals { get; }
+
+        internal int[] SelectedOrdinals { get; }
+
+        internal NeighborCandidate[] NeighborCandidates { get; }
+    }
+
     private readonly struct NeighborCandidate : IComparable<NeighborCandidate>
     {
         internal NeighborCandidate(int ordinal, float distance, ulong id)
@@ -864,14 +848,7 @@ internal sealed partial class HnswIndex
 
         public int CompareTo(NeighborCandidate other)
         {
-            int distanceComparison = Distance.CompareTo(other.Distance);
-            if (distanceComparison != 0)
-            {
-                return distanceComparison;
-            }
-
-            int idComparison = Id.CompareTo(other.Id);
-            return idComparison != 0 ? idComparison : Ordinal.CompareTo(other.Ordinal);
+            return HnswPriorityQueues.CompareNearest(Distance, Id, Ordinal, other.Distance, other.Id, other.Ordinal);
         }
     }
 }

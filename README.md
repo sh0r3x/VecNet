@@ -7,8 +7,8 @@ vector retrieval.
 
 This package is a `0.1` preview. The currently documented surface focuses on
 exact flat indexing, canonical distance semantics, durable exact-flat save and
-open, exact allowlist filtering, reusable exact candidate sets, and exact
-mutation/checkpoint workflows.
+open, exact allowlist filtering, reusable exact candidate sets, exact count
+inspection, and exact mutation/checkpoint workflows.
 
 ## Current Support
 
@@ -40,16 +40,15 @@ mutation/checkpoint workflows.
   mapping, optional integration adapters, and release-grade operational
   tooling are planned work, not supported public package capabilities in this
   preview.
-- This README does not make public performance, memory, allocation, recall, or
-  platform support claims.
+- This README does not make public performance, memory, allocation, recall,
+  storage-size, stable API, production-readiness, or platform support claims.
 
 ## Installation
 
-When a preview package is available from your configured NuGet source, add it
-to a .NET 10 project:
+Add the published preview package to a .NET 10 project:
 
 ```bash
-dotnet add package VecNet --version 0.1.0-preview.1
+dotnet add package VecNet --version 0.1.0-preview.2
 ```
 
 ## Basic Usage
@@ -74,8 +73,9 @@ for (int i = 0; i < written; i++)
 
 ## Persistence
 
-Use `Save` to write an exact-flat index to a new or empty directory. Use
-`OpenReadOnly` to open that directory as an immutable searchable index.
+Use `Save` as the initial persistence operation for an exact-flat index. It
+writes the current live view to a new or empty directory. Use `OpenReadOnly` to
+open that directory as an immutable searchable index.
 
 ```csharp
 using VecNet;
@@ -93,12 +93,13 @@ Span<SearchResult> results = stackalloc SearchResult[1];
 int written = reopened.Search([1.0f, 0.0f, 0.0f], results);
 ```
 
-`Save` does not overwrite an existing non-empty directory.
+`Save` does not overwrite an existing non-empty directory. It writes only the
+current live view, so deleted rows are not searchable in the saved output.
 
 ## Filtering
 
 For one-off filtering, pass an allowlist of external vector IDs plus a
-caller-owned workspace sized for the current index.
+caller-owned workspace sized for the current physical index rows.
 
 ```csharp
 using VecNet;
@@ -109,7 +110,7 @@ index.Add(20, [0.0f, 1.0f]);
 index.Add(30, [1.0f, 1.0f]);
 
 ulong[] allowedIds = [10, 30];
-var workspace = new ExactFlatSearchFilterWorkspace(index.VectorCount);
+var workspace = new ExactFlatSearchFilterWorkspace(index.PhysicalVectorCount);
 Span<SearchResult> results = stackalloc SearchResult[2];
 
 int written = index.Search(
@@ -119,6 +120,10 @@ int written = index.Search(
     workspace);
 ```
 
+`VectorCount` is a compatibility name for the physical stored-row count and has
+the same meaning as `PhysicalVectorCount`. Size raw allowlist workspaces from
+`PhysicalVectorCount`/`VectorCount`, not from `LiveVectorCount`.
+
 For a filter reused across searches on the same visible generation, create an
 exact candidate set from external IDs.
 
@@ -127,13 +132,34 @@ ExactFlatCandidateSet candidates = index.CreateCandidateSet([10, 30]);
 int written = index.Search([1.0f, 0.5f], candidates, results);
 ```
 
-Candidate sets are bound to the creating index instance and generation. Rebuild
-them after successful mutation or checkpoint operations.
+Candidate sets are bound to the creating index instance and its current
+`Generation`. Rebuild them after a committed `TryAdd` or `TryDelete`, and
+after a `Checkpoint` that publishes a compact generation. Failed or no-op
+mutation results and `Checkpoint` results with `NoChanges` do not advance
+`Generation` by themselves.
+
+## Counts And Deleted IDs
+
+`ExactFlatIndex` exposes physical, live, tombstone, and reserved-ID counts:
+
+- `VectorCount` and `PhysicalVectorCount` report physical stored rows used for
+  workspace sizing. This can be larger than the searchable live count.
+- `LiveVectorCount` reports vectors currently visible to search.
+- `TombstoneCount` reports deleted physical rows that are hidden from search
+  until compaction.
+- `DeletedReservedIdCount` reports deleted IDs that remain unavailable for
+  reuse.
+
+Deleting an ID reserves that ID permanently for the lifetime of the index
+state. A later `TryAdd` with the same ID reports a reuse conflict even after a
+checkpoint compacts away tombstoned rows.
 
 ## Updates And Checkpoints
 
-`TryAdd` and `TryDelete` report status instead of throwing for duplicate,
-unknown, repeated-delete, and read-only mutation cases.
+`TryAdd` and `TryDelete` report status instead of throwing for expected
+mutation conflicts such as duplicate add, unknown delete, repeated delete,
+deleted-ID reuse, and read-only mutation cases. They still throw for invalid
+arguments, such as vectors with the wrong dimension or invalid numeric values.
 
 ```csharp
 VectorMutationResult add = index.TryAdd(40, [0.25f, 0.75f]);
@@ -147,8 +173,33 @@ if (add.Status == VectorMutationStatus.Committed ||
 }
 ```
 
-`Checkpoint` writes a compact live exact-flat generation to a new or empty
-directory and publishes that compact generation in the current index instance.
+`Checkpoint` is mutation compaction and publication. It writes a compact live
+exact-flat generation to a new or empty directory and publishes that compact
+generation in the current index instance. When there are no delta rows or
+tombstones to fold, it returns `NoChanges`.
+
+Use `Save` for the initial persisted live view. Use `Checkpoint` after
+committed mutations when the application wants to publish a compacted live
+view and continue using the current index instance.
+
+## Thread Safety And Workspaces
+
+Treat `ExactFlatIndex` as externally synchronized. Do not run mutation,
+checkpoint, save, candidate-set creation, or search concurrently against the
+same mutable instance unless your application provides its own coordination.
+Caller-owned result buffers and raw allowlist workspaces must not be shared by
+overlapping calls. Candidate sets are transient handles for one owner index and
+generation; rebuild rather than sharing stale handles across mutation
+boundaries.
+
+## Floating-Point Comparisons
+
+VecNet ranks by the distances computed by the executing index. If an
+application test compares VecNet distances with an independent implementation,
+use a tolerance appropriate for the metric and data scale. Optimized
+floating-point accumulation can differ slightly from another implementation,
+and near-tie ordering is only guaranteed when distances compare equal in the
+executing path, where external ID breaks the tie.
 
 ## Planned Work
 

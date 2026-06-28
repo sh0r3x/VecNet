@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackageId>VecNet</PackageId>
-    <Version>0.1.0-preview.1</Version>
+    <Version>0.1.0-preview.2</Version>
     <Title>VecNet</Title>
     <Authors>VecNet Contributors</Authors>
     <Description>Pure-managed embedded .NET vector indexing library for the 0.1 preview package. Current metadata does not indicate stable API admission, production readiness or public performance claims.</Description>

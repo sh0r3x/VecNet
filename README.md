@@ -5,7 +5,7 @@ designed for applications that keep their records, metadata, authorization,
 and application storage outside the vector engine while using VecNet for dense
 vector retrieval.
 
-This package is an early preview. The currently documented surface focuses on
+This package is a `0.1` preview. The currently documented surface focuses on
 exact flat indexing, canonical distance semantics, durable exact-flat save and
 open, exact allowlist filtering, reusable exact candidate sets, and exact
 mutation/checkpoint workflows.

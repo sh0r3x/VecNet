@@ -132,6 +132,19 @@ public static class BenchmarkRunnerProgram
                 return string.Equals(openedSearchReport.Validation.Status, "passed", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
             }
 
+            if (args.Length > 0 && string.Equals(args[0], GeneratedExactMemorySmokeOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+            {
+                GeneratedExactMemorySmokeOptions memoryOptions = CommandLine.ParseGeneratedExactMemorySmoke(args);
+                GeneratedExactMemorySmokeReport memoryReport = GeneratedExactMemorySmokeScenario.Run(memoryOptions, args);
+                GeneratedExactMemorySmokeScenario.Write(memoryReport, memoryOptions.OutputPath);
+
+                Console.WriteLine(
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"Wrote private generated exact memory smoke report to {memoryOptions.OutputPath} with validation status {memoryReport.Validation.Status}."));
+                return string.Equals(memoryReport.Validation.Status, "passed", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+            }
+
             if (args.Length > 0 && string.Equals(args[0], GeneratedExactPracticalUpdateOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
             {
                 GeneratedExactPracticalUpdateOptions practicalUpdateOptions = CommandLine.ParseGeneratedExactPracticalUpdate(args);
@@ -295,6 +308,7 @@ public static class BenchmarkRunnerProgram
         writer.WriteLine("  generated-exact-update --metric SquaredEuclidean --dimension 128 --vectors 10000 --queries 100 --top-k 10 --insertions 1000 --deletes 1000 --duplicate-inserts 1 --unknown-deletes 1 --repeated-deletes 1 --allowlist broad --candidate-set selective --duplicate-ids 0 --unknown-ids 0 --runs 1 --warmup-queries 0 --seed 0x5EED2061 --output VecNet.BenchmarkRunner.Artifacts/generated-exact-update.json");
         writer.WriteLine("  generated-exact-checkpoint --metric SquaredEuclidean --dimension 128 --vectors 10000 --queries 100 --top-k 10 --insertions 1000 --deletes 1000 --duplicate-inserts 1 --unknown-deletes 1 --repeated-deletes 1 --allowlist broad --candidate-set selective --duplicate-ids 0 --unknown-ids 0 --runs 1 --warmup-queries 0 --seed 0x5EED2067 --output VecNet.BenchmarkRunner.Artifacts/generated-exact-checkpoint.json");
         writer.WriteLine("  generated-exact-opened-search --metric SquaredEuclidean --dimension 128 --vectors 10000 --queries 100 --top-k 10 --runs 1 --warmup-queries 0 --seed 0x5EED2092 --output VecNet.BenchmarkRunner.Artifacts/generated-exact-opened-search.json --index-directory VecNet.BenchmarkRunner.Artifacts/generated-exact-opened-search-index");
+        writer.WriteLine("  generated-exact-memory-smoke --metric SquaredEuclidean --dimension 128 --vectors 10000 --queries 100 --top-k 10 --insertions 1000 --deletes 1000 --duplicate-inserts 1 --unknown-deletes 1 --repeated-deletes 1 --allowlist broad --candidate-set selective --duplicate-ids 0 --unknown-ids 0 --warmup-queries 1 --seed 0x5EED2094 --output VecNet.BenchmarkRunner.Artifacts/generated-exact-memory-smoke.json --save-directory VecNet.BenchmarkRunner.Artifacts/generated-exact-memory-smoke-save --checkpoint-directory VecNet.BenchmarkRunner.Artifacts/generated-exact-memory-smoke-checkpoint");
         writer.WriteLine("  generated-exact-practical-update --metric SquaredEuclidean --dimension 128 --vectors 10000 --queries 100 --top-k 10 --insertions 1000 --deletes 1000 --duplicate-inserts 1 --unknown-deletes 1 --repeated-deletes 1 --allowlist broad --candidate-set selective --duplicate-ids 0 --unknown-ids 0 --runs 1 --warmup-queries 0 --seed 0x5EED2079 --output VecNet.BenchmarkRunner.Artifacts/generated-exact-practical-update.json --checkpoint-directory VecNet.BenchmarkRunner.Artifacts/generated-exact-practical-update-checkpoint");
         writer.WriteLine("  generated-exact-update-matrix --preset smoke|standard --duplicate-inserts 1 --unknown-deletes 1 --repeated-deletes 1 --duplicate-ids 0 --unknown-ids 0 --runs 1 --warmup-queries 0 --seed 0x5EED2062 --output-dir VecNet.BenchmarkRunner.Artifacts/generated-exact-update-matrix --manifest VecNet.BenchmarkRunner.Artifacts/generated-exact-update-matrix/exact-update-matrix-manifest.json");
         writer.WriteLine("  generated-exact-checkpoint-matrix --preset smoke|standard --duplicate-inserts 1 --unknown-deletes 1 --repeated-deletes 1 --duplicate-ids 0 --unknown-ids 0 --runs 1 --warmup-queries 0 --seed 0x5EED2069 --output-dir VecNet.BenchmarkRunner.Artifacts/generated-exact-checkpoint-matrix --manifest VecNet.BenchmarkRunner.Artifacts/generated-exact-checkpoint-matrix/exact-checkpoint-matrix-manifest.json");

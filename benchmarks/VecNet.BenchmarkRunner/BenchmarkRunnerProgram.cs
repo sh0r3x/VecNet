@@ -274,6 +274,19 @@ public static class BenchmarkRunnerProgram
                 return string.Equals(externalReport.Validation.Status, "passed", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
             }
 
+            if (args.Length > 0 && string.Equals(args[0], FashionMnistExternalDurableHnswBenchmarkOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+            {
+                FashionMnistExternalDurableHnswBenchmarkOptions externalOptions = CommandLine.ParseExternalFashionMnistDurableHnsw(args);
+                ExternalDurableHnswBenchmarkReport externalReport = FashionMnistExternalDurableHnswBenchmarkScenario.Run(externalOptions, args);
+                FashionMnistExternalDurableHnswBenchmarkScenario.Write(externalReport, externalOptions.OutputPath);
+
+                Console.WriteLine(
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"Wrote private Fashion-MNIST external durable HNSW benchmark report to {externalOptions.OutputPath} with validation status {externalReport.Validation.Status}."));
+                return string.Equals(externalReport.Validation.Status, "passed", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+            }
+
             GeneratedExactSearchOptions options = CommandLine.Parse(args);
             BenchmarkReport report = GeneratedExactSearchScenario.Run(options, args);
             ReportWriter.Write(report, options.OutputPath);
@@ -320,5 +333,6 @@ public static class BenchmarkRunnerProgram
         writer.WriteLine("  external-fashion-mnist --cache-root VecNet.DatasetCache --query-count 100 --truth-depth 10 --download false");
         writer.WriteLine("  external-fashion-mnist-exact --cache-root VecNet.DatasetCache --output VecNet.BenchmarkRunner.Artifacts/fashion-mnist-external-exact.json --query-count 3 --top-k 10 --runs 3 --warmup-queries 3 --metric squared-euclidean");
         writer.WriteLine("  external-fashion-mnist-hnsw --cache-root VecNet.DatasetCache --output VecNet.BenchmarkRunner.Artifacts/fashion-mnist-external-hnsw.json --query-count 3 --top-k 10 --runs 3 --warmup-queries 3 --metric squared-euclidean --m 8 --ef-construction 64 --ef-search 100 --hnsw-seed 0x484E535700000039");
+        writer.WriteLine("  external-fashion-mnist-hnsw-durable --cache-root VecNet.DatasetCache --output VecNet.BenchmarkRunner.Artifacts/fashion-mnist-external-hnsw-durable.json --snapshot-directory VecNet.BenchmarkRunner.Artifacts/fashion-mnist-external-hnsw-durable-snapshot --query-count 3 --top-k 10 --runs 1 --warmup-queries 0 --metric squared-euclidean --m 8 --ef-construction 64 --ef-search 100 --hnsw-seed 0x484E535700010901");
     }
 }

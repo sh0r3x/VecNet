@@ -1,10 +1,28 @@
 namespace VecNet;
 
-internal sealed class HnswSearchWorkspace
+/// <summary>
+/// Caller-owned reusable workspace for preview HNSW search.
+/// </summary>
+/// <remarks>
+/// A workspace stores transient visited-set and candidate/result queue state for one search at a
+/// time. The caller owns its lifetime and must provide separate workspace instances for
+/// overlapping searches.
+/// </remarks>
+public sealed class HnswSearchWorkspace
 {
     private int _visitMark;
 
-    internal HnswSearchWorkspace(int maxElements, int maxEf)
+    /// <summary>
+    /// Initializes a reusable HNSW search workspace.
+    /// </summary>
+    /// <param name="maxElements">
+    /// The maximum HNSW index <see cref="HnswIndex.Count"/> this workspace can support.
+    /// </param>
+    /// <param name="maxEf">
+    /// The maximum search candidate width this workspace can support. Use at least
+    /// <see cref="HnswIndexOptions.EfSearch"/> for the index being searched.
+    /// </param>
+    public HnswSearchWorkspace(int maxElements, int maxEf)
     {
         if (maxElements < 0)
         {
@@ -27,9 +45,15 @@ internal sealed class HnswSearchWorkspace
         ResultDistances = new float[maxEf];
     }
 
-    internal int MaxElements { get; }
+    /// <summary>
+    /// Gets the maximum HNSW index count supported by this workspace.
+    /// </summary>
+    public int MaxElements { get; }
 
-    internal int MaxEf { get; }
+    /// <summary>
+    /// Gets the maximum search candidate width supported by this workspace.
+    /// </summary>
+    public int MaxEf { get; }
 
     internal int CurrentVisitMark => _visitMark;
 

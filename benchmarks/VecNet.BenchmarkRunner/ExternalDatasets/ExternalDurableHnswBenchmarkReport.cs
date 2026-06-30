@@ -1,0 +1,72 @@
+namespace VecNet.BenchmarkRunner.ExternalDatasets;
+
+public sealed record ExternalDurableHnswBenchmarkReport(
+    string SchemaName,
+    string SchemaVersion,
+    string ReportId,
+    DateTimeOffset GeneratedAtUtc,
+    string TaskId,
+    string ScenarioName,
+    string ClaimClass,
+    string PrivacyClass,
+    DurableHnswEvidenceInfo Evidence,
+    RepositoryInfo Repository,
+    RunnerInfo Runner,
+    CommandInfo Command,
+    EnvironmentInfo Environment,
+    ExternalBenchmarkDatasetInfo Dataset,
+    ExternalBenchmarkWorkloadInfo Workload,
+    ExternalBenchmarkTruthInfo Truth,
+    ScenarioInfo Scenario,
+    IndexInfo Index,
+    HnswConfigurationInfo Hnsw,
+    DurableHnswWorkloadInfo DurableWorkload,
+    ExternalDurableHnswOperationsInfo Operations,
+    ExternalDurableHnswMeasurementInfo Measurement,
+    DurableHnswOutputsInfo Outputs,
+    DurableHnswMetricsInfo Metrics,
+    ExternalDurableHnswValidationInfo Validation,
+    DurableHnswMemoryEstimateInfo MemoryEstimates,
+    DurableHnswEligibilityInfo Eligibility,
+    string[] Notes);
+
+public sealed record ExternalDurableHnswOperationsInfo(
+    DurableHnswOperationInfo Build,
+    DurableHnswOperationInfo Save,
+    DurableHnswOperationInfo Open,
+    DurableHnswOpenedSearchOperationInfo SourceSearch,
+    DurableHnswOpenedSearchOperationInfo OpenedSearch,
+    MeasurementStatusInfo ResidentProcessMemory);
+
+public sealed record ExternalDurableHnswMeasurementInfo(
+    DurableHnswOperationMeasurementInfo Build,
+    DurableHnswOperationMeasurementInfo Save,
+    DurableHnswOperationMeasurementInfo Open,
+    DurableHnswSearchMeasurementInfo SourceSearch,
+    DurableHnswSearchMeasurementInfo OpenedSearch,
+    MeasurementStatusInfo ResidentProcessMemory,
+    WarmupInfo Warmup,
+    string SharedExcludedOperations);
+
+public sealed record ExternalDurableHnswValidationInfo(
+    string Status,
+    string EvidenceStatus,
+    bool LoadedExistingTruth,
+    bool FiniteVectors,
+    bool SourceHnswBuilt,
+    bool SourceHnswSaved,
+    bool OpenedHnswOpened,
+    bool OpenedIndexReadOnly,
+    bool SourceHnswComparedToTruth,
+    bool OpenedHnswComparedToTruth,
+    bool ReturnedResultIntegrityPassedForSource,
+    bool ReturnedResultIntegrityPassedForOpened,
+    DurableHnswParityInfo SourceOpenedParity,
+    DurableHnswReadOnlyMutationInfo OpenedReadOnlyMutation,
+    bool OutputBytesScannedOutsideSaveOpenDuration,
+    bool PublicClaimEligible,
+    bool PreviewReadinessEligible,
+    bool BaselineCandidateEligible,
+    bool ComparisonArtifactEligible,
+    bool RegressionGateEligible,
+    bool ReportIsPrivateRaw);

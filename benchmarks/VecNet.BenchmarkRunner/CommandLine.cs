@@ -982,6 +982,96 @@ public static class CommandLine
             hnswSeed);
     }
 
+    public static HnswMemorySmokeOptions ParseHnswMemorySmoke(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? HnswMemorySmokeOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, HnswMemorySmokeOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedHnswMemorySmokeOption);
+        HnswMemorySmokeOptions defaults = HnswMemorySmokeOptions.Default;
+
+        VectorMetric metric = GetEnum(values, "metric", defaults.Metric);
+        int dimension = GetPositiveInt(values, "dimension", defaults.Dimension);
+        int vectorCount = GetPositiveInt(values, "vectors", defaults.VectorCount);
+        int queryCount = GetPositiveInt(values, "queries", defaults.QueryCount);
+        int topK = GetPositiveInt(values, "top-k", defaults.TopK);
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", defaults.WarmupQueries);
+        uint seed = GetSeed(values, "seed", defaults.Seed);
+        int m = GetPositiveInt(values, "m", defaults.M);
+        int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
+        int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
+        ulong hnswSeed = GetUInt64Seed(values, "hnsw-seed", defaults.HnswSeed);
+        int sampleIntervalMilliseconds = GetPositiveInt(values, "sample-interval-ms", defaults.SampleIntervalMilliseconds);
+        string outputPath = values.TryGetValue("output", out string? outputValue)
+            ? outputValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"generated-hnsw-memory-smoke-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json");
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("Option --output must not be empty.");
+        }
+
+        string snapshotDirectory = values.TryGetValue("snapshot-directory", out string? snapshotDirectoryValue)
+            ? snapshotDirectoryValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"generated-hnsw-memory-smoke-snapshot-{DateTime.UtcNow:yyyyMMdd-HHmmss}");
+        if (string.IsNullOrWhiteSpace(snapshotDirectory))
+        {
+            throw new ArgumentException("Option --snapshot-directory must not be empty.");
+        }
+
+        if (metric != VectorMetric.SquaredEuclidean)
+        {
+            throw new ArgumentException("generated-hnsw-memory-smoke supports only SquaredEuclidean.");
+        }
+
+        if (topK > vectorCount)
+        {
+            throw new ArgumentException("top-k must be less than or equal to the vector count.");
+        }
+
+        if (m is < 2 or > 64)
+        {
+            throw new ArgumentException("Option --m must be in the range 2..64.");
+        }
+
+        if (efConstruction < m || efConstruction > 4096)
+        {
+            throw new ArgumentException("Option --ef-construction must be at least --m and no more than 4096.");
+        }
+
+        if (efSearch < topK || efSearch > 4096)
+        {
+            throw new ArgumentException("Option --ef-search must be at least --top-k and no more than 4096.");
+        }
+
+        if (sampleIntervalMilliseconds > 1000)
+        {
+            throw new ArgumentException("Option --sample-interval-ms must be in the range 1..1000.");
+        }
+
+        return new HnswMemorySmokeOptions(
+            metric,
+            dimension,
+            vectorCount,
+            queryCount,
+            topK,
+            seed,
+            outputPath,
+            snapshotDirectory,
+            warmupQueries,
+            m,
+            efConstruction,
+            efSearch,
+            hnswSeed,
+            sampleIntervalMilliseconds);
+    }
+
     public static DurableHnswGeneratedMatrixOptions ParseDurableHnswGeneratedMatrix(IReadOnlyList<string> args)
     {
         string scenario = args.Count == 0 ? DurableHnswGeneratedMatrixOptions.ScenarioName : args[0];
@@ -1301,6 +1391,90 @@ public static class CommandLine
             hnswSeed);
     }
 
+    public static FashionMnistExternalDurableHnswBenchmarkOptions ParseExternalFashionMnistDurableHnsw(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? FashionMnistExternalDurableHnswBenchmarkOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, FashionMnistExternalDurableHnswBenchmarkOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedExternalFashionMnistDurableHnswOption);
+        FashionMnistExternalDurableHnswBenchmarkOptions defaults = FashionMnistExternalDurableHnswBenchmarkOptions.Default;
+        string cacheRoot = values.TryGetValue("cache-root", out string? cacheRootValue)
+            ? cacheRootValue
+            : defaults.CacheRoot;
+        if (string.IsNullOrWhiteSpace(cacheRoot))
+        {
+            throw new ArgumentException("Option --cache-root must not be empty.");
+        }
+
+        string outputPath = values.TryGetValue("output", out string? outputValue)
+            ? outputValue
+            : defaults.OutputPath;
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("Option --output must not be empty.");
+        }
+
+        string snapshotDirectory = values.TryGetValue("snapshot-directory", out string? snapshotDirectoryValue)
+            ? snapshotDirectoryValue
+            : defaults.SnapshotDirectory;
+        if (string.IsNullOrWhiteSpace(snapshotDirectory))
+        {
+            throw new ArgumentException("Option --snapshot-directory must not be empty.");
+        }
+
+        int queryCount = GetPositiveInt(values, "query-count", defaults.QueryCount);
+        int topK = GetPositiveInt(values, "top-k", defaults.TopK);
+        int runs = GetPositiveInt(values, "runs", defaults.Runs);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", defaults.WarmupQueries);
+        VectorMetric metric = GetExternalFashionMnistMetric(values, "metric", defaults.Metric);
+        int m = GetPositiveInt(values, "m", defaults.M);
+        int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
+        int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
+        ulong hnswSeed = GetUInt64Seed(values, "hnsw-seed", defaults.HnswSeed);
+
+        if (m is < 2 or > 64)
+        {
+            throw new ArgumentException("Option --m must be in the range 2..64.");
+        }
+
+        if (efConstruction < m || efConstruction > 4096)
+        {
+            throw new ArgumentException("Option --ef-construction must be at least --m and no more than 4096.");
+        }
+
+        if (efSearch < topK)
+        {
+            throw new ArgumentException("Option --ef-search must be greater than or equal to --top-k.");
+        }
+
+        if (efSearch > 4096)
+        {
+            throw new ArgumentException("Option --ef-search must be in the range 1..4096.");
+        }
+
+        return new FashionMnistExternalDurableHnswBenchmarkOptions(
+            cacheRoot,
+            outputPath,
+            snapshotDirectory,
+            queryCount,
+            topK,
+            runs,
+            warmupQueries,
+            metric,
+            m,
+            efConstruction,
+            efSearch,
+            hnswSeed);
+    }
+
     private static Dictionary<string, string> ParseOptionValues(
         IReadOnlyList<string> args,
         int startIndex,
@@ -1606,6 +1780,20 @@ public static class CommandLine
         string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsSupportedExternalFashionMnistDurableHnswOption(string name) =>
+        string.Equals(name, "cache-root", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "snapshot-directory", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "query-count", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "top-k", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "m", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+
     private static bool IsSupportedDurableHnswGeneratedOption(string name) =>
         string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "dimension", StringComparison.OrdinalIgnoreCase) ||
@@ -1621,6 +1809,22 @@ public static class CommandLine
         string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedHnswMemorySmokeOption(string name) =>
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "dimension", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vectors", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "top-k", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "snapshot-directory", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "m", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "sample-interval-ms", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedDurableHnswGeneratedMatrixOption(string name) =>
         string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||

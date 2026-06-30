@@ -319,7 +319,7 @@ public static class FashionMnistExternalHnswBenchmarkScenario
                 : "One or more returned approximate external HNSW results failed well-formedness or distance-integrity checks.");
     }
 
-    private static LoadedExternalDataset LoadAndValidateDataset(FashionMnistExternalHnswBenchmarkOptions options)
+    internal static LoadedExternalDataset LoadAndValidateDataset(FashionMnistExternalHnswBenchmarkOptions options)
     {
         ValidateOptions(options);
         DatasetPaths paths = DatasetPaths.Create(options.CacheRoot, FashionMnistDatasetSpecification.Official.DatasetId);

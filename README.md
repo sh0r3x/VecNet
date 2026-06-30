@@ -8,7 +8,8 @@ vector retrieval.
 This package is a `0.1` preview. The currently documented surface focuses on
 exact flat indexing, canonical distance semantics, durable exact-flat save and
 open, exact allowlist filtering, reusable exact candidate sets, exact count
-inspection, and exact mutation/checkpoint workflows.
+inspection, exact mutation/checkpoint workflows, and a narrow squared-L2 HNSW
+developer-preview surface.
 
 ## Current Support
 
@@ -28,6 +29,9 @@ inspection, and exact mutation/checkpoint workflows.
 - Exact raw allowlist filtering and reusable exact candidate sets.
 - Exact-flat `TryAdd`, `TryDelete`, and `Checkpoint` for visible generation
   updates in the current process.
+- Preview HNSW approximate indexing for `VectorMetric.SquaredEuclidean` with
+  build ingestion, caller-owned workspace search, and preview durable
+  `Save`/`OpenReadOnly`.
 
 ## Preview Limitations
 
@@ -36,10 +40,18 @@ inspection, and exact mutation/checkpoint workflows.
 - VecNet stores vector IDs and vectors, not application records or payloads.
 - Application metadata filtering, authorization, transactions, backups, and
   record hydration remain the responsibility of the host application.
-- Approximate indexing, compressed indexes, SSD-scale indexes, richer key
-  mapping, optional integration adapters, and release-grade operational
-  tooling are planned work, not supported public package capabilities in this
-  preview.
+- HNSW support is squared-L2-only and approximate. HNSW filtering, cosine,
+  inner product, update/delete, upsert, replacement, repair, direct graph
+  mutation, and base-plus-exact-delta search are not supported public HNSW
+  capabilities in this preview.
+- HNSW `Add` is build ingestion for an immutable graph, not a live-update
+  contract. HNSW indexes opened with `OpenReadOnly` are searchable but reject
+  mutation.
+- HNSW durable files are a preview round-trip format and have no stable
+  compatibility promise.
+- Compressed indexes, SSD-scale indexes, richer key mapping, optional
+  integration adapters, and release-grade operational tooling are planned
+  work, not supported public package capabilities in this preview.
 - This README does not make public performance, memory, allocation, recall,
   storage-size, stable API, production-readiness, or platform support claims.
 
@@ -95,6 +107,50 @@ int written = reopened.Search([1.0f, 0.0f, 0.0f], results);
 
 `Save` does not overwrite an existing non-empty directory. It writes only the
 current live view, so deleted rows are not searchable in the saved output.
+
+## HNSW Preview
+
+`HnswIndex` is a developer-preview approximate index for squared L2 only. Use
+`HnswIndexOptions` to choose preview build/search parameters, and pass a
+caller-owned `HnswSearchWorkspace` to every search.
+
+```csharp
+using VecNet;
+
+var options = new HnswIndexOptions(
+    M: 16,
+    EfConstruction: 200,
+    EfSearch: 50,
+    RandomSeed: 0x564543_034UL);
+
+var index = new HnswIndex(3, VectorMetric.SquaredEuclidean, options);
+
+index.Add(1001, [1.0f, 0.0f, 0.0f]);
+index.Add(1002, [0.0f, 1.0f, 0.0f]);
+index.Add(1003, [0.0f, 0.0f, 1.0f]);
+
+var workspace = new HnswSearchWorkspace(index.Count, index.Options.EfSearch);
+Span<SearchResult> results = stackalloc SearchResult[2];
+
+int written = index.Search([0.9f, 0.1f, 0.0f], results, workspace);
+```
+
+For HNSW preview persistence, save to a new or empty directory and open it as
+read-only.
+
+```csharp
+string path = Path.Combine(Environment.CurrentDirectory, "vecnet-hnsw");
+index.Save(path);
+
+HnswIndex opened = HnswIndex.OpenReadOnly(path);
+
+var openedWorkspace = new HnswSearchWorkspace(opened.Count, opened.Options.EfSearch);
+int openedWritten = opened.Search([0.9f, 0.1f, 0.0f], results, openedWorkspace);
+```
+
+Opened HNSW indexes reject `Add`. HNSW callers own synchronization, result
+buffers, and workspaces; do not share a result buffer or workspace between
+overlapping searches.
 
 ## Filtering
 

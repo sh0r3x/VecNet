@@ -2,7 +2,17 @@ using System.Numerics;
 
 namespace VecNet;
 
-internal sealed partial class HnswIndex
+/// <summary>
+/// Preview approximate HNSW index for squared Euclidean distance.
+/// </summary>
+/// <remarks>
+/// This preview surface supports build ingestion with <see cref="Add"/>, caller-owned workspace
+/// search with <see cref="Search"/>, and preview durable round trips with <see cref="Save"/> and
+/// <see cref="OpenReadOnly"/>. It currently supports only <see cref="VectorMetric.SquaredEuclidean"/>.
+/// HNSW filtering, cosine, inner product, update/delete, replacement, repair, direct graph
+/// mutation, and stable file-format compatibility are not supported by this preview API.
+/// </remarks>
+public sealed partial class HnswIndex
 {
     private const int InitialCapacity = 4;
     private const int MinM = 2;
@@ -27,12 +37,28 @@ internal sealed partial class HnswIndex
     private bool _isReadOnly;
     private HnswBuildScratch? _buildScratch;
 
-    internal HnswIndex(int dimension, VectorMetric metric)
+    /// <summary>
+    /// Initializes a preview HNSW index with <see cref="HnswIndexOptions.Default"/>.
+    /// </summary>
+    /// <param name="dimension">The required positive vector dimension.</param>
+    /// <param name="metric">The canonical distance metric. Only <see cref="VectorMetric.SquaredEuclidean"/> is supported.</param>
+    public HnswIndex(int dimension, VectorMetric metric)
         : this(dimension, metric, HnswIndexOptions.Default)
     {
     }
 
-    internal HnswIndex(int dimension, VectorMetric metric, HnswIndexOptions options, Func<int>? levelProvider = null)
+    /// <summary>
+    /// Initializes a preview HNSW index with explicit options.
+    /// </summary>
+    /// <param name="dimension">The required positive vector dimension.</param>
+    /// <param name="metric">The canonical distance metric. Only <see cref="VectorMetric.SquaredEuclidean"/> is supported.</param>
+    /// <param name="options">The preview HNSW build and search options.</param>
+    public HnswIndex(int dimension, VectorMetric metric, HnswIndexOptions options)
+        : this(dimension, metric, options, levelProvider: null)
+    {
+    }
+
+    internal HnswIndex(int dimension, VectorMetric metric, HnswIndexOptions options, Func<int>? levelProvider)
     {
         if (dimension <= 0)
         {
@@ -61,27 +87,77 @@ internal sealed partial class HnswIndex
         _levelProvider = levelProvider;
     }
 
-    internal int Dimension { get; }
+    /// <summary>
+    /// Gets the fixed dimension accepted by this HNSW index.
+    /// </summary>
+    public int Dimension { get; }
 
-    internal VectorMetric Metric { get; }
+    /// <summary>
+    /// Gets the canonical distance metric used by this HNSW index.
+    /// </summary>
+    /// <remarks>Only <see cref="VectorMetric.SquaredEuclidean"/> is supported in this preview.</remarks>
+    public VectorMetric Metric { get; }
 
-    internal int Count => _count;
+    /// <summary>
+    /// Gets the number of vectors ingested into this HNSW index.
+    /// </summary>
+    public int Count => _count;
 
     internal int EntryPoint => _entryPoint;
 
     internal int MaxLayer => _maxLayer;
 
-    internal HnswIndexOptions Options => _options;
+    /// <summary>
+    /// Gets the preview HNSW options used by this index.
+    /// </summary>
+    public HnswIndexOptions Options => _options;
 
-    internal void Save(string directoryPath)
+    /// <summary>
+    /// Saves this preview HNSW index to a new or empty durable HNSW directory.
+    /// </summary>
+    /// <remarks>
+    /// Save writes preview HNSW round-trip files only. It requires a new or empty target location
+    /// and does not replace an active index directory, coordinate with other processes, provide
+    /// caller-level crash recovery for directory swaps, or establish a stable file-format
+    /// compatibility promise.
+    /// </remarks>
+    /// <param name="directoryPath">
+    /// The target directory path. It must not be null or whitespace, must not name an existing file,
+    /// and must either not exist or name an empty directory. Existing index directories are not overwritten.
+    /// </param>
+    public void Save(string directoryPath)
     {
         HnswIndexStorage.Save(directoryPath, CreateStorageSnapshot());
     }
 
-    internal static HnswIndex OpenReadOnly(string directoryPath) =>
+    /// <summary>
+    /// Opens a durable preview HNSW directory as an immutable read-only index.
+    /// </summary>
+    /// <remarks>
+    /// Open validates the preview manifest and binary files using broad failure categories such as
+    /// invalid data, missing files, unsupported format, or I/O errors. It does not establish a
+    /// stable complete exception taxonomy, does not open the index for mutation, and does not make
+    /// a stable file-format compatibility promise.
+    /// </remarks>
+    /// <param name="directoryPath">
+    /// The HNSW index directory path. It must not be null or whitespace and must name an existing
+    /// preview HNSW directory containing a valid manifest and binary files.
+    /// </param>
+    /// <returns>A searchable read-only preview HNSW index.</returns>
+    public static HnswIndex OpenReadOnly(string directoryPath) =>
         HnswIndexStorage.OpenReadOnly(directoryPath);
 
-    internal void Add(ulong id, ReadOnlySpan<float> vector)
+    /// <summary>
+    /// Inserts a vector associated with a caller-provided external identifier during HNSW build ingestion.
+    /// </summary>
+    /// <remarks>
+    /// This is build ingestion for an immutable-preview HNSW index, not an upsert, delete, repair,
+    /// replacement, direct graph mutation, or live-update contract. Indexes opened with
+    /// <see cref="OpenReadOnly"/> reject this operation.
+    /// </remarks>
+    /// <param name="id">The opaque external vector identifier.</param>
+    /// <param name="vector">The finite squared-L2 vector values to copy into index storage.</param>
+    public void Add(ulong id, ReadOnlySpan<float> vector)
     {
         if (_isReadOnly)
         {
@@ -170,7 +246,21 @@ internal sealed partial class HnswIndex
         _idToOrdinal.Add(id, ordinal);
     }
 
-    internal int Search(ReadOnlySpan<float> query, Span<SearchResult> results, HnswSearchWorkspace workspace)
+    /// <summary>
+    /// Searches this HNSW index and writes approximate nearest results in ascending distance order.
+    /// </summary>
+    /// <param name="query">The finite squared-L2 query vector.</param>
+    /// <param name="results">
+    /// The caller-owned destination buffer. Its length specifies the requested result count.
+    /// </param>
+    /// <param name="workspace">
+    /// The caller-owned reusable HNSW workspace. It must have <see cref="HnswSearchWorkspace.MaxElements"/>
+    /// at least <see cref="Count"/> and <see cref="HnswSearchWorkspace.MaxEf"/> at least
+    /// <see cref="HnswIndexOptions.EfSearch"/> for this index. Workspaces must not be shared by
+    /// overlapping searches.
+    /// </param>
+    /// <returns>The number of results written.</returns>
+    public int Search(ReadOnlySpan<float> query, Span<SearchResult> results, HnswSearchWorkspace workspace)
     {
         ArgumentNullException.ThrowIfNull(workspace);
         ValidateVector(query, nameof(query));

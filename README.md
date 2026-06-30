@@ -60,7 +60,7 @@ developer-preview surface.
 Add the published preview package to a .NET 10 project:
 
 ```bash
-dotnet add package VecNet --version 0.1.0-preview.2
+dotnet add package VecNet --version 0.1.0-preview.3
 ```
 
 ## Basic Usage

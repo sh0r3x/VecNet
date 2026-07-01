@@ -1191,6 +1191,75 @@ public static class CommandLine
             hnswSeed);
     }
 
+    public static HnswEstablishedComparisonMatrixOptions ParseHnswEstablishedComparisonMatrix(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? HnswEstablishedComparisonMatrixOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, HnswEstablishedComparisonMatrixOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedHnswEstablishedComparisonMatrixOption);
+        string presetName = HnswEstablishedComparisonMatrixOptions.NormalizePresetName(
+            GetOptionalNonWhiteSpace(values, "preset") ?? HnswEstablishedComparisonMatrixOptions.DefaultPresetName);
+
+        int vectorCount = GetPositiveInt(values, "vectors", 256);
+        int queryCount = GetPositiveInt(values, "queries", 4);
+        int runs = GetPositiveInt(values, "runs", 1);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", 0);
+        uint seed = GetSeed(values, "seed", 0x5EED2119);
+        string outputDirectory = values.TryGetValue("output-dir", out string? outputDirectoryValue)
+            ? outputDirectoryValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"hnswlib-generated-comparison-matrix-{DateTime.UtcNow:yyyyMMdd-HHmmss}");
+        if (string.IsNullOrWhiteSpace(outputDirectory))
+        {
+            throw new ArgumentException("Option --output-dir must not be empty.");
+        }
+
+        string manifestPath = values.TryGetValue("manifest", out string? manifestValue)
+            ? manifestValue
+            : Path.Combine(outputDirectory, "hnswlib-comparison-matrix-manifest.json");
+        if (string.IsNullOrWhiteSpace(manifestPath))
+        {
+            throw new ArgumentException("Option --manifest must not be empty.");
+        }
+
+        string hnswlibPythonPath = values.TryGetValue("hnswlib-python", out string? hnswlibPythonValue)
+            ? hnswlibPythonValue
+            : HnswEstablishedComparisonOptions.Default.HnswlibPythonPath;
+        if (string.IsNullOrWhiteSpace(hnswlibPythonPath))
+        {
+            throw new ArgumentException("Option --hnswlib-python must not be empty.");
+        }
+
+        int maxTopK = HnswEstablishedComparisonMatrixScenario.GetMaxTopK(presetName);
+        if (vectorCount < maxTopK)
+        {
+            throw new ArgumentException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"vectors must be greater than or equal to the maximum hnswlib comparison matrix top-k ({maxTopK}) for preset '{presetName}'."));
+        }
+
+        return new HnswEstablishedComparisonMatrixOptions(
+            presetName,
+            vectorCount,
+            queryCount,
+            runs,
+            warmupQueries,
+            seed,
+            outputDirectory,
+            manifestPath,
+            hnswlibPythonPath);
+    }
+
     public static DurableHnswGeneratedMatrixOptions ParseDurableHnswGeneratedMatrix(IReadOnlyList<string> args)
     {
         string scenario = args.Count == 0 ? DurableHnswGeneratedMatrixOptions.ScenarioName : args[0];
@@ -1963,6 +2032,17 @@ public static class CommandLine
         string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedHnswEstablishedComparisonMatrixOption(string name) =>
+        string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vectors", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output-dir", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "manifest", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "hnswlib-python", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedDurableHnswGeneratedMatrixOption(string name) =>
         string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||

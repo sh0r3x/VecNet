@@ -236,6 +236,19 @@ public static class BenchmarkRunnerProgram
                 return string.Equals(comparisonReport.Validation.Status, "passed", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
             }
 
+            if (args.Length > 0 && string.Equals(args[0], HnswEstablishedComparisonMatrixOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+            {
+                HnswEstablishedComparisonMatrixOptions matrixOptions = CommandLine.ParseHnswEstablishedComparisonMatrix(args);
+                HnswEstablishedComparisonMatrixManifest manifest = HnswEstablishedComparisonMatrixScenario.Run(matrixOptions, args);
+                HnswEstablishedComparisonMatrixScenario.WriteManifest(manifest, matrixOptions.ManifestPath);
+
+                Console.WriteLine(
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"Wrote private hnswlib generated comparison matrix manifest to {matrixOptions.ManifestPath} with {manifest.Aggregate.PassedCaseCount} passed, {manifest.Aggregate.FailedCaseCount} failed and {manifest.Aggregate.BlockedCaseCount} blocked case(s)."));
+                return manifest.Aggregate.FailedCaseCount == 0 && manifest.Aggregate.BlockedCaseCount == 0 ? 0 : 1;
+            }
+
             if (args.Length > 0 && string.Equals(args[0], HnswGeneratedMatrixOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
             {
                 HnswGeneratedMatrixOptions matrixOptions = CommandLine.ParseHnswGeneratedMatrix(args);
@@ -356,6 +369,7 @@ public static class BenchmarkRunnerProgram
         writer.WriteLine("  hnsw-generated-durable --metric SquaredEuclidean --dimension 128 --vectors 1024 --queries 25 --top-k 10 --runs 1 --warmup-queries 0 --seed 0x5EED2073 --m 16 --ef-construction 200 --ef-search 50 --hnsw-seed 0x0000000000564543 --output VecNet.BenchmarkRunner.Artifacts/hnsw-generated-durable.json --snapshot-directory VecNet.BenchmarkRunner.Artifacts/hnsw-generated-durable-snapshot");
         writer.WriteLine("  generated-hnsw-memory-smoke --metric SquaredEuclidean --dimension 128 --vectors 4096 --queries 32 --top-k 10 --warmup-queries 4 --seed 0x5EED2112 --m 8 --ef-construction 64 --ef-search 128 --hnsw-seed 0x484E535700011212 --sample-interval-ms 10 --output VecNet.BenchmarkRunner.Artifacts/generated-hnsw-memory-smoke.json --snapshot-directory VecNet.BenchmarkRunner.Artifacts/generated-hnsw-memory-smoke-snapshot");
         writer.WriteLine("  hnswlib-generated-comparison --metric SquaredEuclidean --dimension 128 --vectors 4096 --queries 100 --top-k 10 --runs 1 --warmup-queries 3 --seed 0x5EED2118 --m 8 --ef-construction 64 --ef-search 128 --hnsw-seed 0x484E535700011818 --hnswlib-python VecNet.BenchmarkRunner.Artifacts/vec-118-tools/hnswlib-venv/Scripts/python.exe --output VecNet.BenchmarkRunner.Artifacts/hnswlib-generated-comparison.json --work-directory VecNet.BenchmarkRunner.Artifacts/hnswlib-generated-comparison-work");
+        writer.WriteLine("  hnswlib-generated-comparison-matrix --preset smoke|standard --vectors 256 --queries 4 --runs 1 --warmup-queries 0 --seed 0x5EED2119 --hnswlib-python VecNet.BenchmarkRunner.Artifacts/vec-118-tools/hnswlib-venv/Scripts/python.exe --output-dir VecNet.BenchmarkRunner.Artifacts/hnswlib-generated-comparison-matrix --manifest VecNet.BenchmarkRunner.Artifacts/hnswlib-generated-comparison-matrix/hnswlib-comparison-matrix-manifest.json");
         writer.WriteLine("  hnsw-generated-durable-matrix --preset smoke --seed 0x5EED0750 --output-dir VecNet.BenchmarkRunner.Artifacts/hnsw-generated-durable-matrix --manifest VecNet.BenchmarkRunner.Artifacts/hnsw-generated-durable-matrix/durable-hnsw-matrix-manifest.json");
         writer.WriteLine("  hnsw-generated-matrix --preset smoke|standard --vectors 128 --queries 4 --runs 1 --warmup-queries 0 --seed 0x5EED2037 --output-dir VecNet.BenchmarkRunner.Artifacts/hnsw-matrix --manifest VecNet.BenchmarkRunner.Artifacts/hnsw-matrix/hnsw-matrix-manifest.json");
         writer.WriteLine("  external-fashion-mnist --cache-root VecNet.DatasetCache --query-count 100 --truth-depth 10 --download false");

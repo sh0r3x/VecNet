@@ -107,6 +107,8 @@ public sealed partial class HnswIndex
 
     internal int MaxLayer => _maxLayer;
 
+    internal ReadOnlySpan<ulong> InternalIds => _ids.AsSpan(0, _count);
+
     /// <summary>
     /// Gets the preview HNSW options used by this index.
     /// </summary>

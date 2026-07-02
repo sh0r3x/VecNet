@@ -1,0 +1,73 @@
+namespace VecNet.BenchmarkRunner.ExternalDatasets;
+
+public sealed record FashionMnistHnswlibComparisonReport(
+    string SchemaName,
+    string SchemaVersion,
+    string ReportId,
+    DateTimeOffset GeneratedAtUtc,
+    string TaskId,
+    string ScenarioName,
+    string ClaimClass,
+    string PrivacyClass,
+    HnswEstablishedComparisonEvidenceInfo Evidence,
+    RepositoryInfo Repository,
+    RunnerInfo Runner,
+    CommandInfo Command,
+    EnvironmentInfo Environment,
+    HnswEstablishedComparisonSourcePinningInfo SourcePinning,
+    ExternalBenchmarkDatasetInfo Dataset,
+    ExternalBenchmarkWorkloadInfo Workload,
+    ExternalBenchmarkTruthInfo Truth,
+    FashionMnistHnswlibComparisonMethodologyInfo Methodology,
+    FashionMnistHnswlibComparisonParametersInfo Parameters,
+    HnswEstablishedComparisonImplementationResult VecNet,
+    HnswEstablishedComparisonImplementationResult Hnswlib,
+    FashionMnistHnswlibComparisonValidationInfo Validation,
+    HnswEstablishedComparisonEligibilityInfo Eligibility,
+    string[] Notes);
+
+public sealed record FashionMnistHnswlibComparisonMethodologyInfo(
+    string IdenticalInputsPolicy,
+    string TimingScope,
+    string ExcludedOperations,
+    string LatencyPercentileEstimator,
+    string AggregateSemantics,
+    string ThreadingPolicy,
+    string PythonBoundary,
+    string ResultValidationPolicy,
+    string DatasetPolicy);
+
+public sealed record FashionMnistHnswlibComparisonParametersInfo(
+    string Metric,
+    int Dimension,
+    int BaseVectorCount,
+    int QueryMatrixCount,
+    int MeasuredQueryCount,
+    int TopK,
+    int Runs,
+    int WarmupQueries,
+    int M,
+    int EfConstruction,
+    int HnswlibEfConstruction,
+    int EfSearch,
+    int HnswlibEf,
+    string Seed,
+    string InsertionOrder,
+    int ThreadCount);
+
+public sealed record FashionMnistHnswlibComparisonValidationInfo(
+    string Status,
+    string EvidenceStatus,
+    bool LoadedExistingCache,
+    bool LoadedExistingTruth,
+    bool FiniteVectors,
+    bool IdenticalVectorsQueriesIdsAndParameters,
+    bool VecNetComparedToTruth,
+    bool HnswlibComparedToTruth,
+    bool VecNetReturnedResultIntegrityPassed,
+    bool HnswlibReturnedResultIntegrityPassed,
+    bool PublicClaimEligible,
+    bool BaselineCandidateEligible,
+    bool ComparisonPublicationEligible,
+    bool RegressionGateEligible,
+    bool ReportIsPrivateRaw);

@@ -1260,6 +1260,112 @@ public static class CommandLine
             hnswlibPythonPath);
     }
 
+    public static FashionMnistHnswlibComparisonOptions ParseFashionMnistHnswlibComparison(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? FashionMnistHnswlibComparisonOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, FashionMnistHnswlibComparisonOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedFashionMnistHnswlibComparisonOption);
+        FashionMnistHnswlibComparisonOptions defaults = FashionMnistHnswlibComparisonOptions.Default;
+
+        string cacheRoot = values.TryGetValue("cache-root", out string? cacheRootValue)
+            ? cacheRootValue
+            : defaults.CacheRoot;
+        string outputPath = values.TryGetValue("output", out string? outputValue)
+            ? outputValue
+            : defaults.OutputPath;
+        string workDirectory = values.TryGetValue("work-directory", out string? workDirectoryValue)
+            ? workDirectoryValue
+            : defaults.WorkDirectory;
+        string vecNetSnapshotDirectory = values.TryGetValue("vecnet-snapshot-directory", out string? vecNetSnapshotDirectoryValue)
+            ? vecNetSnapshotDirectoryValue
+            : defaults.VecNetSnapshotDirectory;
+        string hnswlibIndexPath = values.TryGetValue("hnswlib-index", out string? hnswlibIndexValue)
+            ? hnswlibIndexValue
+            : defaults.HnswlibIndexPath;
+        string hnswlibPythonPath = values.TryGetValue("hnswlib-python", out string? hnswlibPythonValue)
+            ? hnswlibPythonValue
+            : defaults.HnswlibPythonPath;
+
+        if (string.IsNullOrWhiteSpace(cacheRoot))
+        {
+            throw new ArgumentException("Option --cache-root must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("Option --output must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(workDirectory))
+        {
+            throw new ArgumentException("Option --work-directory must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(vecNetSnapshotDirectory))
+        {
+            throw new ArgumentException("Option --vecnet-snapshot-directory must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(hnswlibIndexPath))
+        {
+            throw new ArgumentException("Option --hnswlib-index must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(hnswlibPythonPath))
+        {
+            throw new ArgumentException("Option --hnswlib-python must not be empty.");
+        }
+
+        int queryCount = GetPositiveInt(values, "query-count", defaults.QueryCount);
+        int topK = GetPositiveInt(values, "top-k", defaults.TopK);
+        int runs = GetPositiveInt(values, "runs", defaults.Runs);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", defaults.WarmupQueries);
+        int m = GetPositiveInt(values, "m", defaults.M);
+        int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
+        int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
+        ulong seed = GetUInt64Seed(values, "seed", defaults.Seed);
+
+        if (m is < 2 or > 64)
+        {
+            throw new ArgumentException("Option --m must be in the range 2..64.");
+        }
+
+        if (efConstruction < m || efConstruction > 4096)
+        {
+            throw new ArgumentException("Option --ef-construction must be at least --m and no more than 4096.");
+        }
+
+        if (efSearch < topK || efSearch > 4096)
+        {
+            throw new ArgumentException("Option --ef-search must be at least --top-k and no more than 4096.");
+        }
+
+        return new FashionMnistHnswlibComparisonOptions(
+            cacheRoot,
+            outputPath,
+            workDirectory,
+            vecNetSnapshotDirectory,
+            hnswlibIndexPath,
+            hnswlibPythonPath,
+            queryCount,
+            topK,
+            runs,
+            warmupQueries,
+            m,
+            efConstruction,
+            efSearch,
+            seed);
+    }
+
     public static DurableHnswGeneratedMatrixOptions ParseDurableHnswGeneratedMatrix(IReadOnlyList<string> args)
     {
         string scenario = args.Count == 0 ? DurableHnswGeneratedMatrixOptions.ScenarioName : args[0];
@@ -2043,6 +2149,22 @@ public static class CommandLine
         string.Equals(name, "output-dir", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "manifest", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "hnswlib-python", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedFashionMnistHnswlibComparisonOption(string name) =>
+        string.Equals(name, "cache-root", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "work-directory", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vecnet-snapshot-directory", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "hnswlib-index", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "hnswlib-python", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "query-count", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "top-k", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "m", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedDurableHnswGeneratedMatrixOption(string name) =>
         string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||

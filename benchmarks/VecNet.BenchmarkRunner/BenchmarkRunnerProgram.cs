@@ -301,6 +301,19 @@ public static class BenchmarkRunnerProgram
                 return string.Equals(hnswReport.Validation.Status, "passed", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
             }
 
+            if (args.Length > 0 && string.Equals(args[0], HnswBasePlusExactDeltaGeneratedOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+            {
+                HnswBasePlusExactDeltaGeneratedOptions deltaOptions = CommandLine.ParseHnswBasePlusExactDeltaGenerated(args);
+                HnswBasePlusExactDeltaBenchmarkReport deltaReport = HnswBasePlusExactDeltaGeneratedScenario.Run(deltaOptions, args);
+                HnswBasePlusExactDeltaGeneratedScenario.Write(deltaReport, deltaOptions.OutputPath);
+
+                Console.WriteLine(
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"Wrote private generated HNSW base-plus-exact-delta report to {deltaOptions.OutputPath} with validation status {deltaReport.Validation.Status}."));
+                return string.Equals(deltaReport.Validation.Status, "passed", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+            }
+
             if (args.Length > 0 && string.Equals(args[0], FashionMnistExternalDatasetOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
             {
                 FashionMnistExternalDatasetOptions externalOptions = CommandLine.ParseExternalFashionMnist(args);
@@ -392,6 +405,7 @@ public static class BenchmarkRunnerProgram
         writer.WriteLine("  generated-exact-checkpoint-matrix --preset smoke|standard --duplicate-inserts 1 --unknown-deletes 1 --repeated-deletes 1 --duplicate-ids 0 --unknown-ids 0 --runs 1 --warmup-queries 0 --seed 0x5EED2069 --output-dir VecNet.BenchmarkRunner.Artifacts/generated-exact-checkpoint-matrix --manifest VecNet.BenchmarkRunner.Artifacts/generated-exact-checkpoint-matrix/exact-checkpoint-matrix-manifest.json");
         writer.WriteLine("  compare-generated-exact --baseline VecNet.BenchmarkRunner.Artifacts/baseline.json --current VecNet.BenchmarkRunner.Artifacts/current.json --output VecNet.BenchmarkRunner.Artifacts/comparisons/comparison.json");
         writer.WriteLine("  hnsw-generated --metric SquaredEuclidean --dimension 128 --vectors 10000 --queries 100 --top-k 10 --runs 1 --warmup-queries 0 --seed 0x5EED2036 --m 16 --ef-construction 200 --ef-search 50 --hnsw-seed 0x0000000564543034 --output VecNet.BenchmarkRunner.Artifacts/hnsw-generated.json");
+        writer.WriteLine("  generated-hnsw-base-plus-exact-delta --metric SquaredEuclidean --dimension 128 --vectors 10000 --queries 100 --top-k 10 --insertions 1000 --deletes 1000 --delta-deletes 0 --duplicate-inserts 1 --unknown-deletes 1 --repeated-deletes 1 --runs 1 --warmup-queries 0 --seed 0x5EED2124 --m 16 --ef-construction 200 --ef-search 50 --hnsw-seed 0x0000000564543034 --output VecNet.BenchmarkRunner.Artifacts/generated-hnsw-base-plus-exact-delta.json");
         writer.WriteLine("  hnsw-generated-durable --metric SquaredEuclidean --dimension 128 --vectors 1024 --queries 25 --top-k 10 --runs 1 --warmup-queries 0 --seed 0x5EED2073 --m 16 --ef-construction 200 --ef-search 50 --hnsw-seed 0x0000000000564543 --output VecNet.BenchmarkRunner.Artifacts/hnsw-generated-durable.json --snapshot-directory VecNet.BenchmarkRunner.Artifacts/hnsw-generated-durable-snapshot");
         writer.WriteLine("  generated-hnsw-memory-smoke --metric SquaredEuclidean --dimension 128 --vectors 4096 --queries 32 --top-k 10 --warmup-queries 4 --seed 0x5EED2112 --m 8 --ef-construction 64 --ef-search 128 --hnsw-seed 0x484E535700011212 --sample-interval-ms 10 --output VecNet.BenchmarkRunner.Artifacts/generated-hnsw-memory-smoke.json --snapshot-directory VecNet.BenchmarkRunner.Artifacts/generated-hnsw-memory-smoke-snapshot");
         writer.WriteLine("  hnswlib-generated-comparison --metric SquaredEuclidean --dimension 128 --vectors 4096 --queries 100 --top-k 10 --runs 1 --warmup-queries 3 --seed 0x5EED2118 --m 8 --ef-construction 64 --ef-search 128 --hnsw-seed 0x484E535700011818 --hnswlib-python VecNet.BenchmarkRunner.Artifacts/vec-118-tools/hnswlib-venv/Scripts/python.exe --output VecNet.BenchmarkRunner.Artifacts/hnswlib-generated-comparison.json --work-directory VecNet.BenchmarkRunner.Artifacts/hnswlib-generated-comparison-work");

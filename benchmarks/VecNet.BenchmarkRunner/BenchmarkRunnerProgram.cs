@@ -262,6 +262,19 @@ public static class BenchmarkRunnerProgram
                 return string.Equals(comparisonReport.Validation.Status, "passed", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
             }
 
+            if (args.Length > 0 && string.Equals(args[0], FashionMnistHnswlibComparisonMatrixOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+            {
+                FashionMnistHnswlibComparisonMatrixOptions matrixOptions = CommandLine.ParseFashionMnistHnswlibComparisonMatrix(args);
+                FashionMnistHnswlibComparisonMatrixManifest manifest = FashionMnistHnswlibComparisonMatrixScenario.Run(matrixOptions, args);
+                FashionMnistHnswlibComparisonMatrixScenario.WriteManifest(manifest, matrixOptions.ManifestPath);
+
+                Console.WriteLine(
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"Wrote private Fashion-MNIST hnswlib comparison matrix manifest to {matrixOptions.ManifestPath} with {manifest.Aggregate.PassedCaseCount} passed, {manifest.Aggregate.FailedCaseCount} failed and {manifest.Aggregate.BlockedCaseCount} blocked case(s)."));
+                return manifest.Aggregate.FailedCaseCount == 0 && manifest.Aggregate.BlockedCaseCount == 0 ? 0 : 1;
+            }
+
             if (args.Length > 0 && string.Equals(args[0], HnswGeneratedMatrixOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
             {
                 HnswGeneratedMatrixOptions matrixOptions = CommandLine.ParseHnswGeneratedMatrix(args);
@@ -384,6 +397,7 @@ public static class BenchmarkRunnerProgram
         writer.WriteLine("  hnswlib-generated-comparison --metric SquaredEuclidean --dimension 128 --vectors 4096 --queries 100 --top-k 10 --runs 1 --warmup-queries 3 --seed 0x5EED2118 --m 8 --ef-construction 64 --ef-search 128 --hnsw-seed 0x484E535700011818 --hnswlib-python VecNet.BenchmarkRunner.Artifacts/vec-118-tools/hnswlib-venv/Scripts/python.exe --output VecNet.BenchmarkRunner.Artifacts/hnswlib-generated-comparison.json --work-directory VecNet.BenchmarkRunner.Artifacts/hnswlib-generated-comparison-work");
         writer.WriteLine("  hnswlib-generated-comparison-matrix --preset smoke|standard --vectors 256 --queries 4 --runs 1 --warmup-queries 0 --seed 0x5EED2119 --hnswlib-python VecNet.BenchmarkRunner.Artifacts/vec-118-tools/hnswlib-venv/Scripts/python.exe --output-dir VecNet.BenchmarkRunner.Artifacts/hnswlib-generated-comparison-matrix --manifest VecNet.BenchmarkRunner.Artifacts/hnswlib-generated-comparison-matrix/hnswlib-comparison-matrix-manifest.json");
         writer.WriteLine("  external-fashion-mnist-hnswlib-comparison --cache-root VecNet.DatasetCache --output VecNet.BenchmarkRunner.Artifacts/fashion-mnist-hnswlib-comparison.json --work-directory VecNet.BenchmarkRunner.Artifacts/fashion-mnist-hnswlib-comparison-work --vecnet-snapshot-directory VecNet.BenchmarkRunner.Artifacts/fashion-mnist-hnswlib-comparison-vecnet-snapshot --hnswlib-index VecNet.BenchmarkRunner.Artifacts/fashion-mnist-hnswlib-comparison-hnswlib.bin --hnswlib-python VecNet.BenchmarkRunner.Artifacts/vec-118-tools/hnswlib-venv/Scripts/python.exe --query-count 50 --top-k 10 --runs 1 --warmup-queries 3 --m 8 --ef-construction 64 --ef-search 100 --seed 0x484E535700012000");
+        writer.WriteLine("  external-fashion-mnist-hnswlib-comparison-matrix --preset smoke|standard --cache-root VecNet.DatasetCache --query-count 50 --runs 1 --warmup-queries 3 --seed 0x484E535700012100 --hnswlib-python VecNet.BenchmarkRunner.Artifacts/vec-118-tools/hnswlib-venv/Scripts/python.exe --output-dir VecNet.BenchmarkRunner.Artifacts/fashion-mnist-hnswlib-comparison-matrix --manifest VecNet.BenchmarkRunner.Artifacts/fashion-mnist-hnswlib-comparison-matrix/fashion-mnist-hnswlib-comparison-matrix-manifest.json");
         writer.WriteLine("  hnsw-generated-durable-matrix --preset smoke --seed 0x5EED0750 --output-dir VecNet.BenchmarkRunner.Artifacts/hnsw-generated-durable-matrix --manifest VecNet.BenchmarkRunner.Artifacts/hnsw-generated-durable-matrix/durable-hnsw-matrix-manifest.json");
         writer.WriteLine("  hnsw-generated-matrix --preset smoke|standard --vectors 128 --queries 4 --runs 1 --warmup-queries 0 --seed 0x5EED2037 --output-dir VecNet.BenchmarkRunner.Artifacts/hnsw-matrix --manifest VecNet.BenchmarkRunner.Artifacts/hnsw-matrix/hnsw-matrix-manifest.json");
         writer.WriteLine("  external-fashion-mnist --cache-root VecNet.DatasetCache --query-count 100 --truth-depth 10 --download false");

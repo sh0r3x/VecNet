@@ -3,6 +3,192 @@ namespace VecNet.Tests;
 public sealed class HnswBasePlusExactDeltaIndexTests
 {
     [Fact]
+    public void Checkpoint_PublishesLiveViewValidatesOutputAndClearsOverlay()
+    {
+        using TempIndexDirectory checkpoint = TempIndexDirectory.CreateMissing();
+        HnswIndex baseIndex = CreateBaseIndex(
+            [
+                (10UL, new[] { 0f }),
+                (20UL, new[] { 1f }),
+                (30UL, new[] { 2f }),
+                (40UL, new[] { 3f })
+            ],
+            new HnswIndexOptions(2, 8, 8, 0x1310UL));
+        var composite = new HnswBasePlusExactDeltaIndex(baseIndex);
+        Assert.Equal(VectorMutationStatus.Committed, composite.TryAdd(15, [0.5f]).Status);
+        Assert.Equal(VectorMutationStatus.Committed, composite.TryAdd(25, [1.5f]).Status);
+        Assert.Equal(VectorMutationStatus.Committed, composite.TryAdd(35, [2.5f]).Status);
+        Assert.Equal(VectorMutationStatus.Committed, composite.TryDelete(20).Status);
+        Assert.Equal(VectorMutationStatus.Committed, composite.TryDelete(25).Status);
+
+        ulong[] expectedLiveIds = [10, 30, 40, 15, 35];
+        SearchResult[] preResults = SearchComposite(composite, [0f], topK: 8);
+        AssertReturnedIdsAreLiveAndFinite(preResults, expectedLiveIds);
+        long beforeGeneration = composite.Generation;
+
+        HnswBasePlusExactDeltaCheckpointResult result = composite.Checkpoint(checkpoint.Path);
+
+        Assert.Equal(HnswBasePlusExactDeltaCheckpointStatus.Published, result.Status);
+        Assert.Equal(beforeGeneration + 1, result.Generation);
+        Assert.Equal(result.Generation, composite.Generation);
+        Assert.Equal(5, result.RebuiltBaseVectorCount);
+        Assert.Equal(5, result.LiveVectorCount);
+        Assert.Equal(5, result.BasePhysicalVectorCount);
+        Assert.Equal(5, result.BaseLiveVectorCount);
+        Assert.Equal(0, result.DeltaPhysicalVectorCount);
+        Assert.Equal(0, result.DeltaLiveVectorCount);
+        Assert.Equal(0, result.BaseTombstoneCount);
+        Assert.Equal(0, result.DeltaTombstoneCount);
+        Assert.Equal(0, result.TombstoneCount);
+        Assert.Equal(2, result.DeletedReservedIdCount);
+        Assert.Equal(2, result.FoldedDeltaVectorCount);
+        Assert.Equal(1, result.FoldedBaseTombstoneCount);
+        Assert.Equal(1, result.FoldedDeltaTombstoneCount);
+        Assert.Equal(5, composite.BasePhysicalVectorCount);
+        Assert.Equal(0, composite.DeltaPhysicalVectorCount);
+        Assert.Equal(0, composite.TombstoneCount);
+        Assert.Equal(VectorMutationStatus.DuplicateId, composite.TryAdd(20, [10f]).Status);
+        Assert.Equal(VectorMutationStatus.DuplicateId, composite.TryAdd(25, [10f]).Status);
+
+        HnswIndex opened = HnswIndex.OpenReadOnly(checkpoint.Path);
+        Assert.Equal(expectedLiveIds, opened.InternalIds.ToArray());
+        Assert.Throws<InvalidOperationException>(() => opened.Add(999, [9f]));
+
+        SearchResult[] postResults = SearchComposite(composite, [0f], topK: 8);
+        SearchResult[] openedResults = SearchHnsw(opened, [0f], topK: 8);
+        Assert.Equal(postResults, openedResults);
+        AssertReturnedIdsAreLiveAndFinite(postResults, expectedLiveIds);
+    }
+
+    [Fact]
+    public void Checkpoint_NoChangesWritesNoOutputAndDoesNotAdvanceGeneration()
+    {
+        using TempIndexDirectory missing = TempIndexDirectory.CreateMissing();
+        HnswIndex baseIndex = CreateBaseIndex(
+            [(10UL, new[] { 0f }), (20UL, new[] { 2f })],
+            new HnswIndexOptions(2, 8, 8, 0x1311UL));
+        var composite = new HnswBasePlusExactDeltaIndex(baseIndex);
+        long beforeGeneration = composite.Generation;
+
+        HnswBasePlusExactDeltaCheckpointResult result = composite.Checkpoint(missing.Path);
+
+        Assert.Equal(HnswBasePlusExactDeltaCheckpointStatus.NoChanges, result.Status);
+        Assert.Equal(beforeGeneration, result.Generation);
+        Assert.Equal(beforeGeneration, composite.Generation);
+        Assert.Equal(2, result.RebuiltBaseVectorCount);
+        Assert.Equal(2, result.LiveVectorCount);
+        Assert.Equal(2, result.BasePhysicalVectorCount);
+        Assert.Equal(2, result.BaseLiveVectorCount);
+        Assert.Equal(0, result.DeltaPhysicalVectorCount);
+        Assert.Equal(0, result.DeltaLiveVectorCount);
+        Assert.Equal(0, result.TombstoneCount);
+        Assert.Equal(0, result.DeletedReservedIdCount);
+        Assert.False(Directory.Exists(missing.Path));
+        Assert.Equal([10UL, 20UL], SearchComposite(composite, [0f], topK: 2).Select(static result => result.Id));
+    }
+
+    [Fact]
+    public void Checkpoint_FailedTargetValidationLeavesOldCompositeSearchableAndUnchanged()
+    {
+        using TempIndexDirectory nonEmpty = TempIndexDirectory.Create();
+        File.WriteAllText(Path.Combine(nonEmpty.Path, "caller-owned.txt"), "keep");
+        HnswIndex baseIndex = CreateBaseIndex(
+            [(10UL, new[] { 0f }), (20UL, new[] { 2f }), (30UL, new[] { 4f })],
+            new HnswIndexOptions(2, 8, 8, 0x1312UL));
+        var composite = new HnswBasePlusExactDeltaIndex(baseIndex);
+        Assert.Equal(VectorMutationStatus.Committed, composite.TryAdd(15, [0.5f]).Status);
+        Assert.Equal(VectorMutationStatus.Committed, composite.TryDelete(20).Status);
+        SearchResult[] expected = SearchComposite(composite, [0f], topK: 4);
+        long beforeGeneration = composite.Generation;
+
+        Assert.Throws<IOException>(() => composite.Checkpoint(nonEmpty.Path));
+
+        Assert.Equal(beforeGeneration, composite.Generation);
+        Assert.Equal(3, composite.BasePhysicalVectorCount);
+        Assert.Equal(1, composite.DeltaPhysicalVectorCount);
+        Assert.Equal(1, composite.TombstoneCount);
+        Assert.Equal(expected, SearchComposite(composite, [0f], topK: 4));
+        Assert.Equal("keep", File.ReadAllText(Path.Combine(nonEmpty.Path, "caller-owned.txt")));
+        Assert.False(File.Exists(Path.Combine(nonEmpty.Path, HnswIndexStorage.ManifestFileName)));
+    }
+
+    [Fact]
+    public void Checkpoint_AllDeletedPublishesEmptyOutputAndRetainsReservations()
+    {
+        using TempIndexDirectory checkpoint = TempIndexDirectory.CreateMissing();
+        HnswIndex baseIndex = CreateBaseIndex(
+            [(10UL, new[] { 0f }), (20UL, new[] { 1f })],
+            new HnswIndexOptions(2, 8, 8, 0x1313UL));
+        var composite = new HnswBasePlusExactDeltaIndex(baseIndex);
+        Assert.Equal(VectorMutationStatus.Committed, composite.TryDelete(10).Status);
+        Assert.Equal(VectorMutationStatus.Committed, composite.TryDelete(20).Status);
+        long beforeGeneration = composite.Generation;
+
+        HnswBasePlusExactDeltaCheckpointResult result = composite.Checkpoint(checkpoint.Path);
+
+        Assert.Equal(HnswBasePlusExactDeltaCheckpointStatus.Published, result.Status);
+        Assert.Equal(beforeGeneration + 1, result.Generation);
+        Assert.Equal(0, result.RebuiltBaseVectorCount);
+        Assert.Equal(0, result.LiveVectorCount);
+        Assert.Equal(0, result.BasePhysicalVectorCount);
+        Assert.Equal(0, result.BaseLiveVectorCount);
+        Assert.Equal(0, result.TombstoneCount);
+        Assert.Equal(2, result.DeletedReservedIdCount);
+        Assert.Equal(2, result.FoldedBaseTombstoneCount);
+        Assert.Equal([], SearchComposite(composite, [0f], topK: 4));
+
+        HnswIndex opened = HnswIndex.OpenReadOnly(checkpoint.Path);
+        Assert.Equal(0, opened.Count);
+        Assert.Equal([], SearchHnsw(opened, [0f], topK: 4));
+        Assert.Equal(VectorMutationStatus.DuplicateId, composite.TryAdd(10, [3f]).Status);
+        Assert.Equal(VectorMutationStatus.DuplicateId, composite.TryAdd(20, [4f]).Status);
+    }
+
+    [Fact]
+    public void Checkpoint_PublishedGenerationRejectsPreviouslyUsedWorkspaceBeforeWrite()
+    {
+        using TempIndexDirectory checkpoint = TempIndexDirectory.CreateMissing();
+        HnswIndex baseIndex = CreateBaseIndex(
+            [(10UL, new[] { 0f }), (20UL, new[] { 2f })],
+            new HnswIndexOptions(2, 8, 8, 0x1314UL));
+        var composite = new HnswBasePlusExactDeltaIndex(baseIndex);
+        Assert.Equal(VectorMutationStatus.Committed, composite.TryAdd(15, [1f]).Status);
+        var staleWorkspace = CreateWorkspace(composite, topK: 2);
+        _ = composite.Search([0f], new SearchResult[2], staleWorkspace);
+
+        HnswBasePlusExactDeltaCheckpointResult result = composite.Checkpoint(checkpoint.Path);
+        Assert.Equal(HnswBasePlusExactDeltaCheckpointStatus.Published, result.Status);
+
+        SearchResult[] destination = [new(111, 111), new(222, 222)];
+        Assert.Throws<InvalidOperationException>(() => composite.Search([0f], destination, staleWorkspace));
+        Assert.Equal([new SearchResult(111, 111), new SearchResult(222, 222)], destination);
+        Assert.Equal(2, composite.Search([0f], destination, CreateWorkspace(composite, topK: 2)));
+    }
+
+    [Fact]
+    public void Checkpoint_ReadOnlyCompositeThrowsWithoutWritingOutput()
+    {
+        using TempIndexDirectory checkpoint = TempIndexDirectory.CreateMissing();
+        HnswIndex baseIndex = CreateBaseIndex([(10UL, new[] { 0f })]);
+        var composite = new HnswBasePlusExactDeltaIndex(baseIndex, isReadOnly: true);
+
+        Assert.Throws<InvalidOperationException>(() => composite.Checkpoint(checkpoint.Path));
+
+        Assert.False(Directory.Exists(checkpoint.Path));
+        Assert.Equal(0, composite.Generation);
+    }
+
+    [Fact]
+    public void CheckpointResultAndStatusSurfaceStayInternalAndNarrow()
+    {
+        Assert.True(typeof(HnswBasePlusExactDeltaCheckpointResult).IsNotPublic);
+        Assert.True(typeof(HnswBasePlusExactDeltaCheckpointStatus).IsNotPublic);
+        Assert.Equal(
+            ["NoChanges", "Published"],
+            Enum.GetNames<HnswBasePlusExactDeltaCheckpointStatus>().Order(StringComparer.Ordinal).ToArray());
+    }
+
+    [Fact]
     public void Constructor_CapturesImmutableBaseCountsAndStartsWithEmptyOverlay()
     {
         HnswIndex baseIndex = CreateBaseIndex([(10UL, new[] { 0f }), (20UL, new[] { 2f })]);
@@ -275,6 +461,30 @@ public sealed class HnswBasePlusExactDeltaIndexTests
         return results[..written];
     }
 
+    private static SearchResult[] SearchComposite(HnswBasePlusExactDeltaIndex index, float[] query, int topK)
+    {
+        var results = new SearchResult[topK];
+        int written = index.Search(query, results, CreateWorkspace(index, topK));
+        return results[..written];
+    }
+
+    private static SearchResult[] SearchHnsw(HnswIndex index, float[] query, int topK)
+    {
+        var results = new SearchResult[topK];
+        int written = index.Search(query, results, new HnswSearchWorkspace(index.Count, index.Options.EfSearch));
+        return results[..written];
+    }
+
+    private static void AssertReturnedIdsAreLiveAndFinite(SearchResult[] results, IReadOnlyCollection<ulong> liveIds)
+    {
+        var live = new HashSet<ulong>(liveIds);
+        foreach (SearchResult result in results)
+        {
+            Assert.True(live.Contains(result.Id), $"Unexpected ID {result.Id}.");
+            Assert.True(float.IsFinite(result.Distance), $"Distance for ID {result.Id} was not finite.");
+        }
+    }
+
     private static string CreateGraphSnapshot(HnswIndex index)
     {
         var parts = new List<string>
@@ -303,5 +513,41 @@ public sealed class HnswBasePlusExactDeltaIndexTests
         Span<int> buffer = stackalloc int[128];
         int count = index.DebugGetNeighbors(layer, ordinal, buffer);
         return buffer[..count].ToArray();
+    }
+
+    private sealed class TempIndexDirectory : IDisposable
+    {
+        private TempIndexDirectory(string path)
+        {
+            Path = path;
+        }
+
+        public string Path { get; }
+
+        public static TempIndexDirectory Create()
+        {
+            string path = CreatePath();
+            Directory.CreateDirectory(path);
+            return new TempIndexDirectory(path);
+        }
+
+        public static TempIndexDirectory CreateMissing() => new(CreatePath());
+
+        public void Dispose()
+        {
+            if (Directory.Exists(Path))
+            {
+                Directory.Delete(Path, recursive: true);
+            }
+            else if (File.Exists(Path))
+            {
+                File.Delete(Path);
+            }
+        }
+
+        private static string CreatePath() =>
+            System.IO.Path.Combine(
+                System.IO.Path.GetTempPath(),
+                "VecNet-HnswCompositeCheckpointTests-" + Guid.NewGuid().ToString("N"));
     }
 }

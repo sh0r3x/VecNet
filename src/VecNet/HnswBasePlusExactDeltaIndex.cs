@@ -6,8 +6,8 @@ internal sealed class HnswBasePlusExactDeltaIndex
 {
     private const int InitialDeltaCapacity = 4;
 
-    private readonly HnswIndex _baseIndex;
-    private readonly int _basePhysicalVectorCount;
+    private HnswIndex _baseIndex;
+    private int _basePhysicalVectorCount;
     private readonly HashSet<ulong> _baseIds = [];
     private readonly HashSet<ulong> _baseTombstoneIds = [];
     private readonly HashSet<ulong> _deltaTombstoneIds = [];
@@ -122,6 +122,47 @@ internal sealed class HnswBasePlusExactDeltaIndex
         return CreateMutationResult(VectorMutationStatus.UnknownId);
     }
 
+    internal HnswBasePlusExactDeltaCheckpointResult Checkpoint(string directoryPath)
+    {
+        if (_isReadOnly)
+        {
+            throw new InvalidOperationException("This HNSW base-plus-exact-delta index is read-only and cannot be checkpointed.");
+        }
+
+        ValidateNewOrEmptyDirectoryPath(directoryPath);
+        ValidateBaseUnchanged();
+
+        int foldedDeltaVectorCount = DeltaLiveVectorCount;
+        int foldedBaseTombstoneCount = BaseTombstoneCount;
+        int foldedDeltaTombstoneCount = DeltaTombstoneCount;
+        if (foldedDeltaVectorCount == 0 &&
+            foldedBaseTombstoneCount == 0 &&
+            foldedDeltaTombstoneCount == 0)
+        {
+            return CreateCheckpointResult(
+                HnswBasePlusExactDeltaCheckpointStatus.NoChanges,
+                foldedDeltaVectorCount,
+                foldedBaseTombstoneCount,
+                foldedDeltaTombstoneCount);
+        }
+
+        (ulong[] liveIds, float[] liveVectors) = CreateLiveSnapshot();
+        HnswIndex rebuilt = BuildBaseIndex(liveIds, liveVectors);
+        rebuilt.Save(directoryPath);
+
+        HnswIndex validated = HnswIndex.OpenReadOnly(directoryPath);
+        ValidateCheckpointOutput(rebuilt, validated, liveIds, liveVectors);
+
+        PublishRebuiltBase(rebuilt, liveIds);
+        _generation++;
+
+        return CreateCheckpointResult(
+            HnswBasePlusExactDeltaCheckpointStatus.Published,
+            foldedDeltaVectorCount,
+            foldedBaseTombstoneCount,
+            foldedDeltaTombstoneCount);
+    }
+
     internal int Search(
         ReadOnlySpan<float> query,
         Span<SearchResult> results,
@@ -131,6 +172,7 @@ internal sealed class HnswBasePlusExactDeltaIndex
         ValidateBaseUnchanged();
         ValidateVector(query, nameof(query));
         ValidateWorkspace(results.Length, workspace);
+        workspace.ObservedGeneration = _generation;
 
         if (results.IsEmpty || LiveVectorCount == 0)
         {
@@ -237,6 +279,11 @@ internal sealed class HnswBasePlusExactDeltaIndex
 
     private void ValidateWorkspace(int requestedResultCount, HnswBasePlusExactDeltaSearchWorkspace workspace)
     {
+        if (workspace.ObservedGeneration != long.MinValue && workspace.ObservedGeneration != _generation)
+        {
+            throw new InvalidOperationException("Workspace generation is stale for this HNSW base-plus-exact-delta index.");
+        }
+
         int requestedBaseCandidates = Math.Min(_basePhysicalVectorCount, Options.EfSearch);
         if (workspace.HnswWorkspace.MaxElements < _basePhysicalVectorCount)
         {
@@ -288,6 +335,139 @@ internal sealed class HnswBasePlusExactDeltaIndex
 
     private VectorMutationResult CreateMutationResult(VectorMutationStatus status) =>
         new(status, _generation, LiveVectorCount, DeltaLiveVectorCount, TombstoneCount);
+
+    private HnswBasePlusExactDeltaCheckpointResult CreateCheckpointResult(
+        HnswBasePlusExactDeltaCheckpointStatus status,
+        int foldedDeltaVectorCount,
+        int foldedBaseTombstoneCount,
+        int foldedDeltaTombstoneCount) =>
+        new(
+            status,
+            _generation,
+            BasePhysicalVectorCount,
+            LiveVectorCount,
+            BasePhysicalVectorCount,
+            BaseLiveVectorCount,
+            DeltaPhysicalVectorCount,
+            DeltaLiveVectorCount,
+            BaseTombstoneCount,
+            DeltaTombstoneCount,
+            TombstoneCount,
+            DeletedReservedIdCount,
+            foldedDeltaVectorCount,
+            foldedBaseTombstoneCount,
+            foldedDeltaTombstoneCount);
+
+    private (ulong[] Ids, float[] Vectors) CreateLiveSnapshot()
+    {
+        int liveCount = LiveVectorCount;
+        var ids = new ulong[liveCount];
+        var vectors = new float[checked(liveCount * Dimension)];
+        ReadOnlySpan<ulong> baseIds = _baseIndex.InternalIds;
+        ReadOnlySpan<float> baseVectors = _baseIndex.InternalVectors;
+
+        int destinationOrdinal = 0;
+        for (int sourceOrdinal = 0; sourceOrdinal < _basePhysicalVectorCount; sourceOrdinal++)
+        {
+            ulong id = baseIds[sourceOrdinal];
+            if (_baseTombstoneIds.Contains(id))
+            {
+                continue;
+            }
+
+            ids[destinationOrdinal] = id;
+            baseVectors
+                .Slice(sourceOrdinal * Dimension, Dimension)
+                .CopyTo(vectors.AsSpan(destinationOrdinal * Dimension, Dimension));
+            destinationOrdinal++;
+        }
+
+        for (int sourceOrdinal = 0; sourceOrdinal < _deltaPhysicalVectorCount; sourceOrdinal++)
+        {
+            ulong id = _deltaIds[sourceOrdinal];
+            if (_deltaTombstoneIds.Contains(id))
+            {
+                continue;
+            }
+
+            ids[destinationOrdinal] = id;
+            _deltaVectors
+                .AsSpan(sourceOrdinal * Dimension, Dimension)
+                .CopyTo(vectors.AsSpan(destinationOrdinal * Dimension, Dimension));
+            destinationOrdinal++;
+        }
+
+        return (ids, vectors);
+    }
+
+    private HnswIndex BuildBaseIndex(ReadOnlySpan<ulong> ids, ReadOnlySpan<float> vectors)
+    {
+        var rebuilt = new HnswIndex(Dimension, Metric, Options);
+        for (int ordinal = 0; ordinal < ids.Length; ordinal++)
+        {
+            rebuilt.Add(ids[ordinal], vectors.Slice(ordinal * Dimension, Dimension));
+        }
+
+        return rebuilt;
+    }
+
+    private void ValidateCheckpointOutput(
+        HnswIndex rebuilt,
+        HnswIndex validated,
+        ReadOnlySpan<ulong> expectedIds,
+        ReadOnlySpan<float> expectedVectors)
+    {
+        if (validated.Dimension != Dimension ||
+            validated.Metric != Metric ||
+            validated.Options != Options ||
+            validated.Count != expectedIds.Length ||
+            rebuilt.Count != expectedIds.Length ||
+            !validated.InternalIds.SequenceEqual(expectedIds) ||
+            !validated.InternalVectors.SequenceEqual(expectedVectors) ||
+            !rebuilt.InternalIds.SequenceEqual(expectedIds) ||
+            !rebuilt.InternalVectors.SequenceEqual(expectedVectors))
+        {
+            throw new InvalidDataException("HNSW base-plus-exact-delta checkpoint output failed read-only validation.");
+        }
+    }
+
+    private void PublishRebuiltBase(HnswIndex rebuilt, ReadOnlySpan<ulong> liveIds)
+    {
+        _baseIndex = rebuilt;
+        _basePhysicalVectorCount = rebuilt.Count;
+        _baseIds.Clear();
+        foreach (ulong id in liveIds)
+        {
+            _baseIds.Add(id);
+        }
+
+        _baseTombstoneIds.Clear();
+        _deltaTombstoneIds.Clear();
+        _deltaIdToOrdinal.Clear();
+        _deltaIds = [];
+        _deltaVectors = [];
+        _deltaPhysicalVectorCount = 0;
+    }
+
+    private static void ValidateNewOrEmptyDirectoryPath(string directoryPath)
+    {
+        ArgumentNullException.ThrowIfNull(directoryPath);
+        if (string.IsNullOrWhiteSpace(directoryPath))
+        {
+            throw new ArgumentException("Directory path must not be empty.", nameof(directoryPath));
+        }
+
+        string directory = Path.GetFullPath(directoryPath);
+        if (File.Exists(directory))
+        {
+            throw new IOException("HNSW index save path is an existing file, not a directory.");
+        }
+
+        if (Directory.Exists(directory) && Directory.EnumerateFileSystemEntries(directory).Any())
+        {
+            throw new IOException("HNSW index save directory must be empty.");
+        }
+    }
 
     private void EnsureDeltaCapacity(int requiredCount)
     {

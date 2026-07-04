@@ -109,6 +109,8 @@ public sealed partial class HnswIndex
 
     internal ReadOnlySpan<ulong> InternalIds => _ids.AsSpan(0, _count);
 
+    internal ReadOnlySpan<float> InternalVectors => _vectors.AsSpan(0, checked(_count * Dimension));
+
     /// <summary>
     /// Gets the preview HNSW options used by this index.
     /// </summary>

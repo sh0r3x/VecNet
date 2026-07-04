@@ -38,4 +38,6 @@ internal sealed class HnswBasePlusExactDeltaSearchWorkspace
     internal SearchResult[] BaseCandidates { get; }
 
     internal SearchResult[] DeltaCandidates { get; }
+
+    internal long ObservedGeneration { get; set; } = long.MinValue;
 }

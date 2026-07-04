@@ -391,6 +391,19 @@ public static class BenchmarkRunnerProgram
                 return string.Equals(externalReport.Validation.Status, "passed", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
             }
 
+            if (args.Length > 0 && string.Equals(args[0], FashionMnistExternalHnswBasePlusExactDeltaMatrixOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+            {
+                FashionMnistExternalHnswBasePlusExactDeltaMatrixOptions matrixOptions = CommandLine.ParseExternalFashionMnistHnswBasePlusExactDeltaMatrix(args);
+                ExternalHnswBasePlusExactDeltaMatrixManifest manifest = FashionMnistExternalHnswBasePlusExactDeltaMatrixScenario.Run(matrixOptions, args);
+                FashionMnistExternalHnswBasePlusExactDeltaMatrixScenario.WriteManifest(manifest, matrixOptions.ManifestPath);
+
+                Console.WriteLine(
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"Wrote private Fashion-MNIST external HNSW base-plus-exact-delta matrix manifest to {matrixOptions.ManifestPath} with {manifest.Aggregate.PassedCaseCount} passed, {manifest.Aggregate.FailedCaseCount} failed and {manifest.Aggregate.BlockedCaseCount} blocked case(s)."));
+                return manifest.Aggregate.FailedCaseCount == 0 && manifest.Aggregate.BlockedCaseCount == 0 ? 0 : 1;
+            }
+
             GeneratedExactSearchOptions options = CommandLine.Parse(args);
             BenchmarkReport report = GeneratedExactSearchScenario.Run(options, args);
             ReportWriter.Write(report, options.OutputPath);
@@ -446,5 +459,6 @@ public static class BenchmarkRunnerProgram
         writer.WriteLine("  external-fashion-mnist-hnsw --cache-root VecNet.DatasetCache --output VecNet.BenchmarkRunner.Artifacts/fashion-mnist-external-hnsw.json --query-count 3 --top-k 10 --runs 3 --warmup-queries 3 --metric squared-euclidean --m 8 --ef-construction 64 --ef-search 100 --hnsw-seed 0x484E535700000039");
         writer.WriteLine("  external-fashion-mnist-hnsw-durable --cache-root VecNet.DatasetCache --output VecNet.BenchmarkRunner.Artifacts/fashion-mnist-external-hnsw-durable.json --snapshot-directory VecNet.BenchmarkRunner.Artifacts/fashion-mnist-external-hnsw-durable-snapshot --query-count 3 --top-k 10 --runs 1 --warmup-queries 0 --metric squared-euclidean --m 8 --ef-construction 64 --ef-search 100 --hnsw-seed 0x484E535700010901");
         writer.WriteLine("  external-fashion-mnist-hnsw-base-plus-exact-delta --cache-root VecNet.DatasetCache --output VecNet.BenchmarkRunner.Artifacts/fashion-mnist-external-hnsw-base-plus-exact-delta.json --query-count 50 --top-k 100 --base-vectors 58000 --insertions 1000 --deletes 1000 --delta-deletes 100 --duplicate-inserts 1 --unknown-deletes 1 --repeated-deletes 1 --runs 1 --warmup-queries 3 --metric squared-euclidean --seed 0x5EED2127 --m 16 --ef-construction 128 --ef-search 192 --hnsw-seed 0x484E535700012700");
+        writer.WriteLine("  external-fashion-mnist-hnsw-base-plus-exact-delta-matrix --preset smoke|standard --cache-root VecNet.DatasetCache --query-count 50 --runs 1 --warmup-queries 3 --metric squared-euclidean --seed 0x5EED2128 --duplicate-inserts 1 --unknown-deletes 1 --repeated-deletes 1 --output-dir VecNet.BenchmarkRunner.Artifacts/fashion-mnist-external-hnsw-base-plus-exact-delta-matrix --manifest VecNet.BenchmarkRunner.Artifacts/fashion-mnist-external-hnsw-base-plus-exact-delta-matrix/fashion-mnist-external-hnsw-base-plus-exact-delta-matrix-manifest.json");
     }
 }

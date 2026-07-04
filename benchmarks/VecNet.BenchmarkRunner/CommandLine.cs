@@ -2129,6 +2129,76 @@ public static class CommandLine
             hnswSeed);
     }
 
+    public static FashionMnistExternalHnswBasePlusExactDeltaMatrixOptions ParseExternalFashionMnistHnswBasePlusExactDeltaMatrix(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? FashionMnistExternalHnswBasePlusExactDeltaMatrixOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, FashionMnistExternalHnswBasePlusExactDeltaMatrixOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedExternalFashionMnistHnswBasePlusExactDeltaMatrixOption);
+        string presetName = FashionMnistExternalHnswBasePlusExactDeltaMatrixOptions.NormalizePresetName(
+            GetOptionalNonWhiteSpace(values, "preset") ?? FashionMnistExternalHnswBasePlusExactDeltaMatrixOptions.DefaultPresetName);
+        string cacheRoot = values.TryGetValue("cache-root", out string? cacheRootValue)
+            ? cacheRootValue
+            : FashionMnistExternalHnswBasePlusExactDeltaOptions.Default.CacheRoot;
+        if (string.IsNullOrWhiteSpace(cacheRoot))
+        {
+            throw new ArgumentException("Option --cache-root must not be empty.");
+        }
+
+        int queryCount = GetPositiveInt(values, "query-count", 50);
+        int runs = GetPositiveInt(values, "runs", 1);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", 3);
+        VectorMetric metric = GetExternalFashionMnistMetric(values, "metric", VectorMetric.SquaredEuclidean);
+        if (metric != VectorMetric.SquaredEuclidean)
+        {
+            throw new ArgumentException("external-fashion-mnist-hnsw-base-plus-exact-delta-matrix supports only SquaredEuclidean.");
+        }
+
+        uint seed = GetSeed(values, "seed", 0x5EED2128);
+        int duplicateInsertAttempts = GetNonNegativeInt(values, "duplicate-inserts", 1);
+        int unknownDeleteAttempts = GetNonNegativeInt(values, "unknown-deletes", 1);
+        int repeatedDeleteAttempts = GetNonNegativeInt(values, "repeated-deletes", 1);
+        string outputDirectory = values.TryGetValue("output-dir", out string? outputDirectoryValue)
+            ? outputDirectoryValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"fashion-mnist-external-hnsw-base-plus-exact-delta-matrix-{DateTime.UtcNow:yyyyMMdd-HHmmss}");
+        if (string.IsNullOrWhiteSpace(outputDirectory))
+        {
+            throw new ArgumentException("Option --output-dir must not be empty.");
+        }
+
+        string manifestPath = values.TryGetValue("manifest", out string? manifestValue)
+            ? manifestValue
+            : Path.Combine(outputDirectory, "fashion-mnist-external-hnsw-base-plus-exact-delta-matrix-manifest.json");
+        if (string.IsNullOrWhiteSpace(manifestPath))
+        {
+            throw new ArgumentException("Option --manifest must not be empty.");
+        }
+
+        return new FashionMnistExternalHnswBasePlusExactDeltaMatrixOptions(
+            presetName,
+            cacheRoot,
+            queryCount,
+            runs,
+            warmupQueries,
+            metric,
+            seed,
+            duplicateInsertAttempts,
+            unknownDeleteAttempts,
+            repeatedDeleteAttempts,
+            outputDirectory,
+            manifestPath);
+    }
+
     private static Dictionary<string, string> ParseOptionValues(
         IReadOnlyList<string> args,
         int startIndex,
@@ -2519,6 +2589,20 @@ public static class CommandLine
         string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedExternalFashionMnistHnswBasePlusExactDeltaMatrixOption(string name) =>
+        string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "cache-root", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "query-count", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "duplicate-inserts", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "unknown-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "repeated-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output-dir", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "manifest", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedHnswEstablishedComparisonMatrixOption(string name) =>
         string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||

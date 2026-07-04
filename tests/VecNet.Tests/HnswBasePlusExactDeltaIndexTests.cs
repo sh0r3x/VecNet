@@ -61,6 +61,45 @@ public sealed class HnswBasePlusExactDeltaIndexTests
     }
 
     [Fact]
+    public void CheckpointWithDiagnostics_PublishedMeasuresAllPhasesAndMatchesCheckpointResultContract()
+    {
+        using TempIndexDirectory checkpoint = TempIndexDirectory.CreateMissing();
+        HnswIndex baseIndex = CreateBaseIndex(
+            [
+                (10UL, new[] { 0f, 0f }),
+                (20UL, new[] { 1f, 1f }),
+                (30UL, new[] { 2f, 2f })
+            ],
+            new HnswIndexOptions(2, 8, 8, 0x1330UL));
+        var composite = new HnswBasePlusExactDeltaIndex(baseIndex);
+        Assert.Equal(VectorMutationStatus.Committed, composite.TryAdd(15, [0.5f, 0.5f]).Status);
+        Assert.Equal(VectorMutationStatus.Committed, composite.TryDelete(20).Status);
+        long beforeGeneration = composite.Generation;
+
+        HnswBasePlusExactDeltaCheckpointDiagnosticResult measured = composite.CheckpointWithDiagnostics(checkpoint.Path);
+
+        Assert.Equal(HnswBasePlusExactDeltaCheckpointStatus.Published, measured.Result.Status);
+        Assert.Equal(beforeGeneration + 1, measured.Result.Generation);
+        Assert.Equal(measured.Result.Generation, composite.Generation);
+        Assert.Equal(3, measured.Result.RebuiltBaseVectorCount);
+        Assert.Equal(3, measured.Result.LiveVectorCount);
+        Assert.Equal(0, measured.Result.DeltaPhysicalVectorCount);
+        Assert.Equal(0, measured.Result.TombstoneCount);
+        Assert.Equal(1, measured.Result.FoldedDeltaVectorCount);
+        Assert.Equal(1, measured.Result.FoldedBaseTombstoneCount);
+        Assert.Equal(0, measured.Result.FoldedDeltaTombstoneCount);
+        AssertMeasured(measured.Diagnostics.LiveSnapshot);
+        AssertMeasured(measured.Diagnostics.RebuildBuild);
+        AssertMeasured(measured.Diagnostics.Save);
+        AssertMeasured(measured.Diagnostics.OpenValidation);
+        AssertMeasured(measured.Diagnostics.Publication);
+
+        HnswIndex opened = HnswIndex.OpenReadOnly(checkpoint.Path);
+        Assert.Equal([10UL, 30UL, 15UL], opened.InternalIds.ToArray());
+        Assert.Equal(SearchComposite(composite, [0f, 0f], topK: 3), SearchHnsw(opened, [0f, 0f], topK: 3));
+    }
+
+    [Fact]
     public void Checkpoint_NoChangesWritesNoOutputAndDoesNotAdvanceGeneration()
     {
         using TempIndexDirectory missing = TempIndexDirectory.CreateMissing();
@@ -88,6 +127,29 @@ public sealed class HnswBasePlusExactDeltaIndexTests
     }
 
     [Fact]
+    public void CheckpointWithDiagnostics_NoChangesMarksAllPhasesNotExecuted()
+    {
+        using TempIndexDirectory missing = TempIndexDirectory.CreateMissing();
+        HnswIndex baseIndex = CreateBaseIndex(
+            [(10UL, new[] { 0f }), (20UL, new[] { 2f })],
+            new HnswIndexOptions(2, 8, 8, 0x1331UL));
+        var composite = new HnswBasePlusExactDeltaIndex(baseIndex);
+        long beforeGeneration = composite.Generation;
+
+        HnswBasePlusExactDeltaCheckpointDiagnosticResult measured = composite.CheckpointWithDiagnostics(missing.Path);
+
+        Assert.Equal(HnswBasePlusExactDeltaCheckpointStatus.NoChanges, measured.Result.Status);
+        Assert.Equal(beforeGeneration, measured.Result.Generation);
+        Assert.Equal(beforeGeneration, composite.Generation);
+        Assert.False(Directory.Exists(missing.Path));
+        AssertNotExecuted(measured.Diagnostics.LiveSnapshot);
+        AssertNotExecuted(measured.Diagnostics.RebuildBuild);
+        AssertNotExecuted(measured.Diagnostics.Save);
+        AssertNotExecuted(measured.Diagnostics.OpenValidation);
+        AssertNotExecuted(measured.Diagnostics.Publication);
+    }
+
+    [Fact]
     public void Checkpoint_FailedTargetValidationLeavesOldCompositeSearchableAndUnchanged()
     {
         using TempIndexDirectory nonEmpty = TempIndexDirectory.Create();
@@ -102,6 +164,31 @@ public sealed class HnswBasePlusExactDeltaIndexTests
         long beforeGeneration = composite.Generation;
 
         Assert.Throws<IOException>(() => composite.Checkpoint(nonEmpty.Path));
+
+        Assert.Equal(beforeGeneration, composite.Generation);
+        Assert.Equal(3, composite.BasePhysicalVectorCount);
+        Assert.Equal(1, composite.DeltaPhysicalVectorCount);
+        Assert.Equal(1, composite.TombstoneCount);
+        Assert.Equal(expected, SearchComposite(composite, [0f], topK: 4));
+        Assert.Equal("keep", File.ReadAllText(Path.Combine(nonEmpty.Path, "caller-owned.txt")));
+        Assert.False(File.Exists(Path.Combine(nonEmpty.Path, HnswIndexStorage.ManifestFileName)));
+    }
+
+    [Fact]
+    public void CheckpointWithDiagnostics_FailedTargetValidationLeavesOldCompositeSearchableAndUnchanged()
+    {
+        using TempIndexDirectory nonEmpty = TempIndexDirectory.Create();
+        File.WriteAllText(Path.Combine(nonEmpty.Path, "caller-owned.txt"), "keep");
+        HnswIndex baseIndex = CreateBaseIndex(
+            [(10UL, new[] { 0f }), (20UL, new[] { 2f }), (30UL, new[] { 4f })],
+            new HnswIndexOptions(2, 8, 8, 0x1332UL));
+        var composite = new HnswBasePlusExactDeltaIndex(baseIndex);
+        Assert.Equal(VectorMutationStatus.Committed, composite.TryAdd(15, [0.5f]).Status);
+        Assert.Equal(VectorMutationStatus.Committed, composite.TryDelete(20).Status);
+        SearchResult[] expected = SearchComposite(composite, [0f], topK: 4);
+        long beforeGeneration = composite.Generation;
+
+        Assert.Throws<IOException>(() => composite.CheckpointWithDiagnostics(nonEmpty.Path));
 
         Assert.Equal(beforeGeneration, composite.Generation);
         Assert.Equal(3, composite.BasePhysicalVectorCount);
@@ -183,9 +270,16 @@ public sealed class HnswBasePlusExactDeltaIndexTests
     {
         Assert.True(typeof(HnswBasePlusExactDeltaCheckpointResult).IsNotPublic);
         Assert.True(typeof(HnswBasePlusExactDeltaCheckpointStatus).IsNotPublic);
+        Assert.True(typeof(HnswBasePlusExactDeltaCheckpointDiagnosticResult).IsNotPublic);
+        Assert.True(typeof(HnswBasePlusExactDeltaCheckpointDiagnostics).IsNotPublic);
+        Assert.True(typeof(HnswBasePlusExactDeltaCheckpointPhaseDiagnostics).IsNotPublic);
+        Assert.True(typeof(HnswBasePlusExactDeltaCheckpointPhaseStatus).IsNotPublic);
         Assert.Equal(
             ["NoChanges", "Published"],
             Enum.GetNames<HnswBasePlusExactDeltaCheckpointStatus>().Order(StringComparer.Ordinal).ToArray());
+        Assert.Equal(
+            ["Failed", "Measured", "NotExecuted"],
+            Enum.GetNames<HnswBasePlusExactDeltaCheckpointPhaseStatus>().Order(StringComparer.Ordinal).ToArray());
     }
 
     [Fact]
@@ -483,6 +577,20 @@ public sealed class HnswBasePlusExactDeltaIndexTests
             Assert.True(live.Contains(result.Id), $"Unexpected ID {result.Id}.");
             Assert.True(float.IsFinite(result.Distance), $"Distance for ID {result.Id} was not finite.");
         }
+    }
+
+    private static void AssertMeasured(HnswBasePlusExactDeltaCheckpointPhaseDiagnostics diagnostics)
+    {
+        Assert.Equal(HnswBasePlusExactDeltaCheckpointPhaseStatus.Measured, diagnostics.Status);
+        Assert.True(diagnostics.ElapsedTicks >= 0);
+        Assert.True(diagnostics.ManagedAllocatedBytes >= 0);
+    }
+
+    private static void AssertNotExecuted(HnswBasePlusExactDeltaCheckpointPhaseDiagnostics diagnostics)
+    {
+        Assert.Equal(HnswBasePlusExactDeltaCheckpointPhaseStatus.NotExecuted, diagnostics.Status);
+        Assert.Equal(0, diagnostics.ElapsedTicks);
+        Assert.Equal(0, diagnostics.ManagedAllocatedBytes);
     }
 
     private static string CreateGraphSnapshot(HnswIndex index)

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Numerics;
 
 namespace VecNet;
@@ -124,6 +125,11 @@ internal sealed class HnswBasePlusExactDeltaIndex
 
     internal HnswBasePlusExactDeltaCheckpointResult Checkpoint(string directoryPath)
     {
+        return CheckpointWithDiagnostics(directoryPath).Result;
+    }
+
+    internal HnswBasePlusExactDeltaCheckpointDiagnosticResult CheckpointWithDiagnostics(string directoryPath)
+    {
         if (_isReadOnly)
         {
             throw new InvalidOperationException("This HNSW base-plus-exact-delta index is read-only and cannot be checkpointed.");
@@ -139,28 +145,61 @@ internal sealed class HnswBasePlusExactDeltaIndex
             foldedBaseTombstoneCount == 0 &&
             foldedDeltaTombstoneCount == 0)
         {
-            return CreateCheckpointResult(
+            HnswBasePlusExactDeltaCheckpointResult noChangesResult = CreateCheckpointResult(
                 HnswBasePlusExactDeltaCheckpointStatus.NoChanges,
                 foldedDeltaVectorCount,
                 foldedBaseTombstoneCount,
                 foldedDeltaTombstoneCount);
+            return new HnswBasePlusExactDeltaCheckpointDiagnosticResult(
+                noChangesResult,
+                HnswBasePlusExactDeltaCheckpointDiagnostics.None);
         }
 
-        (ulong[] liveIds, float[] liveVectors) = CreateLiveSnapshot();
-        HnswIndex rebuilt = BuildBaseIndex(liveIds, liveVectors);
-        rebuilt.Save(directoryPath);
+        HnswBasePlusExactDeltaCheckpointPhaseDiagnostics liveSnapshotDiagnostics = HnswBasePlusExactDeltaCheckpointPhaseDiagnostics.NotExecuted;
+        HnswBasePlusExactDeltaCheckpointPhaseDiagnostics rebuildBuildDiagnostics = HnswBasePlusExactDeltaCheckpointPhaseDiagnostics.NotExecuted;
+        HnswBasePlusExactDeltaCheckpointPhaseDiagnostics saveDiagnostics = HnswBasePlusExactDeltaCheckpointPhaseDiagnostics.NotExecuted;
+        HnswBasePlusExactDeltaCheckpointPhaseDiagnostics openValidationDiagnostics = HnswBasePlusExactDeltaCheckpointPhaseDiagnostics.NotExecuted;
+        HnswBasePlusExactDeltaCheckpointPhaseDiagnostics publicationDiagnostics = HnswBasePlusExactDeltaCheckpointPhaseDiagnostics.NotExecuted;
 
-        HnswIndex validated = HnswIndex.OpenReadOnly(directoryPath);
-        ValidateCheckpointOutput(rebuilt, validated, liveIds, liveVectors);
+        (ulong[] liveIds, float[] liveVectors) = MeasurePhase(
+            () => CreateLiveSnapshot(),
+            ref liveSnapshotDiagnostics);
+        HnswIndex rebuilt = MeasurePhase(
+            () => BuildBaseIndex(liveIds, liveVectors),
+            ref rebuildBuildDiagnostics);
+        MeasurePhase(
+            () => rebuilt.Save(directoryPath),
+            ref saveDiagnostics);
 
-        PublishRebuiltBase(rebuilt, liveIds);
-        _generation++;
+        MeasurePhase(
+            () =>
+            {
+                HnswIndex validated = HnswIndex.OpenReadOnly(directoryPath);
+                ValidateCheckpointOutput(rebuilt, validated, liveIds, liveVectors);
+            },
+            ref openValidationDiagnostics);
 
-        return CreateCheckpointResult(
+        MeasurePhase(
+            () =>
+            {
+                PublishRebuiltBase(rebuilt, liveIds);
+                _generation++;
+            },
+            ref publicationDiagnostics);
+
+        HnswBasePlusExactDeltaCheckpointResult publishedResult = CreateCheckpointResult(
             HnswBasePlusExactDeltaCheckpointStatus.Published,
             foldedDeltaVectorCount,
             foldedBaseTombstoneCount,
             foldedDeltaTombstoneCount);
+        return new HnswBasePlusExactDeltaCheckpointDiagnosticResult(
+            publishedResult,
+            new HnswBasePlusExactDeltaCheckpointDiagnostics(
+                liveSnapshotDiagnostics,
+                rebuildBuildDiagnostics,
+                saveDiagnostics,
+                openValidationDiagnostics,
+                publicationDiagnostics));
     }
 
     internal int Search(
@@ -466,6 +505,51 @@ internal sealed class HnswBasePlusExactDeltaIndex
         if (Directory.Exists(directory) && Directory.EnumerateFileSystemEntries(directory).Any())
         {
             throw new IOException("HNSW index save directory must be empty.");
+        }
+    }
+
+    private static T MeasurePhase<T>(
+        Func<T> action,
+        ref HnswBasePlusExactDeltaCheckpointPhaseDiagnostics diagnostics)
+    {
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        long timestamp = Stopwatch.GetTimestamp();
+        try
+        {
+            T result = action();
+            diagnostics = HnswBasePlusExactDeltaCheckpointPhaseDiagnostics.Measured(
+                Stopwatch.GetElapsedTime(timestamp).Ticks,
+                GC.GetAllocatedBytesForCurrentThread() - allocatedBefore);
+            return result;
+        }
+        catch
+        {
+            diagnostics = HnswBasePlusExactDeltaCheckpointPhaseDiagnostics.Failed(
+                Stopwatch.GetElapsedTime(timestamp).Ticks,
+                GC.GetAllocatedBytesForCurrentThread() - allocatedBefore);
+            throw;
+        }
+    }
+
+    private static void MeasurePhase(
+        Action action,
+        ref HnswBasePlusExactDeltaCheckpointPhaseDiagnostics diagnostics)
+    {
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        long timestamp = Stopwatch.GetTimestamp();
+        try
+        {
+            action();
+            diagnostics = HnswBasePlusExactDeltaCheckpointPhaseDiagnostics.Measured(
+                Stopwatch.GetElapsedTime(timestamp).Ticks,
+                GC.GetAllocatedBytesForCurrentThread() - allocatedBefore);
+        }
+        catch
+        {
+            diagnostics = HnswBasePlusExactDeltaCheckpointPhaseDiagnostics.Failed(
+                Stopwatch.GetElapsedTime(timestamp).Ticks,
+                GC.GetAllocatedBytesForCurrentThread() - allocatedBefore);
+            throw;
         }
     }
 

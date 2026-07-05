@@ -314,6 +314,19 @@ public static class BenchmarkRunnerProgram
                 return manifest.Aggregate.FailedCaseCount == 0 && manifest.Aggregate.BlockedCaseCount == 0 ? 0 : 1;
             }
 
+            if (args.Length > 0 && string.Equals(args[0], HnswBasePlusExactDeltaCheckpointOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+            {
+                HnswBasePlusExactDeltaCheckpointOptions checkpointOptions = CommandLine.ParseHnswBasePlusExactDeltaCheckpoint(args);
+                HnswBasePlusExactDeltaCheckpointBenchmarkReport checkpointReport = HnswBasePlusExactDeltaCheckpointScenario.Run(checkpointOptions, args);
+                HnswBasePlusExactDeltaCheckpointScenario.Write(checkpointReport, checkpointOptions.OutputPath);
+
+                Console.WriteLine(
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"Wrote private generated HNSW base-plus-exact-delta checkpoint report to {checkpointOptions.OutputPath} with validation status {checkpointReport.Validation.Status}."));
+                return string.Equals(checkpointReport.Validation.Status, "passed", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+            }
+
             if (args.Length > 0 && string.Equals(args[0], HnswBasePlusExactDeltaGeneratedOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
             {
                 HnswBasePlusExactDeltaGeneratedOptions deltaOptions = CommandLine.ParseHnswBasePlusExactDeltaGenerated(args);
@@ -445,6 +458,7 @@ public static class BenchmarkRunnerProgram
         writer.WriteLine("  compare-generated-exact --baseline VecNet.BenchmarkRunner.Artifacts/baseline.json --current VecNet.BenchmarkRunner.Artifacts/current.json --output VecNet.BenchmarkRunner.Artifacts/comparisons/comparison.json");
         writer.WriteLine("  hnsw-generated --metric SquaredEuclidean --dimension 128 --vectors 10000 --queries 100 --top-k 10 --runs 1 --warmup-queries 0 --seed 0x5EED2036 --m 16 --ef-construction 200 --ef-search 50 --hnsw-seed 0x0000000564543034 --output VecNet.BenchmarkRunner.Artifacts/hnsw-generated.json");
         writer.WriteLine("  generated-hnsw-base-plus-exact-delta --metric SquaredEuclidean --dimension 128 --vectors 10000 --queries 100 --top-k 10 --insertions 1000 --deletes 1000 --delta-deletes 0 --duplicate-inserts 1 --unknown-deletes 1 --repeated-deletes 1 --runs 1 --warmup-queries 0 --seed 0x5EED2124 --m 16 --ef-construction 200 --ef-search 50 --hnsw-seed 0x0000000564543034 --output VecNet.BenchmarkRunner.Artifacts/generated-hnsw-base-plus-exact-delta.json");
+        writer.WriteLine("  generated-hnsw-base-plus-exact-delta-checkpoint --metric SquaredEuclidean --dimension 128 --vectors 1024 --queries 16 --top-k 10 --insertions 128 --deletes 128 --delta-deletes 16 --duplicate-inserts 1 --unknown-deletes 1 --repeated-deletes 1 --runs 1 --warmup-queries 0 --seed 0x5EED2134 --m 16 --ef-construction 128 --ef-search 128 --hnsw-seed 0x484E535700013400 --output VecNet.BenchmarkRunner.Artifacts/generated-hnsw-base-plus-exact-delta-checkpoint.json --checkpoint-directory VecNet.BenchmarkRunner.Artifacts/generated-hnsw-base-plus-exact-delta-checkpoint-output");
         writer.WriteLine("  generated-hnsw-base-plus-exact-delta-matrix --preset smoke|standard --vectors 64 --queries 4 --duplicate-inserts 1 --unknown-deletes 1 --repeated-deletes 1 --runs 1 --warmup-queries 0 --seed 0x5EED2125 --output-dir VecNet.BenchmarkRunner.Artifacts/generated-hnsw-base-plus-exact-delta-matrix --manifest VecNet.BenchmarkRunner.Artifacts/generated-hnsw-base-plus-exact-delta-matrix/hnsw-base-plus-exact-delta-matrix-manifest.json");
         writer.WriteLine("  hnsw-generated-durable --metric SquaredEuclidean --dimension 128 --vectors 1024 --queries 25 --top-k 10 --runs 1 --warmup-queries 0 --seed 0x5EED2073 --m 16 --ef-construction 200 --ef-search 50 --hnsw-seed 0x0000000000564543 --output VecNet.BenchmarkRunner.Artifacts/hnsw-generated-durable.json --snapshot-directory VecNet.BenchmarkRunner.Artifacts/hnsw-generated-durable-snapshot");
         writer.WriteLine("  generated-hnsw-memory-smoke --metric SquaredEuclidean --dimension 128 --vectors 4096 --queries 32 --top-k 10 --warmup-queries 4 --seed 0x5EED2112 --m 8 --ef-construction 64 --ef-search 128 --hnsw-seed 0x484E535700011212 --sample-interval-ms 10 --output VecNet.BenchmarkRunner.Artifacts/generated-hnsw-memory-smoke.json --snapshot-directory VecNet.BenchmarkRunner.Artifacts/generated-hnsw-memory-smoke-snapshot");

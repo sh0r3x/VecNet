@@ -2515,6 +2515,50 @@ public static class CommandLine
             manifestPath);
     }
 
+    public static FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixOptions ParseExternalFashionMnistHnswBasePlusExactDeltaCheckpointMatrix(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedExternalFashionMnistHnswBasePlusExactDeltaCheckpointMatrixOption);
+        string presetName = FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixOptions.NormalizePresetName(
+            GetOptionalNonWhiteSpace(values, "preset") ?? FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixOptions.DefaultPresetName);
+        string cacheRoot = values.TryGetValue("cache-root", out string? cacheRootValue)
+            ? cacheRootValue
+            : FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions.Default.CacheRoot;
+        if (string.IsNullOrWhiteSpace(cacheRoot))
+        {
+            throw new ArgumentException("Option --cache-root must not be empty.");
+        }
+
+        string outputDirectory = values.TryGetValue("output-dir", out string? outputDirectoryValue)
+            ? outputDirectoryValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"fashion-mnist-external-hnsw-base-plus-exact-delta-checkpoint-matrix-{DateTime.UtcNow:yyyyMMdd-HHmmss}");
+        if (string.IsNullOrWhiteSpace(outputDirectory))
+        {
+            throw new ArgumentException("Option --output-dir must not be empty.");
+        }
+
+        string manifestPath = values.TryGetValue("manifest", out string? manifestValue)
+            ? manifestValue
+            : Path.Combine(outputDirectory, "fashion-mnist-external-hnsw-base-plus-exact-delta-checkpoint-matrix-manifest.json");
+        if (string.IsNullOrWhiteSpace(manifestPath))
+        {
+            throw new ArgumentException("Option --manifest must not be empty.");
+        }
+
+        return new FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixOptions(
+            presetName,
+            cacheRoot,
+            outputDirectory,
+            manifestPath);
+    }
+
     private static Dictionary<string, string> ParseOptionValues(
         IReadOnlyList<string> args,
         int startIndex,
@@ -2939,6 +2983,12 @@ public static class CommandLine
         string.Equals(name, "duplicate-inserts", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "unknown-deletes", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "repeated-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output-dir", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "manifest", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedExternalFashionMnistHnswBasePlusExactDeltaCheckpointMatrixOption(string name) =>
+        string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "cache-root", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "output-dir", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "manifest", StringComparison.OrdinalIgnoreCase);
 

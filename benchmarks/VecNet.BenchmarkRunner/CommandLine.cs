@@ -2445,6 +2445,56 @@ public static class CommandLine
             hnswSeed);
     }
 
+    public static FashionMnistExternalHnswBasePlusExactDeltaCheckpointMemorySmokeOptions ParseExternalFashionMnistHnswBasePlusExactDeltaCheckpointMemorySmoke(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? FashionMnistExternalHnswBasePlusExactDeltaCheckpointMemorySmokeOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, FashionMnistExternalHnswBasePlusExactDeltaCheckpointMemorySmokeOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedExternalFashionMnistHnswBasePlusExactDeltaCheckpointMemorySmokeOption);
+        FashionMnistExternalHnswBasePlusExactDeltaCheckpointMemorySmokeOptions defaults =
+            FashionMnistExternalHnswBasePlusExactDeltaCheckpointMemorySmokeOptions.Default;
+        string cacheRoot = values.TryGetValue("cache-root", out string? cacheRootValue)
+            ? cacheRootValue
+            : defaults.CacheRoot;
+        if (string.IsNullOrWhiteSpace(cacheRoot))
+        {
+            throw new ArgumentException("Option --cache-root must not be empty.");
+        }
+
+        string outputPath = values.TryGetValue("output", out string? outputValue)
+            ? outputValue
+            : defaults.OutputPath;
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("Option --output must not be empty.");
+        }
+
+        string checkpointDirectory = values.TryGetValue("checkpoint-directory", out string? checkpointDirectoryValue)
+            ? checkpointDirectoryValue
+            : defaults.CheckpointDirectory;
+        if (string.IsNullOrWhiteSpace(checkpointDirectory))
+        {
+            throw new ArgumentException("Option --checkpoint-directory must not be empty.");
+        }
+
+        int sampleIntervalMilliseconds = GetPositiveInt(values, "sample-interval-ms", defaults.SampleIntervalMilliseconds);
+        if (sampleIntervalMilliseconds is < 1 or > 1000)
+        {
+            throw new ArgumentException("Option --sample-interval-ms must be in the range 1..1000.");
+        }
+
+        return defaults with
+        {
+            CacheRoot = cacheRoot,
+            OutputPath = outputPath,
+            CheckpointDirectory = checkpointDirectory,
+            SampleIntervalMilliseconds = sampleIntervalMilliseconds
+        };
+    }
+
     public static FashionMnistExternalHnswBasePlusExactDeltaMatrixOptions ParseExternalFashionMnistHnswBasePlusExactDeltaMatrix(IReadOnlyList<string> args)
     {
         string scenario = args.Count == 0 ? FashionMnistExternalHnswBasePlusExactDeltaMatrixOptions.ScenarioName : args[0];
@@ -2971,6 +3021,12 @@ public static class CommandLine
         string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedExternalFashionMnistHnswBasePlusExactDeltaCheckpointMemorySmokeOption(string name) =>
+        string.Equals(name, "cache-root", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "checkpoint-directory", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "sample-interval-ms", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedExternalFashionMnistHnswBasePlusExactDeltaMatrixOption(string name) =>
         string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||

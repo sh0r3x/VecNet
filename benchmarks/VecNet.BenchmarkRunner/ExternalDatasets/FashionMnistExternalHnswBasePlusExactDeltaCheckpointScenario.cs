@@ -469,7 +469,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
         return new TruthSet(results, options.TopK);
     }
 
-    private static FashionMnistExternalHnswBenchmarkScenario.LoadedExternalDataset LoadAndValidateDataset(
+    internal static FashionMnistExternalHnswBenchmarkScenario.LoadedExternalDataset LoadAndValidateDataset(
         FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions options)
     {
         var guardOptions = new FashionMnistExternalHnswBenchmarkOptions(
@@ -495,7 +495,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
         return dataset;
     }
 
-    private static PreparedCheckpointState PrepareCheckpointState(
+    internal static PreparedCheckpointState PrepareCheckpointState(
         FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions options,
         FashionMnistExternalHnswBenchmarkScenario.LoadedExternalDataset dataset)
     {
@@ -510,7 +510,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
         return new PreparedCheckpointState(build, composite, generationBeforeMutations, mutationExecution, preCounts, liveIds, truth);
     }
 
-    private static BuildMeasurement BuildBaseIndex(
+    internal static BuildMeasurement BuildBaseIndex(
         FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions options,
         FashionMnistExternalHnswBenchmarkScenario.LoadedExternalDataset dataset)
     {
@@ -529,7 +529,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
             GC.GetAllocatedBytesForCurrentThread() - allocationStart);
     }
 
-    private static HnswBuildInfo CreateBuildInfo(
+    internal static HnswBuildInfo CreateBuildInfo(
         BuildMeasurement build,
         FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions options,
         FashionMnistExternalHnswBenchmarkScenario.LoadedExternalDataset dataset) =>
@@ -546,7 +546,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
             "internal HnswIndex construction and selected admitted base-vector Add calls",
             "cache checks, checksum validation, matrix load, truth load, composite construction, update application, exact updated truth generation, warmup, measured search, result comparison and report writing");
 
-    private static MutationExecution ExecuteMutations(
+    internal static MutationExecution ExecuteMutations(
         FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions options,
         FashionMnistExternalHnswBenchmarkScenario.LoadedExternalDataset dataset,
         HnswBasePlusExactDeltaIndex composite)
@@ -612,7 +612,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
         return new MutationExecution(inserted, deletedBase, deletedDelta, composite.Generation, counts.ToInfo());
     }
 
-    private static string CreateCheckpointRunDirectory(string checkpointRootDirectory, int runNumber)
+    internal static string CreateCheckpointRunDirectory(string checkpointRootDirectory, int runNumber)
     {
         string directory = Path.Combine(
             checkpointRootDirectory,
@@ -621,7 +621,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
         return directory;
     }
 
-    private static MeasuredCheckpointRun MeasureCheckpointRun(
+    internal static MeasuredCheckpointRun MeasureCheckpointRun(
         HnswBasePlusExactDeltaIndex composite,
         string checkpointDirectory)
     {
@@ -641,7 +641,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
             checkpointAllocatedBytes);
     }
 
-    private static HnswBasePlusExactDeltaCheckpointRunInfo CreateCheckpointRunInfo(
+    internal static HnswBasePlusExactDeltaCheckpointRunInfo CreateCheckpointRunInfo(
         int runNumber,
         string checkpointDirectory,
         MeasuredCheckpointRun measured)
@@ -659,7 +659,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
             CreatePhaseSet(measured.Diagnostic.Diagnostics));
     }
 
-    private static HnswBasePlusExactDeltaCheckpointRunsInfo CreateCheckpointRunsInfo(
+    internal static HnswBasePlusExactDeltaCheckpointRunsInfo CreateCheckpointRunsInfo(
         FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions options,
         HnswBasePlusExactDeltaCheckpointRunInfo[] runs)
     {
@@ -681,7 +681,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
             aggregate);
     }
 
-    private static void WarmupCompositeSearch(
+    internal static void WarmupCompositeSearch(
         FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions options,
         FashionMnistExternalHnswBenchmarkScenario.LoadedExternalDataset dataset,
         HnswBasePlusExactDeltaIndex composite)
@@ -699,7 +699,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
         }
     }
 
-    private static void WarmupOpenedSearch(
+    internal static void WarmupOpenedSearch(
         FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions options,
         FashionMnistExternalHnswBenchmarkScenario.LoadedExternalDataset dataset,
         HnswIndex opened)
@@ -717,7 +717,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
         }
     }
 
-    private static SearchMeasurement MeasureCompositeSearch(
+    internal static SearchMeasurement MeasureCompositeSearch(
         FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions options,
         FashionMnistExternalHnswBenchmarkScenario.LoadedExternalDataset dataset,
         HnswBasePlusExactDeltaIndex composite,
@@ -744,7 +744,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
         return new SearchMeasurement(capturedResults ?? [], runs, AggregateRuns(runs, options.QueryCount));
     }
 
-    private static SearchMeasurement MeasureOpenedSearch(
+    internal static SearchMeasurement MeasureOpenedSearch(
         FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions options,
         FashionMnistExternalHnswBenchmarkScenario.LoadedExternalDataset dataset,
         HnswIndex opened,
@@ -831,7 +831,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
             options.TopK);
     }
 
-    private static HnswBasePlusExactDeltaCheckpointNoChangesProbeInfo ProbeNoChanges(
+    internal static HnswBasePlusExactDeltaCheckpointNoChangesProbeInfo ProbeNoChanges(
         string checkpointDirectory,
         HnswBasePlusExactDeltaIndex composite)
     {
@@ -858,7 +858,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
             phases);
     }
 
-    private static bool ValidateDeletedReservation(
+    internal static bool ValidateDeletedReservation(
         FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions options,
         FashionMnistExternalHnswBenchmarkScenario.LoadedExternalDataset dataset,
         HnswBasePlusExactDeltaIndex composite)
@@ -873,7 +873,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
         return result.Status == VectorMutationStatus.DuplicateId;
     }
 
-    private static HnswBasePlusExactDeltaCheckpointOpenedValidationInfo ValidateOpenedOutput(
+    internal static HnswBasePlusExactDeltaCheckpointOpenedValidationInfo ValidateOpenedOutput(
         FashionMnistExternalHnswBenchmarkScenario.LoadedExternalDataset dataset,
         FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions options,
         ulong[] expectedLiveIds,
@@ -918,7 +918,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
             "Opened read-only HNSW checkpoint output must contain live IDs in checkpoint live-view order and vector payloads matching admitted Fashion-MNIST live rows exactly; search parity is validated separately for the same queries and equivalent workspaces.");
     }
 
-    private static HnswBasePlusExactDeltaCheckpointParityInfo CompareSearchParity(
+    internal static HnswBasePlusExactDeltaCheckpointParityInfo CompareSearchParity(
         SearchResult[][] rebuiltComposite,
         SearchResult[][] opened,
         int dimension)
@@ -964,7 +964,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
             "Post-checkpoint rebuilt composite Search and opened read-only HNSW Search are executed for the same external queries with fresh caller-owned workspaces and must return the same count, IDs, order and distances within D-026 tolerance.");
     }
 
-    private static HnswBasePlusExactDeltaCheckpointOutputInfo InspectCheckpointOutput(string directory, int vectorCount)
+    internal static HnswBasePlusExactDeltaCheckpointOutputInfo InspectCheckpointOutput(string directory, int vectorCount)
     {
         long manifestBytes = FileLength(directory, ManifestFileName);
         long idsBytes = FileLength(directory, IdsFileName);
@@ -1003,7 +1003,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
     private static long FileLength(string directory, string fileName) =>
         new FileInfo(Path.Combine(directory, fileName)).Length;
 
-    private static SearchSectionEvaluation EvaluateSearchSection(
+    internal static SearchSectionEvaluation EvaluateSearchSection(
         FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions options,
         FashionMnistExternalHnswBenchmarkScenario.LoadedExternalDataset dataset,
         TruthSet truth,
@@ -1034,7 +1034,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
             CreateUnderfill(options, search.Results));
     }
 
-    private static HnswBasePlusExactDeltaCheckpointSearchSectionInfo CreateSearchSection(
+    internal static HnswBasePlusExactDeltaCheckpointSearchSectionInfo CreateSearchSection(
         string name,
         string timedOperation,
         SearchMeasurement measurement,
@@ -1091,7 +1091,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
                     ? "Warmup queries executed before this measured search section and excluded from measured timing and allocation totals."
                     : "No warmup queries were requested."));
 
-    private static HnswBasePlusExactDeltaCheckpointCountInfo CreateCountInfo(
+    internal static HnswBasePlusExactDeltaCheckpointCountInfo CreateCountInfo(
         FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions options,
         HnswBasePlusExactDeltaIndex composite)
     {
@@ -1112,7 +1112,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
             "Before checkpoint, base and delta physical rows include tombstoned rows. After a published checkpoint, live Fashion-MNIST rows are folded into a rebuilt immutable HNSW base, delta rows and tombstones are cleared, and deleted/reserved IDs remain retained in the writable composite instance.");
     }
 
-    private static HnswBasePlusExactDeltaCheckpointMutationInfo CreateMutationInfo(
+    internal static HnswBasePlusExactDeltaCheckpointMutationInfo CreateMutationInfo(
         FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions options,
         MutationExecution mutationExecution,
         long generationBeforeMutations,
@@ -1135,7 +1135,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
             mutationExecution.StatusCounts);
     }
 
-    private static HnswBasePlusExactDeltaCheckpointResultInfo CreateCheckpointResultInfo(
+    internal static HnswBasePlusExactDeltaCheckpointResultInfo CreateCheckpointResultInfo(
         HnswBasePlusExactDeltaCheckpointResult result) =>
         new(
             result.Status.ToString(),
@@ -1154,7 +1154,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
             result.FoldedBaseTombstoneCount,
             result.FoldedDeltaTombstoneCount);
 
-    private static HnswBasePlusExactDeltaCheckpointPhaseSetInfo CreatePhaseSet(
+    internal static HnswBasePlusExactDeltaCheckpointPhaseSetInfo CreatePhaseSet(
         HnswBasePlusExactDeltaCheckpointDiagnostics diagnostics) =>
         new(
             CreatePhaseInfo(diagnostics.LiveSnapshot),
@@ -1172,7 +1172,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
             diagnostics.ManagedAllocatedBytes,
             "VEC-133 internal HnswBasePlusExactDeltaIndex.CheckpointWithDiagnostics phase diagnostic");
 
-    private static bool AllMeasured(HnswBasePlusExactDeltaCheckpointPhaseSetInfo phases) =>
+    internal static bool AllMeasured(HnswBasePlusExactDeltaCheckpointPhaseSetInfo phases) =>
         phases.LiveSnapshot.Status == nameof(HnswBasePlusExactDeltaCheckpointPhaseStatus.Measured) &&
         phases.RebuildBuild.Status == nameof(HnswBasePlusExactDeltaCheckpointPhaseStatus.Measured) &&
         phases.Save.Status == nameof(HnswBasePlusExactDeltaCheckpointPhaseStatus.Measured) &&
@@ -1186,7 +1186,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
         phases.OpenValidation.Status != nameof(HnswBasePlusExactDeltaCheckpointPhaseStatus.NotExecuted) ||
         phases.Publication.Status != nameof(HnswBasePlusExactDeltaCheckpointPhaseStatus.NotExecuted);
 
-    private static bool CheckpointRepeatedRunEvidencePresent(
+    internal static bool CheckpointRepeatedRunEvidencePresent(
         FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions options,
         HnswBasePlusExactDeltaCheckpointRunsInfo checkpointRuns)
     {
@@ -1218,7 +1218,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
         return options.Runs == 1 || checkpointRuns.Runs.Length > 1;
     }
 
-    private static bool MutationStatusCountsMatch(
+    internal static bool MutationStatusCountsMatch(
         FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions options,
         MutationExecution mutationExecution) =>
         mutationExecution.StatusCounts.Committed ==
@@ -1229,7 +1229,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
         mutationExecution.StatusCounts.ReadOnly == 0 &&
         mutationExecution.StatusCounts.Unsupported == 0;
 
-    private static bool CheckpointCountsMatch(
+    internal static bool CheckpointCountsMatch(
         HnswBasePlusExactDeltaCheckpointCountInfo preCounts,
         HnswBasePlusExactDeltaCheckpointResult result) =>
         result.Status == HnswBasePlusExactDeltaCheckpointStatus.Published &&
@@ -1247,7 +1247,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
         result.FoldedBaseTombstoneCount == preCounts.BaseTombstoneCount &&
         result.FoldedDeltaTombstoneCount == preCounts.DeltaTombstoneCount;
 
-    private static bool PostCountsMatch(
+    internal static bool PostCountsMatch(
         HnswBasePlusExactDeltaCheckpointCountInfo preCounts,
         HnswBasePlusExactDeltaCheckpointCountInfo postCounts,
         HnswBasePlusExactDeltaCheckpointResult result) =>
@@ -1428,7 +1428,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
         return MathF.Abs(expected - actual) <= tolerance;
     }
 
-    private static void ValidateOptions(FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions options)
+    internal static void ValidateOptions(FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions options)
     {
         if (string.IsNullOrWhiteSpace(options.CacheRoot))
         {
@@ -1534,16 +1534,16 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
 
     private delegate int SearchOperation(ReadOnlySpan<float> query, Span<SearchResult> results);
 
-    private sealed record BuildMeasurement(HnswIndex Index, double ElapsedMilliseconds, long ManagedAllocatedBytes);
+    internal sealed record BuildMeasurement(HnswIndex Index, double ElapsedMilliseconds, long ManagedAllocatedBytes);
 
-    private sealed record MutationExecution(
+    internal sealed record MutationExecution(
         int InsertedCount,
         int DeletedBaseCount,
         int DeletedDeltaCount,
         long GenerationAfterMutations,
         GeneratedExactUpdateMutationStatusCountInfo StatusCounts);
 
-    private sealed record PreparedCheckpointState(
+    internal sealed record PreparedCheckpointState(
         BuildMeasurement Build,
         HnswBasePlusExactDeltaIndex Composite,
         long GenerationBeforeMutations,
@@ -1552,18 +1552,18 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
         ulong[] LiveIds,
         TruthSet Truth);
 
-    private sealed record MeasuredCheckpointRun(
+    internal sealed record MeasuredCheckpointRun(
         string DirectoryPath,
         long GenerationBeforeCheckpoint,
         HnswBasePlusExactDeltaCheckpointDiagnosticResult Diagnostic,
         long ElapsedTicks,
         long ManagedAllocatedBytes);
 
-    private sealed record SingleRunMeasurement(SearchRunInfo Summary, SearchResult[][]? Results);
+    internal sealed record SingleRunMeasurement(SearchRunInfo Summary, SearchResult[][]? Results);
 
-    private sealed record SearchMeasurement(SearchResult[][] Results, SearchRunInfo[] Runs, AggregateTimingInfo Aggregate);
+    internal sealed record SearchMeasurement(SearchResult[][] Results, SearchRunInfo[] Runs, AggregateTimingInfo Aggregate);
 
-    private sealed record SearchSectionEvaluation(
+    internal sealed record SearchSectionEvaluation(
         HnswBasePlusExactDeltaCheckpointMetricsInfo Metrics,
         HnswBasePlusExactDeltaUnderfillInfo Underfill);
 

@@ -982,6 +982,155 @@ public static class CommandLine
             hnswSeed);
     }
 
+    public static HnswAllowlistFilteringOptions ParseHnswAllowlistFiltering(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? HnswAllowlistFilteringOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, HnswAllowlistFilteringOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedHnswAllowlistFilteringOption);
+        HnswAllowlistFilteringOptions defaults = HnswAllowlistFilteringOptions.Default;
+
+        VectorMetric metric = GetEnum(values, "metric", defaults.Metric);
+        int dimension = GetPositiveInt(values, "dimension", defaults.Dimension);
+        int baseVectorCount = GetPositiveInt(values, "vectors", defaults.BaseVectorCount);
+        int queryCount = GetPositiveInt(values, "queries", defaults.QueryCount);
+        int topK = GetPositiveInt(values, "top-k", defaults.TopK);
+        int insertedDeltaCount = GetPositiveInt(values, "insertions", defaults.InsertedDeltaCount);
+        int deletedBaseCount = GetNonNegativeInt(values, "deletes", defaults.DeletedBaseCount);
+        int deletedDeltaCount = GetNonNegativeInt(values, "delta-deletes", defaults.DeletedDeltaCount);
+        int duplicateInsertAttempts = GetNonNegativeInt(values, "duplicate-inserts", defaults.DuplicateInsertAttempts);
+        int unknownDeleteAttempts = GetNonNegativeInt(values, "unknown-deletes", defaults.UnknownDeleteAttempts);
+        int repeatedDeleteAttempts = GetNonNegativeInt(values, "repeated-deletes", defaults.RepeatedDeleteAttempts);
+        string filterProfile = HnswAllowlistFilteringOptions.NormalizeFilterProfile(
+            GetOptionalNonWhiteSpace(values, "filter") ?? defaults.FilterProfile);
+        int runs = GetPositiveInt(values, "runs", defaults.Runs);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", defaults.WarmupQueries);
+        uint seed = GetSeed(values, "seed", defaults.Seed);
+        int m = GetPositiveInt(values, "m", defaults.M);
+        int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
+        int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
+        ulong hnswSeed = GetUInt64Seed(values, "hnsw-seed", defaults.HnswSeed);
+        string outputPath = values.TryGetValue("output", out string? outputValue)
+            ? outputValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"generated-hnsw-allowlist-filtered-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json");
+        string openedIndexDirectory = values.TryGetValue("opened-index-directory", out string? openedValue)
+            ? openedValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"generated-hnsw-allowlist-filtered-opened-{DateTime.UtcNow:yyyyMMdd-HHmmss}");
+        string checkpointDirectory = values.TryGetValue("checkpoint-directory", out string? checkpointValue)
+            ? checkpointValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"generated-hnsw-allowlist-filtered-checkpoint-{DateTime.UtcNow:yyyyMMdd-HHmmss}");
+
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("Option --output must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(openedIndexDirectory))
+        {
+            throw new ArgumentException("Option --opened-index-directory must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(checkpointDirectory))
+        {
+            throw new ArgumentException("Option --checkpoint-directory must not be empty.");
+        }
+
+        var options = new HnswAllowlistFilteringOptions(
+            metric,
+            dimension,
+            baseVectorCount,
+            queryCount,
+            topK,
+            seed,
+            insertedDeltaCount,
+            deletedBaseCount,
+            deletedDeltaCount,
+            duplicateInsertAttempts,
+            unknownDeleteAttempts,
+            repeatedDeleteAttempts,
+            filterProfile,
+            outputPath,
+            openedIndexDirectory,
+            checkpointDirectory,
+            runs,
+            warmupQueries,
+            m,
+            efConstruction,
+            efSearch,
+            hnswSeed);
+
+        if (metric != VectorMetric.SquaredEuclidean)
+        {
+            throw new ArgumentException("generated-hnsw-allowlist-filtered supports only SquaredEuclidean.");
+        }
+
+        if (topK > efSearch)
+        {
+            throw new ArgumentException("Option --top-k must be less than or equal to --ef-search.");
+        }
+
+        if (topK > options.LiveVectorCount)
+        {
+            throw new ArgumentException("top-k must be less than or equal to the post-update live vector count.");
+        }
+
+        if (deletedBaseCount > baseVectorCount)
+        {
+            throw new ArgumentException("Option --deletes must be less than or equal to --vectors.");
+        }
+
+        if (deletedDeltaCount > insertedDeltaCount)
+        {
+            throw new ArgumentException("Option --delta-deletes must be less than or equal to --insertions.");
+        }
+
+        if (repeatedDeleteAttempts > 0 && deletedBaseCount + deletedDeltaCount == 0)
+        {
+            throw new ArgumentException("Option --repeated-deletes requires at least one committed delete.");
+        }
+
+        if (m is < 2 or > 64)
+        {
+            throw new ArgumentException("Option --m must be in the range 2..64.");
+        }
+
+        if (efConstruction < m || efConstruction > 4096)
+        {
+            throw new ArgumentException("Option --ef-construction must be at least --m and no more than 4096.");
+        }
+
+        if (efSearch > 4096)
+        {
+            throw new ArgumentException("Option --ef-search must be no more than 4096.");
+        }
+
+        if (filterProfile == "fallback-boundary" && options.LiveVectorCount < efSearch)
+        {
+            throw new ArgumentException("Option --filter fallback-boundary requires live vector count at least --ef-search.");
+        }
+
+        if ((filterProfile == "broad" || filterProfile == "all") && options.LiveVectorCount <= efSearch)
+        {
+            throw new ArgumentException("Option --filter broad/all requires live vector count greater than --ef-search.");
+        }
+
+        return options;
+    }
+
     public static HnswMemorySmokeOptions ParseHnswMemorySmoke(IReadOnlyList<string> args)
     {
         string scenario = args.Count == 0 ? HnswMemorySmokeOptions.ScenarioName : args[0];
@@ -3102,6 +3251,30 @@ public static class CommandLine
         string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "m", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedHnswAllowlistFilteringOption(string name) =>
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "dimension", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vectors", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "top-k", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "insertions", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "delta-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "duplicate-inserts", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "unknown-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "repeated-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "filter", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "opened-index-directory", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "checkpoint-directory", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "m", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||

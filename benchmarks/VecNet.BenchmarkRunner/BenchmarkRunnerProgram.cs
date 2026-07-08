@@ -223,6 +223,19 @@ public static class BenchmarkRunnerProgram
                 return string.Equals(filteringReport.Validation.Status, "passed", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
             }
 
+            if (args.Length > 0 && string.Equals(args[0], HnswAllowlistFilteringMatrixOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+            {
+                HnswAllowlistFilteringMatrixOptions matrixOptions = CommandLine.ParseHnswAllowlistFilteringMatrix(args);
+                HnswAllowlistFilteringMatrixManifest manifest = HnswAllowlistFilteringMatrixScenario.Run(matrixOptions, args);
+                HnswAllowlistFilteringMatrixScenario.WriteManifest(manifest, matrixOptions.ManifestPath);
+
+                Console.WriteLine(
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"Wrote private generated HNSW allowlist-filtered matrix manifest to {matrixOptions.ManifestPath} with {manifest.Aggregate.PassedCaseCount} passed, {manifest.Aggregate.FailedCaseCount} failed and {manifest.Aggregate.BlockedCaseCount} blocked case(s)."));
+                return manifest.Aggregate.FailedCaseCount == 0 && manifest.Aggregate.BlockedCaseCount == 0 ? 0 : 1;
+            }
+
             if (args.Length > 0 && string.Equals(args[0], HnswMemorySmokeOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
             {
                 HnswMemorySmokeOptions memoryOptions = CommandLine.ParseHnswMemorySmoke(args);
@@ -525,6 +538,7 @@ public static class BenchmarkRunnerProgram
         writer.WriteLine("  generated-hnsw-base-plus-exact-delta --metric SquaredEuclidean --dimension 128 --vectors 10000 --queries 100 --top-k 10 --insertions 1000 --deletes 1000 --delta-deletes 0 --duplicate-inserts 1 --unknown-deletes 1 --repeated-deletes 1 --runs 1 --warmup-queries 0 --seed 0x5EED2124 --m 16 --ef-construction 200 --ef-search 50 --hnsw-seed 0x0000000564543034 --output VecNet.BenchmarkRunner.Artifacts/generated-hnsw-base-plus-exact-delta.json");
         writer.WriteLine("  generated-hnsw-base-plus-exact-delta-checkpoint --metric SquaredEuclidean --dimension 128 --vectors 1024 --queries 16 --top-k 10 --insertions 128 --deletes 128 --delta-deletes 16 --duplicate-inserts 1 --unknown-deletes 1 --repeated-deletes 1 --runs 1 --warmup-queries 0 --seed 0x5EED2134 --m 16 --ef-construction 128 --ef-search 128 --hnsw-seed 0x484E535700013400 --output VecNet.BenchmarkRunner.Artifacts/generated-hnsw-base-plus-exact-delta-checkpoint.json --checkpoint-directory VecNet.BenchmarkRunner.Artifacts/generated-hnsw-base-plus-exact-delta-checkpoint-output");
         writer.WriteLine("  generated-hnsw-allowlist-filtered --metric SquaredEuclidean --dimension 32 --vectors 512 --queries 8 --top-k 10 --insertions 64 --deletes 32 --delta-deletes 8 --duplicate-inserts 1 --unknown-deletes 1 --repeated-deletes 1 --filter empty|very-selective|fallback-boundary|broad|all --runs 1 --warmup-queries 1 --seed 0x5EED2148 --m 8 --ef-construction 64 --ef-search 64 --hnsw-seed 0x484E535700014800 --output VecNet.BenchmarkRunner.Artifacts/generated-hnsw-allowlist-filtered.json --opened-index-directory VecNet.BenchmarkRunner.Artifacts/generated-hnsw-allowlist-filtered-opened --checkpoint-directory VecNet.BenchmarkRunner.Artifacts/generated-hnsw-allowlist-filtered-checkpoint");
+        writer.WriteLine("  generated-hnsw-allowlist-filtered-matrix --preset smoke|standard --queries 8 --runs 1 --warmup-queries 1 --seed 0x5EED2148 --duplicate-inserts 1 --unknown-deletes 1 --repeated-deletes 1 --output-dir VecNet.BenchmarkRunner.Artifacts/generated-hnsw-allowlist-filtered-matrix --manifest VecNet.BenchmarkRunner.Artifacts/generated-hnsw-allowlist-filtered-matrix/hnsw-allowlist-filtered-matrix-manifest.json");
         writer.WriteLine("  generated-hnsw-base-plus-exact-delta-matrix --preset smoke|standard --vectors 64 --queries 4 --duplicate-inserts 1 --unknown-deletes 1 --repeated-deletes 1 --runs 1 --warmup-queries 0 --seed 0x5EED2125 --output-dir VecNet.BenchmarkRunner.Artifacts/generated-hnsw-base-plus-exact-delta-matrix --manifest VecNet.BenchmarkRunner.Artifacts/generated-hnsw-base-plus-exact-delta-matrix/hnsw-base-plus-exact-delta-matrix-manifest.json");
         writer.WriteLine("  generated-hnsw-base-plus-exact-delta-checkpoint-matrix --preset smoke|standard --vectors 64 --queries 4 --duplicate-inserts 1 --unknown-deletes 1 --repeated-deletes 1 --runs 1 --warmup-queries 1 --seed 0x5EED2136 --output-dir VecNet.BenchmarkRunner.Artifacts/generated-hnsw-base-plus-exact-delta-checkpoint-matrix --manifest VecNet.BenchmarkRunner.Artifacts/generated-hnsw-base-plus-exact-delta-checkpoint-matrix/hnsw-base-plus-exact-delta-checkpoint-matrix-manifest.json");
         writer.WriteLine("  hnsw-generated-durable --metric SquaredEuclidean --dimension 128 --vectors 1024 --queries 25 --top-k 10 --runs 1 --warmup-queries 0 --seed 0x5EED2073 --m 16 --ef-construction 200 --ef-search 50 --hnsw-seed 0x0000000000564543 --output VecNet.BenchmarkRunner.Artifacts/hnsw-generated-durable.json --snapshot-directory VecNet.BenchmarkRunner.Artifacts/hnsw-generated-durable-snapshot");

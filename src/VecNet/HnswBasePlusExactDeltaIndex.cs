@@ -231,6 +231,54 @@ internal sealed class HnswBasePlusExactDeltaIndex
             results);
     }
 
+    internal int Search(
+        ReadOnlySpan<float> query,
+        ReadOnlySpan<ulong> allowedIds,
+        Span<SearchResult> results,
+        HnswBasePlusExactDeltaSearchWorkspace workspace)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+        ValidateBaseUnchanged();
+        ValidateVector(query, nameof(query));
+        ValidateFilteredWorkspace(results.Length, workspace);
+        workspace.ObservedGeneration = _generation;
+
+        if (results.IsEmpty || LiveVectorCount == 0 || allowedIds.IsEmpty)
+        {
+            return 0;
+        }
+
+        if (Options.EfSearch < results.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(results), "EfSearch must be at least the requested result count.");
+        }
+
+        int baseFilterMark = workspace.HnswWorkspace.BeginFilter();
+        int deltaFilterMark = workspace.BeginDeltaFilter();
+        (int baseAllowedCount, int deltaAllowedCount) = MarkAllowedCandidates(
+            allowedIds,
+            workspace,
+            baseFilterMark,
+            deltaFilterMark);
+        int allowedCount = checked(baseAllowedCount + deltaAllowedCount);
+        if (allowedCount == 0)
+        {
+            return 0;
+        }
+
+        if (allowedCount <= Options.EfSearch)
+        {
+            return SearchAllowedExact(query, results, workspace, baseFilterMark, deltaFilterMark);
+        }
+
+        int baseCandidateCount = SearchBaseAllowedCandidates(query, workspace, baseFilterMark);
+        int deltaCandidateCount = SearchDeltaAllowedCandidates(query, results.Length, workspace, deltaFilterMark);
+        return MergeCandidates(
+            workspace.BaseCandidates.AsSpan(0, baseCandidateCount),
+            workspace.DeltaCandidates.AsSpan(0, deltaCandidateCount),
+            results);
+    }
+
     private int SearchBaseCandidates(ReadOnlySpan<float> query, HnswBasePlusExactDeltaSearchWorkspace workspace)
     {
         if (_basePhysicalVectorCount == 0 || BaseLiveVectorCount == 0)
@@ -271,6 +319,172 @@ internal sealed class HnswBasePlusExactDeltaIndex
         int written = 0;
         for (int ordinal = 0; ordinal < _deltaPhysicalVectorCount; ordinal++)
         {
+            ulong id = _deltaIds[ordinal];
+            if (_deltaTombstoneIds.Contains(id))
+            {
+                continue;
+            }
+
+            var candidate = new SearchResult(id, SquaredEuclideanDistance(query, ordinal));
+            written = InsertCandidate(deltaCandidates, written, candidate);
+        }
+
+        return written;
+    }
+
+    private (int BaseAllowedCount, int DeltaAllowedCount) MarkAllowedCandidates(
+        ReadOnlySpan<ulong> allowedIds,
+        HnswBasePlusExactDeltaSearchWorkspace workspace,
+        int baseFilterMark,
+        int deltaFilterMark)
+    {
+        int baseAllowedCount = 0;
+        int deltaAllowedCount = 0;
+
+        for (int allowIndex = 0; allowIndex < allowedIds.Length; allowIndex++)
+        {
+            ulong id = allowedIds[allowIndex];
+            if (_baseIndex.TryGetOrdinal(id, out int baseOrdinal) &&
+                baseOrdinal < _basePhysicalVectorCount)
+            {
+                if (_baseTombstoneIds.Contains(id))
+                {
+                    continue;
+                }
+
+                if (workspace.HnswWorkspace.FilterMarks[baseOrdinal] == baseFilterMark)
+                {
+                    continue;
+                }
+
+                workspace.HnswWorkspace.FilterMarks[baseOrdinal] = baseFilterMark;
+                baseAllowedCount++;
+                continue;
+            }
+
+            if (!_deltaIdToOrdinal.TryGetValue(id, out int deltaOrdinal))
+            {
+                continue;
+            }
+
+            if (_deltaTombstoneIds.Contains(id))
+            {
+                continue;
+            }
+
+            if (workspace.DeltaFilterMarks[deltaOrdinal] == deltaFilterMark)
+            {
+                continue;
+            }
+
+            workspace.DeltaFilterMarks[deltaOrdinal] = deltaFilterMark;
+            deltaAllowedCount++;
+        }
+
+        return (baseAllowedCount, deltaAllowedCount);
+    }
+
+    private int SearchAllowedExact(
+        ReadOnlySpan<float> query,
+        Span<SearchResult> results,
+        HnswBasePlusExactDeltaSearchWorkspace workspace,
+        int baseFilterMark,
+        int deltaFilterMark)
+    {
+        int written = 0;
+        ReadOnlySpan<ulong> baseIds = _baseIndex.InternalIds;
+        for (int ordinal = 0; ordinal < _basePhysicalVectorCount; ordinal++)
+        {
+            if (workspace.HnswWorkspace.FilterMarks[ordinal] != baseFilterMark)
+            {
+                continue;
+            }
+
+            ulong id = baseIds[ordinal];
+            if (_baseTombstoneIds.Contains(id))
+            {
+                continue;
+            }
+
+            var candidate = new SearchResult(id, _baseIndex.CalculateSquaredEuclideanDistance(query, ordinal));
+            written = InsertCandidate(results, written, candidate);
+        }
+
+        for (int ordinal = 0; ordinal < _deltaPhysicalVectorCount; ordinal++)
+        {
+            if (workspace.DeltaFilterMarks[ordinal] != deltaFilterMark)
+            {
+                continue;
+            }
+
+            ulong id = _deltaIds[ordinal];
+            if (_deltaTombstoneIds.Contains(id))
+            {
+                continue;
+            }
+
+            var candidate = new SearchResult(id, SquaredEuclideanDistance(query, ordinal));
+            written = InsertCandidate(results, written, candidate);
+        }
+
+        return written;
+    }
+
+    private int SearchBaseAllowedCandidates(
+        ReadOnlySpan<float> query,
+        HnswBasePlusExactDeltaSearchWorkspace workspace,
+        int baseFilterMark)
+    {
+        if (_basePhysicalVectorCount == 0 || BaseLiveVectorCount == 0)
+        {
+            return 0;
+        }
+
+        int requestedBaseCandidates = Math.Min(_basePhysicalVectorCount, Options.EfSearch);
+        Span<SearchResult> baseCandidates = workspace.BaseCandidates.AsSpan(0, requestedBaseCandidates);
+        int rawCount = _baseIndex.Search(query, baseCandidates, workspace.HnswWorkspace);
+
+        int liveCount = 0;
+        for (int i = 0; i < rawCount; i++)
+        {
+            SearchResult candidate = baseCandidates[i];
+            if (_baseTombstoneIds.Contains(candidate.Id))
+            {
+                continue;
+            }
+
+            if (!_baseIndex.TryGetOrdinal(candidate.Id, out int ordinal) ||
+                workspace.HnswWorkspace.FilterMarks[ordinal] != baseFilterMark)
+            {
+                continue;
+            }
+
+            baseCandidates[liveCount++] = candidate;
+        }
+
+        return liveCount;
+    }
+
+    private int SearchDeltaAllowedCandidates(
+        ReadOnlySpan<float> query,
+        int requestedResultCount,
+        HnswBasePlusExactDeltaSearchWorkspace workspace,
+        int deltaFilterMark)
+    {
+        if (requestedResultCount == 0 || DeltaLiveVectorCount == 0)
+        {
+            return 0;
+        }
+
+        Span<SearchResult> deltaCandidates = workspace.DeltaCandidates.AsSpan(0, requestedResultCount);
+        int written = 0;
+        for (int ordinal = 0; ordinal < _deltaPhysicalVectorCount; ordinal++)
+        {
+            if (workspace.DeltaFilterMarks[ordinal] != deltaFilterMark)
+            {
+                continue;
+            }
+
             ulong id = _deltaIds[ordinal];
             if (_deltaTombstoneIds.Contains(id))
             {
@@ -342,6 +556,16 @@ internal sealed class HnswBasePlusExactDeltaIndex
         if (workspace.DeltaCandidates.Length < requestedResultCount)
         {
             throw new ArgumentException("Workspace delta candidate capacity is smaller than the requested result count.", nameof(workspace));
+        }
+    }
+
+    private void ValidateFilteredWorkspace(int requestedResultCount, HnswBasePlusExactDeltaSearchWorkspace workspace)
+    {
+        ValidateWorkspace(requestedResultCount, workspace);
+
+        if (workspace.DeltaFilterMarks.Length < _deltaPhysicalVectorCount)
+        {
+            throw new ArgumentException("Workspace delta filter capacity is smaller than the physical delta count.", nameof(workspace));
         }
     }
 

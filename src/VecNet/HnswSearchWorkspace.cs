@@ -11,6 +11,7 @@ namespace VecNet;
 public sealed class HnswSearchWorkspace
 {
     private int _visitMark;
+    private int _filterMark;
 
     /// <summary>
     /// Initializes a reusable HNSW search workspace.
@@ -39,6 +40,7 @@ public sealed class HnswSearchWorkspace
         VisitMarks = new int[maxElements];
         CandidateOrdinals = new int[maxElements];
         CandidateDistances = new float[maxElements];
+        FilterMarks = new int[maxElements];
         BestOrdinals = new int[maxEf];
         BestDistances = new float[maxEf];
         ResultOrdinals = new int[maxEf];
@@ -63,6 +65,8 @@ public sealed class HnswSearchWorkspace
 
     internal float[] CandidateDistances { get; }
 
+    internal int[] FilterMarks { get; }
+
     internal int[] BestOrdinals { get; }
 
     internal float[] BestDistances { get; }
@@ -81,5 +85,17 @@ public sealed class HnswSearchWorkspace
 
         _visitMark++;
         return _visitMark;
+    }
+
+    internal int BeginFilter()
+    {
+        if (_filterMark == int.MaxValue)
+        {
+            Array.Clear(FilterMarks);
+            _filterMark = 0;
+        }
+
+        _filterMark++;
+        return _filterMark;
     }
 }

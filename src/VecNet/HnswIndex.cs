@@ -7,10 +7,12 @@ namespace VecNet;
 /// </summary>
 /// <remarks>
 /// This preview surface supports build ingestion with <see cref="Add"/>, caller-owned workspace
-/// search with <see cref="Search"/>, and preview durable round trips with <see cref="Save"/> and
-/// <see cref="OpenReadOnly"/>. It currently supports only <see cref="VectorMetric.SquaredEuclidean"/>.
-/// HNSW filtering, cosine, inner product, update/delete, replacement, repair, direct graph
-/// mutation, and stable file-format compatibility are not supported by this preview API.
+/// search with <see cref="Search(ReadOnlySpan{float}, Span{SearchResult}, HnswSearchWorkspace)"/>,
+/// and preview durable round trips with <see cref="Save"/> and <see cref="OpenReadOnly"/>.
+/// It currently supports only <see cref="VectorMetric.SquaredEuclidean"/>.
+/// HNSW allowlist filtering is limited to caller-owned external IDs. Cosine, inner product,
+/// update/delete, replacement, repair, direct graph mutation, and stable file-format compatibility
+/// are not supported by this preview API.
 /// </remarks>
 public sealed partial class HnswIndex
 {
@@ -300,6 +302,59 @@ public sealed partial class HnswIndex
         return written;
     }
 
+    /// <summary>
+    /// Searches this HNSW index while emitting only vectors whose external identifiers are present in an allowlist.
+    /// </summary>
+    /// <remarks>
+    /// The allowlist is caller-owned query input. Unknown identifiers are ignored and duplicates are
+    /// coalesced. When the known allowed count is no greater than <see cref="HnswIndexOptions.EfSearch"/>,
+    /// this method uses an exact filtered scan over the known allowed vectors. For broader allowlists,
+    /// HNSW traversal remains unfiltered and non-allowed candidates are suppressed at emission, so the
+    /// result may underfill even when exact filtered truth has at least the requested number of results.
+    /// </remarks>
+    /// <param name="query">The finite squared-L2 query vector.</param>
+    /// <param name="allowedIds">Caller-supplied external identifiers allowed for this search.</param>
+    /// <param name="results">The caller-owned destination buffer. Its length specifies the requested result count.</param>
+    /// <param name="workspace">
+    /// The caller-owned reusable HNSW workspace. It must satisfy the same sizing rules as unfiltered
+    /// <see cref="Search(ReadOnlySpan{float}, Span{SearchResult}, HnswSearchWorkspace)"/>.
+    /// </param>
+    /// <returns>The number of filtered results written.</returns>
+    public int Search(
+        ReadOnlySpan<float> query,
+        ReadOnlySpan<ulong> allowedIds,
+        Span<SearchResult> results,
+        HnswSearchWorkspace workspace)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+        ValidateVector(query, nameof(query));
+        ValidateWorkspace(workspace);
+
+        if (results.IsEmpty || _count == 0 || allowedIds.IsEmpty)
+        {
+            return 0;
+        }
+
+        if (_options.EfSearch < results.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(results), "EfSearch must be at least the requested result count.");
+        }
+
+        int filterMark = workspace.BeginFilter();
+        int allowedCount = MarkAllowedOrdinals(allowedIds, workspace.FilterMarks, filterMark);
+        if (allowedCount == 0)
+        {
+            return 0;
+        }
+
+        if (allowedCount <= _options.EfSearch)
+        {
+            return SearchAllowedExact(query, results, workspace.FilterMarks, filterMark);
+        }
+
+        return SearchAllowedByEmission(query, results, workspace, filterMark);
+    }
+
     internal int DebugGetLevel(int ordinal)
     {
         if ((uint)ordinal >= (uint)_count)
@@ -344,6 +399,11 @@ public sealed partial class HnswIndex
     }
 
     internal HnswSearchWorkspace? DebugBuildSearchWorkspace => _buildScratch?.Workspace;
+
+    internal bool TryGetOrdinal(ulong id, out int ordinal) => _idToOrdinal.TryGetValue(id, out ordinal);
+
+    internal float CalculateSquaredEuclideanDistance(ReadOnlySpan<float> query, int ordinal) =>
+        SquaredEuclideanDistance(query, ordinal);
 
     private static void ValidateOptions(HnswIndexOptions options)
     {
@@ -578,6 +638,81 @@ public sealed partial class HnswIndex
         return bestCount;
     }
 
+    private int MarkAllowedOrdinals(ReadOnlySpan<ulong> allowedIds, int[] filterMarks, int filterMark)
+    {
+        int allowedCount = 0;
+        for (int allowIndex = 0; allowIndex < allowedIds.Length; allowIndex++)
+        {
+            if (!_idToOrdinal.TryGetValue(allowedIds[allowIndex], out int ordinal))
+            {
+                continue;
+            }
+
+            if (filterMarks[ordinal] == filterMark)
+            {
+                continue;
+            }
+
+            filterMarks[ordinal] = filterMark;
+            allowedCount++;
+        }
+
+        return allowedCount;
+    }
+
+    private int SearchAllowedExact(
+        ReadOnlySpan<float> query,
+        Span<SearchResult> results,
+        int[] filterMarks,
+        int filterMark)
+    {
+        int written = 0;
+        for (int ordinal = 0; ordinal < _count; ordinal++)
+        {
+            if (filterMarks[ordinal] != filterMark)
+            {
+                continue;
+            }
+
+            var candidate = new SearchResult(_ids[ordinal], SquaredEuclideanDistance(query, ordinal));
+            written = InsertCandidate(results, written, candidate);
+        }
+
+        return written;
+    }
+
+    private int SearchAllowedByEmission(
+        ReadOnlySpan<float> query,
+        Span<SearchResult> results,
+        HnswSearchWorkspace workspace,
+        int filterMark)
+    {
+        int entryPoint = _entryPoint;
+        for (int layer = _maxLayer; layer > 0; layer--)
+        {
+            int found = SearchLayer(query, entryPoint, 1, layer, workspace, _count);
+            if (found > 0)
+            {
+                entryPoint = workspace.ResultOrdinals[0];
+            }
+        }
+
+        int candidateCount = SearchLayer(query, entryPoint, _options.EfSearch, 0, workspace, _count);
+        int written = 0;
+        for (int i = 0; i < candidateCount && written < results.Length; i++)
+        {
+            int ordinal = workspace.ResultOrdinals[i];
+            if (workspace.FilterMarks[ordinal] != filterMark)
+            {
+                continue;
+            }
+
+            results[written++] = new SearchResult(_ids[ordinal], workspace.ResultDistances[i]);
+        }
+
+        return written;
+    }
+
     private int SelectNeighbors(
         int baseOrdinal,
         ReadOnlySpan<int> candidates,
@@ -771,6 +906,40 @@ public sealed partial class HnswIndex
             ordinals[j + 1] = ordinal;
             distances[j + 1] = distance;
         }
+    }
+
+    private static int InsertCandidate(Span<SearchResult> results, int written, SearchResult candidate)
+    {
+        int insertionIndex = FindInsertionIndex(results[..written], candidate);
+        if (insertionIndex >= results.Length)
+        {
+            return written;
+        }
+
+        int valuesToShift = Math.Min(written, results.Length - 1) - insertionIndex;
+        if (valuesToShift > 0)
+        {
+            results.Slice(insertionIndex, valuesToShift)
+                .CopyTo(results.Slice(insertionIndex + 1));
+        }
+
+        results[insertionIndex] = candidate;
+        return written < results.Length ? written + 1 : written;
+    }
+
+    private static int FindInsertionIndex(ReadOnlySpan<SearchResult> results, SearchResult candidate)
+    {
+        for (int i = 0; i < results.Length; i++)
+        {
+            SearchResult current = results[i];
+            if (candidate.Distance < current.Distance ||
+                (candidate.Distance == current.Distance && candidate.Id < current.Id))
+            {
+                return i;
+            }
+        }
+
+        return results.Length;
     }
 
     private HnswStorageSnapshot CreateStorageSnapshot()

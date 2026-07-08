@@ -6,7 +6,8 @@ internal sealed class HnswBasePlusExactDeltaSearchWorkspace
         int maxBaseElements,
         int maxEfSearch,
         int maxBaseCandidates,
-        int maxDeltaCandidates)
+        int maxDeltaCandidates,
+        int maxDeltaFilterElements = 0)
     {
         if (maxBaseElements < 0)
         {
@@ -28,9 +29,15 @@ internal sealed class HnswBasePlusExactDeltaSearchWorkspace
             throw new ArgumentOutOfRangeException(nameof(maxDeltaCandidates), "Workspace delta candidate capacity must not be negative.");
         }
 
+        if (maxDeltaFilterElements < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxDeltaFilterElements), "Workspace delta filter capacity must not be negative.");
+        }
+
         HnswWorkspace = new HnswSearchWorkspace(maxBaseElements, maxEfSearch);
         BaseCandidates = new SearchResult[maxBaseCandidates];
         DeltaCandidates = new SearchResult[maxDeltaCandidates];
+        DeltaFilterMarks = new int[maxDeltaFilterElements];
     }
 
     internal HnswSearchWorkspace HnswWorkspace { get; }
@@ -39,5 +46,21 @@ internal sealed class HnswBasePlusExactDeltaSearchWorkspace
 
     internal SearchResult[] DeltaCandidates { get; }
 
+    internal int[] DeltaFilterMarks { get; }
+
     internal long ObservedGeneration { get; set; } = long.MinValue;
+
+    private int _deltaFilterMark;
+
+    internal int BeginDeltaFilter()
+    {
+        if (_deltaFilterMark == int.MaxValue)
+        {
+            Array.Clear(DeltaFilterMarks);
+            _deltaFilterMark = 0;
+        }
+
+        _deltaFilterMark++;
+        return _deltaFilterMark;
+    }
 }

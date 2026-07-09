@@ -2657,6 +2657,101 @@ public static class CommandLine
             hnswSeed);
     }
 
+    public static FashionMnistExternalHnswAllowlistFilteringOptions ParseExternalFashionMnistHnswAllowlistFiltering(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? FashionMnistExternalHnswAllowlistFilteringOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, FashionMnistExternalHnswAllowlistFilteringOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedExternalFashionMnistHnswAllowlistFilteringOption);
+        FashionMnistExternalHnswAllowlistFilteringOptions defaults = FashionMnistExternalHnswAllowlistFilteringOptions.Default;
+        string cacheRoot = values.TryGetValue("cache-root", out string? cacheRootValue)
+            ? cacheRootValue
+            : defaults.CacheRoot;
+        if (string.IsNullOrWhiteSpace(cacheRoot))
+        {
+            throw new ArgumentException("Option --cache-root must not be empty.");
+        }
+
+        string outputPath = values.TryGetValue("output", out string? outputValue)
+            ? outputValue
+            : defaults.OutputPath;
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("Option --output must not be empty.");
+        }
+
+        string openedIndexDirectory = values.TryGetValue("opened-index-directory", out string? openedDirectoryValue)
+            ? openedDirectoryValue
+            : defaults.OpenedIndexDirectory;
+        if (string.IsNullOrWhiteSpace(openedIndexDirectory))
+        {
+            throw new ArgumentException("Option --opened-index-directory must not be empty.");
+        }
+
+        string checkpointDirectory = values.TryGetValue("checkpoint-directory", out string? checkpointDirectoryValue)
+            ? checkpointDirectoryValue
+            : defaults.CheckpointDirectory;
+        if (string.IsNullOrWhiteSpace(checkpointDirectory))
+        {
+            throw new ArgumentException("Option --checkpoint-directory must not be empty.");
+        }
+
+        int queryCount = GetPositiveInt(values, "query-count", defaults.QueryCount);
+        int topK = GetPositiveInt(values, "top-k", defaults.TopK);
+        int baseVectorCount = GetPositiveInt(values, "base-vectors", defaults.BaseVectorCount);
+        int insertedDeltaCount = GetPositiveInt(values, "insertions", defaults.InsertedDeltaCount);
+        int deletedBaseCount = GetNonNegativeInt(values, "deletes", defaults.DeletedBaseCount);
+        int deletedDeltaCount = GetNonNegativeInt(values, "delta-deletes", defaults.DeletedDeltaCount);
+        int duplicateInsertAttempts = GetNonNegativeInt(values, "duplicate-inserts", defaults.DuplicateInsertAttempts);
+        int unknownDeleteAttempts = GetNonNegativeInt(values, "unknown-deletes", defaults.UnknownDeleteAttempts);
+        int repeatedDeleteAttempts = GetNonNegativeInt(values, "repeated-deletes", defaults.RepeatedDeleteAttempts);
+        string filterProfile = FashionMnistExternalHnswAllowlistFilteringOptions.NormalizeFilterProfile(
+            GetOptionalNonWhiteSpace(values, "filter") ?? defaults.FilterProfile);
+        int runs = GetPositiveInt(values, "runs", defaults.Runs);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", defaults.WarmupQueries);
+        VectorMetric metric = GetExternalFashionMnistMetric(values, "metric", defaults.Metric);
+        uint seed = GetSeed(values, "seed", defaults.Seed);
+        int m = GetPositiveInt(values, "m", defaults.M);
+        int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
+        int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
+        ulong hnswSeed = GetUInt64Seed(values, "hnsw-seed", defaults.HnswSeed);
+
+        var options = new FashionMnistExternalHnswAllowlistFilteringOptions(
+            cacheRoot,
+            outputPath,
+            openedIndexDirectory,
+            checkpointDirectory,
+            queryCount,
+            topK,
+            baseVectorCount,
+            insertedDeltaCount,
+            deletedBaseCount,
+            deletedDeltaCount,
+            duplicateInsertAttempts,
+            unknownDeleteAttempts,
+            repeatedDeleteAttempts,
+            filterProfile,
+            runs,
+            warmupQueries,
+            metric,
+            seed,
+            m,
+            efConstruction,
+            efSearch,
+            hnswSeed);
+
+        FashionMnistExternalHnswAllowlistFilteringScenario.ValidateOptions(options);
+        return options;
+    }
+
     public static FashionMnistExternalHnswBasePlusExactDeltaCheckpointMemorySmokeOptions ParseExternalFashionMnistHnswBasePlusExactDeltaCheckpointMemorySmoke(IReadOnlyList<string> args)
     {
         string scenario = args.Count == 0 ? FashionMnistExternalHnswBasePlusExactDeltaCheckpointMemorySmokeOptions.ScenarioName : args[0];
@@ -3225,6 +3320,30 @@ public static class CommandLine
         string.Equals(name, "duplicate-inserts", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "unknown-deletes", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "repeated-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "m", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedExternalFashionMnistHnswAllowlistFilteringOption(string name) =>
+        string.Equals(name, "cache-root", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "opened-index-directory", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "checkpoint-directory", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "query-count", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "top-k", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "base-vectors", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "insertions", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "delta-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "duplicate-inserts", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "unknown-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "repeated-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "filter", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||

@@ -12,7 +12,7 @@ public sealed class HnswIndexPublicPreviewApiTests
         Assert.True(typeof(HnswSearchWorkspace).IsPublic);
 
         Assert.Equal(
-            ["Add", "OpenReadOnly", "Save", "Search"],
+            ["Add", "OpenReadOnly", "Save", "Search", "Search"],
             typeof(HnswIndex)
                 .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
                 .Where(static method => !method.IsSpecialName)

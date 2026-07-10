@@ -982,6 +982,218 @@ public static class CommandLine
             hnswSeed);
     }
 
+    public static HnswAllowlistFilteringOptions ParseHnswAllowlistFiltering(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? HnswAllowlistFilteringOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, HnswAllowlistFilteringOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedHnswAllowlistFilteringOption);
+        HnswAllowlistFilteringOptions defaults = HnswAllowlistFilteringOptions.Default;
+
+        VectorMetric metric = GetEnum(values, "metric", defaults.Metric);
+        int dimension = GetPositiveInt(values, "dimension", defaults.Dimension);
+        int baseVectorCount = GetPositiveInt(values, "vectors", defaults.BaseVectorCount);
+        int queryCount = GetPositiveInt(values, "queries", defaults.QueryCount);
+        int topK = GetPositiveInt(values, "top-k", defaults.TopK);
+        int insertedDeltaCount = GetPositiveInt(values, "insertions", defaults.InsertedDeltaCount);
+        int deletedBaseCount = GetNonNegativeInt(values, "deletes", defaults.DeletedBaseCount);
+        int deletedDeltaCount = GetNonNegativeInt(values, "delta-deletes", defaults.DeletedDeltaCount);
+        int duplicateInsertAttempts = GetNonNegativeInt(values, "duplicate-inserts", defaults.DuplicateInsertAttempts);
+        int unknownDeleteAttempts = GetNonNegativeInt(values, "unknown-deletes", defaults.UnknownDeleteAttempts);
+        int repeatedDeleteAttempts = GetNonNegativeInt(values, "repeated-deletes", defaults.RepeatedDeleteAttempts);
+        string filterProfile = HnswAllowlistFilteringOptions.NormalizeFilterProfile(
+            GetOptionalNonWhiteSpace(values, "filter") ?? defaults.FilterProfile);
+        int runs = GetPositiveInt(values, "runs", defaults.Runs);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", defaults.WarmupQueries);
+        uint seed = GetSeed(values, "seed", defaults.Seed);
+        int m = GetPositiveInt(values, "m", defaults.M);
+        int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
+        int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
+        ulong hnswSeed = GetUInt64Seed(values, "hnsw-seed", defaults.HnswSeed);
+        string outputPath = values.TryGetValue("output", out string? outputValue)
+            ? outputValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"generated-hnsw-allowlist-filtered-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json");
+        string openedIndexDirectory = values.TryGetValue("opened-index-directory", out string? openedValue)
+            ? openedValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"generated-hnsw-allowlist-filtered-opened-{DateTime.UtcNow:yyyyMMdd-HHmmss}");
+        string checkpointDirectory = values.TryGetValue("checkpoint-directory", out string? checkpointValue)
+            ? checkpointValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"generated-hnsw-allowlist-filtered-checkpoint-{DateTime.UtcNow:yyyyMMdd-HHmmss}");
+
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("Option --output must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(openedIndexDirectory))
+        {
+            throw new ArgumentException("Option --opened-index-directory must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(checkpointDirectory))
+        {
+            throw new ArgumentException("Option --checkpoint-directory must not be empty.");
+        }
+
+        var options = new HnswAllowlistFilteringOptions(
+            metric,
+            dimension,
+            baseVectorCount,
+            queryCount,
+            topK,
+            seed,
+            insertedDeltaCount,
+            deletedBaseCount,
+            deletedDeltaCount,
+            duplicateInsertAttempts,
+            unknownDeleteAttempts,
+            repeatedDeleteAttempts,
+            filterProfile,
+            outputPath,
+            openedIndexDirectory,
+            checkpointDirectory,
+            runs,
+            warmupQueries,
+            m,
+            efConstruction,
+            efSearch,
+            hnswSeed);
+
+        if (metric != VectorMetric.SquaredEuclidean)
+        {
+            throw new ArgumentException("generated-hnsw-allowlist-filtered supports only SquaredEuclidean.");
+        }
+
+        if (topK > efSearch)
+        {
+            throw new ArgumentException("Option --top-k must be less than or equal to --ef-search.");
+        }
+
+        if (topK > options.LiveVectorCount)
+        {
+            throw new ArgumentException("top-k must be less than or equal to the post-update live vector count.");
+        }
+
+        if (deletedBaseCount > baseVectorCount)
+        {
+            throw new ArgumentException("Option --deletes must be less than or equal to --vectors.");
+        }
+
+        if (deletedDeltaCount > insertedDeltaCount)
+        {
+            throw new ArgumentException("Option --delta-deletes must be less than or equal to --insertions.");
+        }
+
+        if (repeatedDeleteAttempts > 0 && deletedBaseCount + deletedDeltaCount == 0)
+        {
+            throw new ArgumentException("Option --repeated-deletes requires at least one committed delete.");
+        }
+
+        if (m is < 2 or > 64)
+        {
+            throw new ArgumentException("Option --m must be in the range 2..64.");
+        }
+
+        if (efConstruction < m || efConstruction > 4096)
+        {
+            throw new ArgumentException("Option --ef-construction must be at least --m and no more than 4096.");
+        }
+
+        if (efSearch > 4096)
+        {
+            throw new ArgumentException("Option --ef-search must be no more than 4096.");
+        }
+
+        if (filterProfile == "fallback-boundary" && options.LiveVectorCount < efSearch)
+        {
+            throw new ArgumentException("Option --filter fallback-boundary requires live vector count at least --ef-search.");
+        }
+
+        if ((filterProfile == "broad" || filterProfile == "all") && options.LiveVectorCount <= efSearch)
+        {
+            throw new ArgumentException("Option --filter broad/all requires live vector count greater than --ef-search.");
+        }
+
+        return options;
+    }
+
+    public static HnswAllowlistFilteringMatrixOptions ParseHnswAllowlistFilteringMatrix(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? HnswAllowlistFilteringMatrixOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, HnswAllowlistFilteringMatrixOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedHnswAllowlistFilteringMatrixOption);
+        string presetName = HnswAllowlistFilteringMatrixOptions.NormalizePresetName(
+            GetOptionalNonWhiteSpace(values, "preset") ?? HnswAllowlistFilteringMatrixOptions.DefaultPresetName);
+        int defaultQueryCount = string.Equals(presetName, HnswAllowlistFilteringMatrixOptions.StandardPresetName, StringComparison.Ordinal)
+            ? 32
+            : 8;
+        int queryCount = GetPositiveInt(values, "queries", defaultQueryCount);
+        int defaultRuns = string.Equals(presetName, HnswAllowlistFilteringMatrixOptions.StandardPresetName, StringComparison.Ordinal)
+            ? 3
+            : 1;
+        int runs = GetPositiveInt(values, "runs", defaultRuns);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int defaultWarmupQueries = string.Equals(presetName, HnswAllowlistFilteringMatrixOptions.StandardPresetName, StringComparison.Ordinal)
+            ? 3
+            : 1;
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", defaultWarmupQueries);
+        uint seed = GetSeed(values, "seed", 0x5EED2148);
+        int duplicateInsertAttempts = GetNonNegativeInt(values, "duplicate-inserts", 1);
+        int unknownDeleteAttempts = GetNonNegativeInt(values, "unknown-deletes", 1);
+        int repeatedDeleteAttempts = GetNonNegativeInt(values, "repeated-deletes", 1);
+        string outputDirectory = values.TryGetValue("output-dir", out string? outputDirectoryValue)
+            ? outputDirectoryValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"generated-hnsw-allowlist-filtered-matrix-{DateTime.UtcNow:yyyyMMdd-HHmmss}");
+        if (string.IsNullOrWhiteSpace(outputDirectory))
+        {
+            throw new ArgumentException("Option --output-dir must not be empty.");
+        }
+
+        string manifestPath = values.TryGetValue("manifest", out string? manifestValue)
+            ? manifestValue
+            : Path.Combine(outputDirectory, "hnsw-allowlist-filtered-matrix-manifest.json");
+        if (string.IsNullOrWhiteSpace(manifestPath))
+        {
+            throw new ArgumentException("Option --manifest must not be empty.");
+        }
+
+        return new HnswAllowlistFilteringMatrixOptions(
+            presetName,
+            queryCount,
+            runs,
+            warmupQueries,
+            seed,
+            duplicateInsertAttempts,
+            unknownDeleteAttempts,
+            repeatedDeleteAttempts,
+            outputDirectory,
+            manifestPath);
+    }
+
     public static HnswMemorySmokeOptions ParseHnswMemorySmoke(IReadOnlyList<string> args)
     {
         string scenario = args.Count == 0 ? HnswMemorySmokeOptions.ScenarioName : args[0];
@@ -1070,6 +1282,367 @@ public static class CommandLine
             efSearch,
             hnswSeed,
             sampleIntervalMilliseconds);
+    }
+
+    public static HnswEstablishedComparisonOptions ParseHnswEstablishedComparison(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? HnswEstablishedComparisonOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, HnswEstablishedComparisonOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedHnswEstablishedComparisonOption);
+        HnswEstablishedComparisonOptions defaults = HnswEstablishedComparisonOptions.Default;
+
+        VectorMetric metric = GetEnum(values, "metric", defaults.Metric);
+        int dimension = GetPositiveInt(values, "dimension", defaults.Dimension);
+        int vectorCount = GetPositiveInt(values, "vectors", defaults.VectorCount);
+        int queryCount = GetPositiveInt(values, "queries", defaults.QueryCount);
+        int topK = GetPositiveInt(values, "top-k", defaults.TopK);
+        int runs = GetPositiveInt(values, "runs", defaults.Runs);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", defaults.WarmupQueries);
+        uint seed = GetSeed(values, "seed", defaults.Seed);
+        int m = GetPositiveInt(values, "m", defaults.M);
+        int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
+        int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
+        ulong hnswSeed = GetUInt64Seed(values, "hnsw-seed", defaults.HnswSeed);
+
+        string outputPath = values.TryGetValue("output", out string? outputValue)
+            ? outputValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"hnswlib-generated-comparison-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json");
+        string workDirectory = values.TryGetValue("work-directory", out string? workDirectoryValue)
+            ? workDirectoryValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"hnswlib-generated-comparison-work-{DateTime.UtcNow:yyyyMMdd-HHmmss}");
+        string vecNetSnapshotDirectory = values.TryGetValue("vecnet-snapshot-directory", out string? vecNetSnapshotDirectoryValue)
+            ? vecNetSnapshotDirectoryValue
+            : Path.Combine(workDirectory, "vecnet-snapshot");
+        string hnswlibIndexPath = values.TryGetValue("hnswlib-index", out string? hnswlibIndexValue)
+            ? hnswlibIndexValue
+            : Path.Combine(workDirectory, "hnswlib-index.bin");
+        string hnswlibPythonPath = values.TryGetValue("hnswlib-python", out string? hnswlibPythonValue)
+            ? hnswlibPythonValue
+            : defaults.HnswlibPythonPath;
+
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("Option --output must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(workDirectory))
+        {
+            throw new ArgumentException("Option --work-directory must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(vecNetSnapshotDirectory))
+        {
+            throw new ArgumentException("Option --vecnet-snapshot-directory must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(hnswlibIndexPath))
+        {
+            throw new ArgumentException("Option --hnswlib-index must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(hnswlibPythonPath))
+        {
+            throw new ArgumentException("Option --hnswlib-python must not be empty.");
+        }
+
+        if (metric != VectorMetric.SquaredEuclidean)
+        {
+            throw new ArgumentException("hnswlib-generated-comparison supports only SquaredEuclidean.");
+        }
+
+        if (topK > vectorCount)
+        {
+            throw new ArgumentException("top-k must be less than or equal to the vector count.");
+        }
+
+        if (m is < 2 or > 64)
+        {
+            throw new ArgumentException("Option --m must be in the range 2..64.");
+        }
+
+        if (efConstruction < m || efConstruction > 4096)
+        {
+            throw new ArgumentException("Option --ef-construction must be at least --m and no more than 4096.");
+        }
+
+        if (efSearch < topK || efSearch > 4096)
+        {
+            throw new ArgumentException("Option --ef-search must be at least --top-k and no more than 4096.");
+        }
+
+        return new HnswEstablishedComparisonOptions(
+            metric,
+            dimension,
+            vectorCount,
+            queryCount,
+            topK,
+            seed,
+            outputPath,
+            workDirectory,
+            vecNetSnapshotDirectory,
+            hnswlibIndexPath,
+            hnswlibPythonPath,
+            runs,
+            warmupQueries,
+            m,
+            efConstruction,
+            efSearch,
+            hnswSeed);
+    }
+
+    public static HnswEstablishedComparisonMatrixOptions ParseHnswEstablishedComparisonMatrix(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? HnswEstablishedComparisonMatrixOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, HnswEstablishedComparisonMatrixOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedHnswEstablishedComparisonMatrixOption);
+        string presetName = HnswEstablishedComparisonMatrixOptions.NormalizePresetName(
+            GetOptionalNonWhiteSpace(values, "preset") ?? HnswEstablishedComparisonMatrixOptions.DefaultPresetName);
+
+        int vectorCount = GetPositiveInt(values, "vectors", 256);
+        int queryCount = GetPositiveInt(values, "queries", 4);
+        int runs = GetPositiveInt(values, "runs", 1);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", 0);
+        uint seed = GetSeed(values, "seed", 0x5EED2119);
+        string outputDirectory = values.TryGetValue("output-dir", out string? outputDirectoryValue)
+            ? outputDirectoryValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"hnswlib-generated-comparison-matrix-{DateTime.UtcNow:yyyyMMdd-HHmmss}");
+        if (string.IsNullOrWhiteSpace(outputDirectory))
+        {
+            throw new ArgumentException("Option --output-dir must not be empty.");
+        }
+
+        string manifestPath = values.TryGetValue("manifest", out string? manifestValue)
+            ? manifestValue
+            : Path.Combine(outputDirectory, "hnswlib-comparison-matrix-manifest.json");
+        if (string.IsNullOrWhiteSpace(manifestPath))
+        {
+            throw new ArgumentException("Option --manifest must not be empty.");
+        }
+
+        string hnswlibPythonPath = values.TryGetValue("hnswlib-python", out string? hnswlibPythonValue)
+            ? hnswlibPythonValue
+            : HnswEstablishedComparisonOptions.Default.HnswlibPythonPath;
+        if (string.IsNullOrWhiteSpace(hnswlibPythonPath))
+        {
+            throw new ArgumentException("Option --hnswlib-python must not be empty.");
+        }
+
+        int maxTopK = HnswEstablishedComparisonMatrixScenario.GetMaxTopK(presetName);
+        if (vectorCount < maxTopK)
+        {
+            throw new ArgumentException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"vectors must be greater than or equal to the maximum hnswlib comparison matrix top-k ({maxTopK}) for preset '{presetName}'."));
+        }
+
+        return new HnswEstablishedComparisonMatrixOptions(
+            presetName,
+            vectorCount,
+            queryCount,
+            runs,
+            warmupQueries,
+            seed,
+            outputDirectory,
+            manifestPath,
+            hnswlibPythonPath);
+    }
+
+    public static FashionMnistHnswlibComparisonOptions ParseFashionMnistHnswlibComparison(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? FashionMnistHnswlibComparisonOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, FashionMnistHnswlibComparisonOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedFashionMnistHnswlibComparisonOption);
+        FashionMnistHnswlibComparisonOptions defaults = FashionMnistHnswlibComparisonOptions.Default;
+
+        string cacheRoot = values.TryGetValue("cache-root", out string? cacheRootValue)
+            ? cacheRootValue
+            : defaults.CacheRoot;
+        string outputPath = values.TryGetValue("output", out string? outputValue)
+            ? outputValue
+            : defaults.OutputPath;
+        string workDirectory = values.TryGetValue("work-directory", out string? workDirectoryValue)
+            ? workDirectoryValue
+            : defaults.WorkDirectory;
+        string vecNetSnapshotDirectory = values.TryGetValue("vecnet-snapshot-directory", out string? vecNetSnapshotDirectoryValue)
+            ? vecNetSnapshotDirectoryValue
+            : defaults.VecNetSnapshotDirectory;
+        string hnswlibIndexPath = values.TryGetValue("hnswlib-index", out string? hnswlibIndexValue)
+            ? hnswlibIndexValue
+            : defaults.HnswlibIndexPath;
+        string hnswlibPythonPath = values.TryGetValue("hnswlib-python", out string? hnswlibPythonValue)
+            ? hnswlibPythonValue
+            : defaults.HnswlibPythonPath;
+
+        if (string.IsNullOrWhiteSpace(cacheRoot))
+        {
+            throw new ArgumentException("Option --cache-root must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("Option --output must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(workDirectory))
+        {
+            throw new ArgumentException("Option --work-directory must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(vecNetSnapshotDirectory))
+        {
+            throw new ArgumentException("Option --vecnet-snapshot-directory must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(hnswlibIndexPath))
+        {
+            throw new ArgumentException("Option --hnswlib-index must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(hnswlibPythonPath))
+        {
+            throw new ArgumentException("Option --hnswlib-python must not be empty.");
+        }
+
+        int queryCount = GetPositiveInt(values, "query-count", defaults.QueryCount);
+        int topK = GetPositiveInt(values, "top-k", defaults.TopK);
+        int runs = GetPositiveInt(values, "runs", defaults.Runs);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", defaults.WarmupQueries);
+        int m = GetPositiveInt(values, "m", defaults.M);
+        int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
+        int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
+        ulong seed = GetUInt64Seed(values, "seed", defaults.Seed);
+
+        if (m is < 2 or > 64)
+        {
+            throw new ArgumentException("Option --m must be in the range 2..64.");
+        }
+
+        if (efConstruction < m || efConstruction > 4096)
+        {
+            throw new ArgumentException("Option --ef-construction must be at least --m and no more than 4096.");
+        }
+
+        if (efSearch < topK || efSearch > 4096)
+        {
+            throw new ArgumentException("Option --ef-search must be at least --top-k and no more than 4096.");
+        }
+
+        return new FashionMnistHnswlibComparisonOptions(
+            cacheRoot,
+            outputPath,
+            workDirectory,
+            vecNetSnapshotDirectory,
+            hnswlibIndexPath,
+            hnswlibPythonPath,
+            queryCount,
+            topK,
+            runs,
+            warmupQueries,
+            m,
+            efConstruction,
+            efSearch,
+            seed);
+    }
+
+    public static FashionMnistHnswlibComparisonMatrixOptions ParseFashionMnistHnswlibComparisonMatrix(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? FashionMnistHnswlibComparisonMatrixOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, FashionMnistHnswlibComparisonMatrixOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedFashionMnistHnswlibComparisonMatrixOption);
+        string presetName = FashionMnistHnswlibComparisonMatrixOptions.NormalizePresetName(
+            GetOptionalNonWhiteSpace(values, "preset") ?? FashionMnistHnswlibComparisonMatrixOptions.DefaultPresetName);
+        string cacheRoot = values.TryGetValue("cache-root", out string? cacheRootValue)
+            ? cacheRootValue
+            : FashionMnistHnswlibComparisonOptions.Default.CacheRoot;
+        int queryCount = GetPositiveInt(values, "query-count", FashionMnistHnswlibComparisonOptions.Default.QueryCount);
+        int runs = GetPositiveInt(values, "runs", FashionMnistHnswlibComparisonOptions.Default.Runs);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", FashionMnistHnswlibComparisonOptions.Default.WarmupQueries);
+        ulong seed = GetUInt64Seed(values, "seed", 0x484E535700012100UL);
+        string outputDirectory = values.TryGetValue("output-dir", out string? outputDirectoryValue)
+            ? outputDirectoryValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"fashion-mnist-hnswlib-comparison-matrix-{DateTime.UtcNow:yyyyMMdd-HHmmss}");
+        string manifestPath = values.TryGetValue("manifest", out string? manifestValue)
+            ? manifestValue
+            : Path.Combine(outputDirectory, "fashion-mnist-hnswlib-comparison-matrix-manifest.json");
+        string hnswlibPythonPath = values.TryGetValue("hnswlib-python", out string? hnswlibPythonValue)
+            ? hnswlibPythonValue
+            : HnswEstablishedComparisonOptions.Default.HnswlibPythonPath;
+
+        if (string.IsNullOrWhiteSpace(cacheRoot))
+        {
+            throw new ArgumentException("Option --cache-root must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(outputDirectory))
+        {
+            throw new ArgumentException("Option --output-dir must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(manifestPath))
+        {
+            throw new ArgumentException("Option --manifest must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(hnswlibPythonPath))
+        {
+            throw new ArgumentException("Option --hnswlib-python must not be empty.");
+        }
+
+        return new FashionMnistHnswlibComparisonMatrixOptions(
+            presetName,
+            cacheRoot,
+            queryCount,
+            runs,
+            warmupQueries,
+            seed,
+            outputDirectory,
+            manifestPath,
+            hnswlibPythonPath);
     }
 
     public static DurableHnswGeneratedMatrixOptions ParseDurableHnswGeneratedMatrix(IReadOnlyList<string> args)
@@ -1249,6 +1822,382 @@ public static class CommandLine
             efConstruction,
             efSearch,
             hnswSeed);
+    }
+
+    public static HnswBasePlusExactDeltaGeneratedOptions ParseHnswBasePlusExactDeltaGenerated(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? HnswBasePlusExactDeltaGeneratedOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, HnswBasePlusExactDeltaGeneratedOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedHnswBasePlusExactDeltaGeneratedOption);
+        HnswBasePlusExactDeltaGeneratedOptions defaults = HnswBasePlusExactDeltaGeneratedOptions.Default;
+        VectorMetric metric = GetEnum(values, "metric", defaults.Metric);
+        int dimension = GetPositiveInt(values, "dimension", defaults.Dimension);
+        int baseVectorCount = GetPositiveInt(values, "vectors", defaults.BaseVectorCount);
+        int queryCount = GetPositiveInt(values, "queries", defaults.QueryCount);
+        int topK = GetPositiveInt(values, "top-k", defaults.TopK);
+        int runs = GetPositiveInt(values, "runs", defaults.Runs);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", defaults.WarmupQueries);
+        uint seed = GetSeed(values, "seed", defaults.Seed);
+        int insertedDeltaCount = GetPositiveInt(values, "insertions", Math.Max(1, baseVectorCount / 10));
+        int deletedBaseCount = GetNonNegativeInt(values, "deletes", Math.Max(1, baseVectorCount / 10));
+        int deletedDeltaCount = GetNonNegativeInt(values, "delta-deletes", defaults.DeletedDeltaCount);
+        int duplicateInsertAttempts = GetNonNegativeInt(values, "duplicate-inserts", defaults.DuplicateInsertAttempts);
+        int unknownDeleteAttempts = GetNonNegativeInt(values, "unknown-deletes", defaults.UnknownDeleteAttempts);
+        int repeatedDeleteAttempts = GetNonNegativeInt(values, "repeated-deletes", defaults.RepeatedDeleteAttempts);
+        int m = GetPositiveInt(values, "m", defaults.M);
+        int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
+        int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
+        ulong hnswSeed = GetUInt64Seed(values, "hnsw-seed", defaults.HnswSeed);
+        string outputPath = values.TryGetValue("output", out string? outputValue)
+            ? outputValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"generated-hnsw-base-plus-exact-delta-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json");
+
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("Option --output must not be empty.");
+        }
+
+        if (metric != VectorMetric.SquaredEuclidean)
+        {
+            throw new ArgumentException("generated-hnsw-base-plus-exact-delta supports only SquaredEuclidean.");
+        }
+
+        if (deletedBaseCount > baseVectorCount)
+        {
+            throw new ArgumentException("Option --deletes must be less than or equal to --vectors.");
+        }
+
+        if (deletedDeltaCount > insertedDeltaCount)
+        {
+            throw new ArgumentException("Option --delta-deletes must be less than or equal to --insertions.");
+        }
+
+        int liveVectorCount = checked(baseVectorCount + insertedDeltaCount - deletedBaseCount - deletedDeltaCount);
+        if (topK > liveVectorCount)
+        {
+            throw new ArgumentException("top-k must be less than or equal to the post-update live vector count.");
+        }
+
+        if (repeatedDeleteAttempts > 0 && deletedBaseCount + deletedDeltaCount == 0)
+        {
+            throw new ArgumentException("Option --repeated-deletes requires at least one committed delete.");
+        }
+
+        if (efSearch < topK)
+        {
+            throw new ArgumentException("ef-search must be greater than or equal to top-k.");
+        }
+
+        if (m is < 2 or > 64)
+        {
+            throw new ArgumentException("Option --m must be in the range 2..64.");
+        }
+
+        if (efConstruction < m || efConstruction > 4096)
+        {
+            throw new ArgumentException("Option --ef-construction must be at least --m and no more than 4096.");
+        }
+
+        if (efSearch > 4096)
+        {
+            throw new ArgumentException("Option --ef-search must be in the range 1..4096.");
+        }
+
+        return new HnswBasePlusExactDeltaGeneratedOptions(
+            metric,
+            dimension,
+            baseVectorCount,
+            queryCount,
+            topK,
+            seed,
+            insertedDeltaCount,
+            deletedBaseCount,
+            deletedDeltaCount,
+            duplicateInsertAttempts,
+            unknownDeleteAttempts,
+            repeatedDeleteAttempts,
+            outputPath,
+            runs,
+            warmupQueries,
+            m,
+            efConstruction,
+            efSearch,
+            hnswSeed);
+    }
+
+    public static HnswBasePlusExactDeltaCheckpointOptions ParseHnswBasePlusExactDeltaCheckpoint(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? HnswBasePlusExactDeltaCheckpointOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, HnswBasePlusExactDeltaCheckpointOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedHnswBasePlusExactDeltaCheckpointOption);
+        HnswBasePlusExactDeltaCheckpointOptions defaults = HnswBasePlusExactDeltaCheckpointOptions.Default;
+        VectorMetric metric = GetEnum(values, "metric", defaults.Metric);
+        int dimension = GetPositiveInt(values, "dimension", defaults.Dimension);
+        int baseVectorCount = GetPositiveInt(values, "vectors", defaults.BaseVectorCount);
+        int queryCount = GetPositiveInt(values, "queries", defaults.QueryCount);
+        int topK = GetPositiveInt(values, "top-k", defaults.TopK);
+        int runs = GetPositiveInt(values, "runs", defaults.Runs);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", defaults.WarmupQueries);
+        uint seed = GetSeed(values, "seed", defaults.Seed);
+        int insertedDeltaCount = GetPositiveInt(values, "insertions", defaults.InsertedDeltaCount);
+        int deletedBaseCount = GetNonNegativeInt(values, "deletes", defaults.DeletedBaseCount);
+        int deletedDeltaCount = GetNonNegativeInt(values, "delta-deletes", defaults.DeletedDeltaCount);
+        int duplicateInsertAttempts = GetNonNegativeInt(values, "duplicate-inserts", defaults.DuplicateInsertAttempts);
+        int unknownDeleteAttempts = GetNonNegativeInt(values, "unknown-deletes", defaults.UnknownDeleteAttempts);
+        int repeatedDeleteAttempts = GetNonNegativeInt(values, "repeated-deletes", defaults.RepeatedDeleteAttempts);
+        int m = GetPositiveInt(values, "m", defaults.M);
+        int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
+        int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
+        ulong hnswSeed = GetUInt64Seed(values, "hnsw-seed", defaults.HnswSeed);
+        string outputPath = values.TryGetValue("output", out string? outputValue)
+            ? outputValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"generated-hnsw-base-plus-exact-delta-checkpoint-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json");
+        string checkpointDirectory = values.TryGetValue("checkpoint-directory", out string? checkpointDirectoryValue)
+            ? checkpointDirectoryValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"generated-hnsw-base-plus-exact-delta-checkpoint-output-{DateTime.UtcNow:yyyyMMdd-HHmmss}");
+
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("Option --output must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(checkpointDirectory))
+        {
+            throw new ArgumentException("Option --checkpoint-directory must not be empty.");
+        }
+
+        if (metric != VectorMetric.SquaredEuclidean)
+        {
+            throw new ArgumentException("generated-hnsw-base-plus-exact-delta-checkpoint supports only SquaredEuclidean.");
+        }
+
+        if (deletedBaseCount > baseVectorCount)
+        {
+            throw new ArgumentException("Option --deletes must be less than or equal to --vectors.");
+        }
+
+        if (deletedDeltaCount > insertedDeltaCount)
+        {
+            throw new ArgumentException("Option --delta-deletes must be less than or equal to --insertions.");
+        }
+
+        int liveVectorCount = checked(baseVectorCount + insertedDeltaCount - deletedBaseCount - deletedDeltaCount);
+        if (topK > liveVectorCount)
+        {
+            throw new ArgumentException("top-k must be less than or equal to the post-update live vector count.");
+        }
+
+        if (repeatedDeleteAttempts > 0 && deletedBaseCount + deletedDeltaCount == 0)
+        {
+            throw new ArgumentException("Option --repeated-deletes requires at least one committed delete.");
+        }
+
+        if (m is < 2 or > 64)
+        {
+            throw new ArgumentException("Option --m must be in the range 2..64.");
+        }
+
+        if (efConstruction < m || efConstruction > 4096)
+        {
+            throw new ArgumentException("Option --ef-construction must be at least --m and no more than 4096.");
+        }
+
+        if (efSearch < topK || efSearch > 4096)
+        {
+            throw new ArgumentException("Option --ef-search must be at least --top-k and no more than 4096.");
+        }
+
+        return new HnswBasePlusExactDeltaCheckpointOptions(
+            metric,
+            dimension,
+            baseVectorCount,
+            queryCount,
+            topK,
+            seed,
+            insertedDeltaCount,
+            deletedBaseCount,
+            deletedDeltaCount,
+            duplicateInsertAttempts,
+            unknownDeleteAttempts,
+            repeatedDeleteAttempts,
+            outputPath,
+            checkpointDirectory,
+            runs,
+            warmupQueries,
+            m,
+            efConstruction,
+            efSearch,
+            hnswSeed);
+    }
+
+    public static HnswBasePlusExactDeltaMatrixOptions ParseHnswBasePlusExactDeltaMatrix(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? HnswBasePlusExactDeltaMatrixOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, HnswBasePlusExactDeltaMatrixOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedHnswBasePlusExactDeltaMatrixOption);
+        string presetName = HnswBasePlusExactDeltaMatrixOptions.NormalizePresetName(
+            GetOptionalNonWhiteSpace(values, "preset") ?? HnswBasePlusExactDeltaMatrixOptions.DefaultPresetName);
+
+        int defaultBaseVectorCount = string.Equals(presetName, HnswBasePlusExactDeltaMatrixOptions.StandardPresetName, StringComparison.Ordinal)
+            ? 128
+            : 64;
+        int baseVectorCount = GetPositiveInt(values, "vectors", defaultBaseVectorCount);
+        int queryCount = GetPositiveInt(values, "queries", 4);
+        int runs = GetPositiveInt(values, "runs", 1);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", 0);
+        uint seed = GetSeed(values, "seed", 0x5EED2125);
+        int duplicateInsertAttempts = GetNonNegativeInt(values, "duplicate-inserts", 1);
+        int unknownDeleteAttempts = GetNonNegativeInt(values, "unknown-deletes", 1);
+        int repeatedDeleteAttempts = GetNonNegativeInt(values, "repeated-deletes", 1);
+        string outputDirectory = values.TryGetValue("output-dir", out string? outputDirectoryValue)
+            ? outputDirectoryValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"generated-hnsw-base-plus-exact-delta-matrix-{DateTime.UtcNow:yyyyMMdd-HHmmss}");
+        if (string.IsNullOrWhiteSpace(outputDirectory))
+        {
+            throw new ArgumentException("Option --output-dir must not be empty.");
+        }
+
+        string manifestPath = values.TryGetValue("manifest", out string? manifestValue)
+            ? manifestValue
+            : Path.Combine(outputDirectory, "hnsw-base-plus-exact-delta-matrix-manifest.json");
+        if (string.IsNullOrWhiteSpace(manifestPath))
+        {
+            throw new ArgumentException("Option --manifest must not be empty.");
+        }
+
+        int minimumBaseVectorCount = HnswBasePlusExactDeltaMatrixScenario.GetMinimumBaseVectorCount(presetName);
+        if (baseVectorCount < minimumBaseVectorCount)
+        {
+            throw new ArgumentException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"vectors must be greater than or equal to the minimum HNSW base-plus-exact-delta matrix base vector count ({minimumBaseVectorCount}) for preset '{presetName}'."));
+        }
+
+        return new HnswBasePlusExactDeltaMatrixOptions(
+            presetName,
+            baseVectorCount,
+            queryCount,
+            runs,
+            warmupQueries,
+            seed,
+            duplicateInsertAttempts,
+            unknownDeleteAttempts,
+            repeatedDeleteAttempts,
+            outputDirectory,
+            manifestPath);
+    }
+
+    public static HnswBasePlusExactDeltaCheckpointMatrixOptions ParseHnswBasePlusExactDeltaCheckpointMatrix(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? HnswBasePlusExactDeltaCheckpointMatrixOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, HnswBasePlusExactDeltaCheckpointMatrixOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedHnswBasePlusExactDeltaCheckpointMatrixOption);
+        string presetName = HnswBasePlusExactDeltaCheckpointMatrixOptions.NormalizePresetName(
+            GetOptionalNonWhiteSpace(values, "preset") ?? HnswBasePlusExactDeltaCheckpointMatrixOptions.DefaultPresetName);
+
+        int defaultBaseVectorCount = string.Equals(presetName, HnswBasePlusExactDeltaCheckpointMatrixOptions.StandardPresetName, StringComparison.Ordinal)
+            ? 256
+            : 64;
+        int baseVectorCount = GetPositiveInt(values, "vectors", defaultBaseVectorCount);
+        int queryCount = GetPositiveInt(values, "queries", 4);
+        int defaultRuns = string.Equals(presetName, HnswBasePlusExactDeltaCheckpointMatrixOptions.StandardPresetName, StringComparison.Ordinal)
+            ? 2
+            : 1;
+        int runs = GetPositiveInt(values, "runs", defaultRuns);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        if (string.Equals(presetName, HnswBasePlusExactDeltaCheckpointMatrixOptions.StandardPresetName, StringComparison.Ordinal) && runs != 2)
+        {
+            throw new ArgumentException("The standard HNSW base-plus-exact-delta checkpoint matrix preset requires --runs 2.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", 1);
+        uint seed = GetSeed(values, "seed", 0x5EED2136);
+        int duplicateInsertAttempts = GetNonNegativeInt(values, "duplicate-inserts", 1);
+        int unknownDeleteAttempts = GetNonNegativeInt(values, "unknown-deletes", 1);
+        int repeatedDeleteAttempts = GetNonNegativeInt(values, "repeated-deletes", 1);
+        string outputDirectory = values.TryGetValue("output-dir", out string? outputDirectoryValue)
+            ? outputDirectoryValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"generated-hnsw-base-plus-exact-delta-checkpoint-matrix-{DateTime.UtcNow:yyyyMMdd-HHmmss}");
+        if (string.IsNullOrWhiteSpace(outputDirectory))
+        {
+            throw new ArgumentException("Option --output-dir must not be empty.");
+        }
+
+        string manifestPath = values.TryGetValue("manifest", out string? manifestValue)
+            ? manifestValue
+            : Path.Combine(outputDirectory, "hnsw-base-plus-exact-delta-checkpoint-matrix-manifest.json");
+        if (string.IsNullOrWhiteSpace(manifestPath))
+        {
+            throw new ArgumentException("Option --manifest must not be empty.");
+        }
+
+        int minimumBaseVectorCount = HnswBasePlusExactDeltaCheckpointMatrixScenario.GetMinimumBaseVectorCount(presetName);
+        if (baseVectorCount < minimumBaseVectorCount)
+        {
+            throw new ArgumentException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"vectors must be greater than or equal to the minimum HNSW base-plus-exact-delta checkpoint matrix base vector count ({minimumBaseVectorCount}) for preset '{presetName}'."));
+        }
+
+        return new HnswBasePlusExactDeltaCheckpointMatrixOptions(
+            presetName,
+            baseVectorCount,
+            queryCount,
+            runs,
+            warmupQueries,
+            seed,
+            duplicateInsertAttempts,
+            unknownDeleteAttempts,
+            repeatedDeleteAttempts,
+            outputDirectory,
+            manifestPath);
     }
 
     public static FashionMnistExternalDatasetOptions ParseExternalFashionMnist(IReadOnlyList<string> args)
@@ -1473,6 +2422,498 @@ public static class CommandLine
             efConstruction,
             efSearch,
             hnswSeed);
+    }
+
+    public static FashionMnistExternalHnswBasePlusExactDeltaOptions ParseExternalFashionMnistHnswBasePlusExactDelta(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? FashionMnistExternalHnswBasePlusExactDeltaOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, FashionMnistExternalHnswBasePlusExactDeltaOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedExternalFashionMnistHnswBasePlusExactDeltaOption);
+        FashionMnistExternalHnswBasePlusExactDeltaOptions defaults = FashionMnistExternalHnswBasePlusExactDeltaOptions.Default;
+        string cacheRoot = values.TryGetValue("cache-root", out string? cacheRootValue)
+            ? cacheRootValue
+            : defaults.CacheRoot;
+        if (string.IsNullOrWhiteSpace(cacheRoot))
+        {
+            throw new ArgumentException("Option --cache-root must not be empty.");
+        }
+
+        string outputPath = values.TryGetValue("output", out string? outputValue)
+            ? outputValue
+            : defaults.OutputPath;
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("Option --output must not be empty.");
+        }
+
+        int queryCount = GetPositiveInt(values, "query-count", defaults.QueryCount);
+        int topK = GetPositiveInt(values, "top-k", defaults.TopK);
+        int baseVectorCount = GetPositiveInt(values, "base-vectors", defaults.BaseVectorCount);
+        int insertedDeltaCount = GetPositiveInt(values, "insertions", defaults.InsertedDeltaCount);
+        int deletedBaseCount = GetNonNegativeInt(values, "deletes", defaults.DeletedBaseCount);
+        int deletedDeltaCount = GetNonNegativeInt(values, "delta-deletes", defaults.DeletedDeltaCount);
+        int duplicateInsertAttempts = GetNonNegativeInt(values, "duplicate-inserts", defaults.DuplicateInsertAttempts);
+        int unknownDeleteAttempts = GetNonNegativeInt(values, "unknown-deletes", defaults.UnknownDeleteAttempts);
+        int repeatedDeleteAttempts = GetNonNegativeInt(values, "repeated-deletes", defaults.RepeatedDeleteAttempts);
+        int runs = GetPositiveInt(values, "runs", defaults.Runs);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", defaults.WarmupQueries);
+        VectorMetric metric = GetExternalFashionMnistMetric(values, "metric", defaults.Metric);
+        uint seed = GetSeed(values, "seed", defaults.Seed);
+        int m = GetPositiveInt(values, "m", defaults.M);
+        int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
+        int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
+        ulong hnswSeed = GetUInt64Seed(values, "hnsw-seed", defaults.HnswSeed);
+
+        if (metric != VectorMetric.SquaredEuclidean)
+        {
+            throw new ArgumentException("external-fashion-mnist-hnsw-base-plus-exact-delta supports only SquaredEuclidean.");
+        }
+
+        if (deletedBaseCount > baseVectorCount)
+        {
+            throw new ArgumentException("Option --deletes must be less than or equal to --base-vectors.");
+        }
+
+        if (deletedDeltaCount > insertedDeltaCount)
+        {
+            throw new ArgumentException("Option --delta-deletes must be less than or equal to --insertions.");
+        }
+
+        int liveVectorCount = checked(baseVectorCount + insertedDeltaCount - deletedBaseCount - deletedDeltaCount);
+        if (topK > liveVectorCount)
+        {
+            throw new ArgumentException("top-k must be less than or equal to the post-update live vector count.");
+        }
+
+        if (repeatedDeleteAttempts > 0 && deletedBaseCount + deletedDeltaCount == 0)
+        {
+            throw new ArgumentException("Option --repeated-deletes requires at least one committed delete.");
+        }
+
+        if (m is < 2 or > 64)
+        {
+            throw new ArgumentException("Option --m must be in the range 2..64.");
+        }
+
+        if (efConstruction < m || efConstruction > 4096)
+        {
+            throw new ArgumentException("Option --ef-construction must be at least --m and no more than 4096.");
+        }
+
+        if (efSearch < topK || efSearch > 4096)
+        {
+            throw new ArgumentException("Option --ef-search must be at least --top-k and no more than 4096.");
+        }
+
+        return new FashionMnistExternalHnswBasePlusExactDeltaOptions(
+            cacheRoot,
+            outputPath,
+            queryCount,
+            topK,
+            baseVectorCount,
+            insertedDeltaCount,
+            deletedBaseCount,
+            deletedDeltaCount,
+            duplicateInsertAttempts,
+            unknownDeleteAttempts,
+            repeatedDeleteAttempts,
+            runs,
+            warmupQueries,
+            metric,
+            seed,
+            m,
+            efConstruction,
+            efSearch,
+            hnswSeed);
+    }
+
+    public static FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions ParseExternalFashionMnistHnswBasePlusExactDeltaCheckpoint(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedExternalFashionMnistHnswBasePlusExactDeltaCheckpointOption);
+        FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions defaults = FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions.Default;
+        string cacheRoot = values.TryGetValue("cache-root", out string? cacheRootValue)
+            ? cacheRootValue
+            : defaults.CacheRoot;
+        if (string.IsNullOrWhiteSpace(cacheRoot))
+        {
+            throw new ArgumentException("Option --cache-root must not be empty.");
+        }
+
+        string outputPath = values.TryGetValue("output", out string? outputValue)
+            ? outputValue
+            : defaults.OutputPath;
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("Option --output must not be empty.");
+        }
+
+        string checkpointDirectory = values.TryGetValue("checkpoint-directory", out string? checkpointDirectoryValue)
+            ? checkpointDirectoryValue
+            : defaults.CheckpointDirectory;
+        if (string.IsNullOrWhiteSpace(checkpointDirectory))
+        {
+            throw new ArgumentException("Option --checkpoint-directory must not be empty.");
+        }
+
+        int queryCount = GetPositiveInt(values, "query-count", defaults.QueryCount);
+        int topK = GetPositiveInt(values, "top-k", defaults.TopK);
+        int baseVectorCount = GetPositiveInt(values, "base-vectors", defaults.BaseVectorCount);
+        int insertedDeltaCount = GetPositiveInt(values, "insertions", defaults.InsertedDeltaCount);
+        int deletedBaseCount = GetNonNegativeInt(values, "deletes", defaults.DeletedBaseCount);
+        int deletedDeltaCount = GetNonNegativeInt(values, "delta-deletes", defaults.DeletedDeltaCount);
+        int duplicateInsertAttempts = GetNonNegativeInt(values, "duplicate-inserts", defaults.DuplicateInsertAttempts);
+        int unknownDeleteAttempts = GetNonNegativeInt(values, "unknown-deletes", defaults.UnknownDeleteAttempts);
+        int repeatedDeleteAttempts = GetNonNegativeInt(values, "repeated-deletes", defaults.RepeatedDeleteAttempts);
+        int runs = GetPositiveInt(values, "runs", defaults.Runs);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", defaults.WarmupQueries);
+        VectorMetric metric = GetExternalFashionMnistMetric(values, "metric", defaults.Metric);
+        uint seed = GetSeed(values, "seed", defaults.Seed);
+        int m = GetPositiveInt(values, "m", defaults.M);
+        int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
+        int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
+        ulong hnswSeed = GetUInt64Seed(values, "hnsw-seed", defaults.HnswSeed);
+
+        if (metric != VectorMetric.SquaredEuclidean)
+        {
+            throw new ArgumentException("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint supports only SquaredEuclidean.");
+        }
+
+        if (deletedBaseCount > baseVectorCount)
+        {
+            throw new ArgumentException("Option --deletes must be less than or equal to --base-vectors.");
+        }
+
+        if (deletedDeltaCount > insertedDeltaCount)
+        {
+            throw new ArgumentException("Option --delta-deletes must be less than or equal to --insertions.");
+        }
+
+        int liveVectorCount = checked(baseVectorCount + insertedDeltaCount - deletedBaseCount - deletedDeltaCount);
+        if (topK > liveVectorCount)
+        {
+            throw new ArgumentException("top-k must be less than or equal to the post-update live vector count.");
+        }
+
+        if (repeatedDeleteAttempts > 0 && deletedBaseCount + deletedDeltaCount == 0)
+        {
+            throw new ArgumentException("Option --repeated-deletes requires at least one committed delete.");
+        }
+
+        if (m is < 2 or > 64)
+        {
+            throw new ArgumentException("Option --m must be in the range 2..64.");
+        }
+
+        if (efConstruction < m || efConstruction > 4096)
+        {
+            throw new ArgumentException("Option --ef-construction must be at least --m and no more than 4096.");
+        }
+
+        if (efSearch < topK || efSearch > 4096)
+        {
+            throw new ArgumentException("Option --ef-search must be at least --top-k and no more than 4096.");
+        }
+
+        return new FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions(
+            cacheRoot,
+            outputPath,
+            checkpointDirectory,
+            queryCount,
+            topK,
+            baseVectorCount,
+            insertedDeltaCount,
+            deletedBaseCount,
+            deletedDeltaCount,
+            duplicateInsertAttempts,
+            unknownDeleteAttempts,
+            repeatedDeleteAttempts,
+            runs,
+            warmupQueries,
+            metric,
+            seed,
+            m,
+            efConstruction,
+            efSearch,
+            hnswSeed);
+    }
+
+    public static FashionMnistExternalHnswAllowlistFilteringOptions ParseExternalFashionMnistHnswAllowlistFiltering(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? FashionMnistExternalHnswAllowlistFilteringOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, FashionMnistExternalHnswAllowlistFilteringOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedExternalFashionMnistHnswAllowlistFilteringOption);
+        FashionMnistExternalHnswAllowlistFilteringOptions defaults = FashionMnistExternalHnswAllowlistFilteringOptions.Default;
+        string cacheRoot = values.TryGetValue("cache-root", out string? cacheRootValue)
+            ? cacheRootValue
+            : defaults.CacheRoot;
+        if (string.IsNullOrWhiteSpace(cacheRoot))
+        {
+            throw new ArgumentException("Option --cache-root must not be empty.");
+        }
+
+        string outputPath = values.TryGetValue("output", out string? outputValue)
+            ? outputValue
+            : defaults.OutputPath;
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("Option --output must not be empty.");
+        }
+
+        string openedIndexDirectory = values.TryGetValue("opened-index-directory", out string? openedDirectoryValue)
+            ? openedDirectoryValue
+            : defaults.OpenedIndexDirectory;
+        if (string.IsNullOrWhiteSpace(openedIndexDirectory))
+        {
+            throw new ArgumentException("Option --opened-index-directory must not be empty.");
+        }
+
+        string checkpointDirectory = values.TryGetValue("checkpoint-directory", out string? checkpointDirectoryValue)
+            ? checkpointDirectoryValue
+            : defaults.CheckpointDirectory;
+        if (string.IsNullOrWhiteSpace(checkpointDirectory))
+        {
+            throw new ArgumentException("Option --checkpoint-directory must not be empty.");
+        }
+
+        int queryCount = GetPositiveInt(values, "query-count", defaults.QueryCount);
+        int topK = GetPositiveInt(values, "top-k", defaults.TopK);
+        int baseVectorCount = GetPositiveInt(values, "base-vectors", defaults.BaseVectorCount);
+        int insertedDeltaCount = GetPositiveInt(values, "insertions", defaults.InsertedDeltaCount);
+        int deletedBaseCount = GetNonNegativeInt(values, "deletes", defaults.DeletedBaseCount);
+        int deletedDeltaCount = GetNonNegativeInt(values, "delta-deletes", defaults.DeletedDeltaCount);
+        int duplicateInsertAttempts = GetNonNegativeInt(values, "duplicate-inserts", defaults.DuplicateInsertAttempts);
+        int unknownDeleteAttempts = GetNonNegativeInt(values, "unknown-deletes", defaults.UnknownDeleteAttempts);
+        int repeatedDeleteAttempts = GetNonNegativeInt(values, "repeated-deletes", defaults.RepeatedDeleteAttempts);
+        string filterProfile = FashionMnistExternalHnswAllowlistFilteringOptions.NormalizeFilterProfile(
+            GetOptionalNonWhiteSpace(values, "filter") ?? defaults.FilterProfile);
+        int runs = GetPositiveInt(values, "runs", defaults.Runs);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", defaults.WarmupQueries);
+        VectorMetric metric = GetExternalFashionMnistMetric(values, "metric", defaults.Metric);
+        uint seed = GetSeed(values, "seed", defaults.Seed);
+        int m = GetPositiveInt(values, "m", defaults.M);
+        int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
+        int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
+        ulong hnswSeed = GetUInt64Seed(values, "hnsw-seed", defaults.HnswSeed);
+
+        var options = new FashionMnistExternalHnswAllowlistFilteringOptions(
+            cacheRoot,
+            outputPath,
+            openedIndexDirectory,
+            checkpointDirectory,
+            queryCount,
+            topK,
+            baseVectorCount,
+            insertedDeltaCount,
+            deletedBaseCount,
+            deletedDeltaCount,
+            duplicateInsertAttempts,
+            unknownDeleteAttempts,
+            repeatedDeleteAttempts,
+            filterProfile,
+            runs,
+            warmupQueries,
+            metric,
+            seed,
+            m,
+            efConstruction,
+            efSearch,
+            hnswSeed);
+
+        FashionMnistExternalHnswAllowlistFilteringScenario.ValidateOptions(options);
+        return options;
+    }
+
+    public static FashionMnistExternalHnswBasePlusExactDeltaCheckpointMemorySmokeOptions ParseExternalFashionMnistHnswBasePlusExactDeltaCheckpointMemorySmoke(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? FashionMnistExternalHnswBasePlusExactDeltaCheckpointMemorySmokeOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, FashionMnistExternalHnswBasePlusExactDeltaCheckpointMemorySmokeOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedExternalFashionMnistHnswBasePlusExactDeltaCheckpointMemorySmokeOption);
+        FashionMnistExternalHnswBasePlusExactDeltaCheckpointMemorySmokeOptions defaults =
+            FashionMnistExternalHnswBasePlusExactDeltaCheckpointMemorySmokeOptions.Default;
+        string cacheRoot = values.TryGetValue("cache-root", out string? cacheRootValue)
+            ? cacheRootValue
+            : defaults.CacheRoot;
+        if (string.IsNullOrWhiteSpace(cacheRoot))
+        {
+            throw new ArgumentException("Option --cache-root must not be empty.");
+        }
+
+        string outputPath = values.TryGetValue("output", out string? outputValue)
+            ? outputValue
+            : defaults.OutputPath;
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("Option --output must not be empty.");
+        }
+
+        string checkpointDirectory = values.TryGetValue("checkpoint-directory", out string? checkpointDirectoryValue)
+            ? checkpointDirectoryValue
+            : defaults.CheckpointDirectory;
+        if (string.IsNullOrWhiteSpace(checkpointDirectory))
+        {
+            throw new ArgumentException("Option --checkpoint-directory must not be empty.");
+        }
+
+        int sampleIntervalMilliseconds = GetPositiveInt(values, "sample-interval-ms", defaults.SampleIntervalMilliseconds);
+        if (sampleIntervalMilliseconds is < 1 or > 1000)
+        {
+            throw new ArgumentException("Option --sample-interval-ms must be in the range 1..1000.");
+        }
+
+        return defaults with
+        {
+            CacheRoot = cacheRoot,
+            OutputPath = outputPath,
+            CheckpointDirectory = checkpointDirectory,
+            SampleIntervalMilliseconds = sampleIntervalMilliseconds
+        };
+    }
+
+    public static FashionMnistExternalHnswBasePlusExactDeltaMatrixOptions ParseExternalFashionMnistHnswBasePlusExactDeltaMatrix(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? FashionMnistExternalHnswBasePlusExactDeltaMatrixOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, FashionMnistExternalHnswBasePlusExactDeltaMatrixOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedExternalFashionMnistHnswBasePlusExactDeltaMatrixOption);
+        string presetName = FashionMnistExternalHnswBasePlusExactDeltaMatrixOptions.NormalizePresetName(
+            GetOptionalNonWhiteSpace(values, "preset") ?? FashionMnistExternalHnswBasePlusExactDeltaMatrixOptions.DefaultPresetName);
+        string cacheRoot = values.TryGetValue("cache-root", out string? cacheRootValue)
+            ? cacheRootValue
+            : FashionMnistExternalHnswBasePlusExactDeltaOptions.Default.CacheRoot;
+        if (string.IsNullOrWhiteSpace(cacheRoot))
+        {
+            throw new ArgumentException("Option --cache-root must not be empty.");
+        }
+
+        int queryCount = GetPositiveInt(values, "query-count", 50);
+        int runs = GetPositiveInt(values, "runs", 1);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupQueries = GetNonNegativeInt(values, "warmup-queries", 3);
+        VectorMetric metric = GetExternalFashionMnistMetric(values, "metric", VectorMetric.SquaredEuclidean);
+        if (metric != VectorMetric.SquaredEuclidean)
+        {
+            throw new ArgumentException("external-fashion-mnist-hnsw-base-plus-exact-delta-matrix supports only SquaredEuclidean.");
+        }
+
+        uint seed = GetSeed(values, "seed", 0x5EED2128);
+        int duplicateInsertAttempts = GetNonNegativeInt(values, "duplicate-inserts", 1);
+        int unknownDeleteAttempts = GetNonNegativeInt(values, "unknown-deletes", 1);
+        int repeatedDeleteAttempts = GetNonNegativeInt(values, "repeated-deletes", 1);
+        string outputDirectory = values.TryGetValue("output-dir", out string? outputDirectoryValue)
+            ? outputDirectoryValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"fashion-mnist-external-hnsw-base-plus-exact-delta-matrix-{DateTime.UtcNow:yyyyMMdd-HHmmss}");
+        if (string.IsNullOrWhiteSpace(outputDirectory))
+        {
+            throw new ArgumentException("Option --output-dir must not be empty.");
+        }
+
+        string manifestPath = values.TryGetValue("manifest", out string? manifestValue)
+            ? manifestValue
+            : Path.Combine(outputDirectory, "fashion-mnist-external-hnsw-base-plus-exact-delta-matrix-manifest.json");
+        if (string.IsNullOrWhiteSpace(manifestPath))
+        {
+            throw new ArgumentException("Option --manifest must not be empty.");
+        }
+
+        return new FashionMnistExternalHnswBasePlusExactDeltaMatrixOptions(
+            presetName,
+            cacheRoot,
+            queryCount,
+            runs,
+            warmupQueries,
+            metric,
+            seed,
+            duplicateInsertAttempts,
+            unknownDeleteAttempts,
+            repeatedDeleteAttempts,
+            outputDirectory,
+            manifestPath);
+    }
+
+    public static FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixOptions ParseExternalFashionMnistHnswBasePlusExactDeltaCheckpointMatrix(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedExternalFashionMnistHnswBasePlusExactDeltaCheckpointMatrixOption);
+        string presetName = FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixOptions.NormalizePresetName(
+            GetOptionalNonWhiteSpace(values, "preset") ?? FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixOptions.DefaultPresetName);
+        string cacheRoot = values.TryGetValue("cache-root", out string? cacheRootValue)
+            ? cacheRootValue
+            : FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions.Default.CacheRoot;
+        if (string.IsNullOrWhiteSpace(cacheRoot))
+        {
+            throw new ArgumentException("Option --cache-root must not be empty.");
+        }
+
+        string outputDirectory = values.TryGetValue("output-dir", out string? outputDirectoryValue)
+            ? outputDirectoryValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"fashion-mnist-external-hnsw-base-plus-exact-delta-checkpoint-matrix-{DateTime.UtcNow:yyyyMMdd-HHmmss}");
+        if (string.IsNullOrWhiteSpace(outputDirectory))
+        {
+            throw new ArgumentException("Option --output-dir must not be empty.");
+        }
+
+        string manifestPath = values.TryGetValue("manifest", out string? manifestValue)
+            ? manifestValue
+            : Path.Combine(outputDirectory, "fashion-mnist-external-hnsw-base-plus-exact-delta-checkpoint-matrix-manifest.json");
+        if (string.IsNullOrWhiteSpace(manifestPath))
+        {
+            throw new ArgumentException("Option --manifest must not be empty.");
+        }
+
+        return new FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixOptions(
+            presetName,
+            cacheRoot,
+            outputDirectory,
+            manifestPath);
     }
 
     private static Dictionary<string, string> ParseOptionValues(
@@ -1826,6 +3267,156 @@ public static class CommandLine
         string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "sample-interval-ms", StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsSupportedHnswEstablishedComparisonOption(string name) =>
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "dimension", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vectors", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "top-k", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "work-directory", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vecnet-snapshot-directory", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "hnswlib-index", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "hnswlib-python", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "m", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedExternalFashionMnistHnswBasePlusExactDeltaOption(string name) =>
+        string.Equals(name, "cache-root", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "query-count", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "top-k", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "base-vectors", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "insertions", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "delta-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "duplicate-inserts", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "unknown-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "repeated-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "m", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedExternalFashionMnistHnswBasePlusExactDeltaCheckpointOption(string name) =>
+        string.Equals(name, "cache-root", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "checkpoint-directory", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "query-count", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "top-k", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "base-vectors", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "insertions", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "delta-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "duplicate-inserts", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "unknown-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "repeated-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "m", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedExternalFashionMnistHnswAllowlistFilteringOption(string name) =>
+        string.Equals(name, "cache-root", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "opened-index-directory", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "checkpoint-directory", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "query-count", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "top-k", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "base-vectors", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "insertions", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "delta-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "duplicate-inserts", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "unknown-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "repeated-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "filter", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "m", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedExternalFashionMnistHnswBasePlusExactDeltaCheckpointMemorySmokeOption(string name) =>
+        string.Equals(name, "cache-root", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "checkpoint-directory", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "sample-interval-ms", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedExternalFashionMnistHnswBasePlusExactDeltaMatrixOption(string name) =>
+        string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "cache-root", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "query-count", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "duplicate-inserts", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "unknown-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "repeated-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output-dir", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "manifest", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedExternalFashionMnistHnswBasePlusExactDeltaCheckpointMatrixOption(string name) =>
+        string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "cache-root", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output-dir", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "manifest", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedHnswEstablishedComparisonMatrixOption(string name) =>
+        string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vectors", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output-dir", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "manifest", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "hnswlib-python", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedFashionMnistHnswlibComparisonOption(string name) =>
+        string.Equals(name, "cache-root", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "work-directory", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vecnet-snapshot-directory", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "hnswlib-index", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "hnswlib-python", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "query-count", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "top-k", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "m", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedFashionMnistHnswlibComparisonMatrixOption(string name) =>
+        string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "cache-root", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "query-count", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output-dir", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "manifest", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "hnswlib-python", StringComparison.OrdinalIgnoreCase);
+
     private static bool IsSupportedDurableHnswGeneratedMatrixOption(string name) =>
         string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
@@ -1846,6 +3437,111 @@ public static class CommandLine
         string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedHnswAllowlistFilteringOption(string name) =>
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "dimension", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vectors", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "top-k", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "insertions", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "delta-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "duplicate-inserts", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "unknown-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "repeated-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "filter", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "opened-index-directory", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "checkpoint-directory", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "m", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedHnswAllowlistFilteringMatrixOption(string name) =>
+        string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "duplicate-inserts", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "unknown-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "repeated-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output-dir", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "manifest", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedHnswBasePlusExactDeltaGeneratedOption(string name) =>
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "dimension", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vectors", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "top-k", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "insertions", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "delta-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "duplicate-inserts", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "unknown-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "repeated-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "m", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedHnswBasePlusExactDeltaCheckpointOption(string name) =>
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "dimension", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vectors", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "top-k", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "insertions", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "delta-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "duplicate-inserts", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "unknown-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "repeated-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "checkpoint-directory", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "m", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedHnswBasePlusExactDeltaMatrixOption(string name) =>
+        string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vectors", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "duplicate-inserts", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "unknown-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "repeated-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output-dir", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "manifest", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedHnswBasePlusExactDeltaCheckpointMatrixOption(string name) =>
+        string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vectors", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "duplicate-inserts", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "unknown-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "repeated-deletes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output-dir", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "manifest", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedHnswGeneratedMatrixOption(string name) =>
         string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||

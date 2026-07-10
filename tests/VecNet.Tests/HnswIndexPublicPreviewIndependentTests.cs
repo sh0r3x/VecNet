@@ -15,7 +15,15 @@ public sealed class HnswIndexPublicPreviewIndependentTests
             .ToArray();
 
         Assert.Equal(
-            [typeof(HnswIndex), typeof(HnswIndexOptions), typeof(HnswSearchWorkspace)],
+            [
+                typeof(HnswIndex),
+                typeof(HnswIndexOptions),
+                typeof(HnswMutableCheckpointResult),
+                typeof(HnswMutableCheckpointStatus),
+                typeof(HnswMutableIndex),
+                typeof(HnswMutableSearchWorkspace),
+                typeof(HnswSearchWorkspace)
+            ],
             exportedHnswTypes);
 
         Assert.Empty(typeof(HnswIndex).GetNestedTypes(BindingFlags.Public));
@@ -138,7 +146,56 @@ public sealed class HnswIndexPublicPreviewIndependentTests
             "T:VecNet.HnswSearchWorkspace",
             "M:VecNet.HnswSearchWorkspace.#ctor(System.Int32,System.Int32)",
             "P:VecNet.HnswSearchWorkspace.MaxElements",
-            "P:VecNet.HnswSearchWorkspace.MaxEf"
+            "P:VecNet.HnswSearchWorkspace.MaxEf",
+            "T:VecNet.HnswMutableIndex",
+            "M:VecNet.HnswMutableIndex.#ctor(VecNet.HnswIndex)",
+            "P:VecNet.HnswMutableIndex.Dimension",
+            "P:VecNet.HnswMutableIndex.Metric",
+            "P:VecNet.HnswMutableIndex.Options",
+            "P:VecNet.HnswMutableIndex.Count",
+            "P:VecNet.HnswMutableIndex.BasePhysicalVectorCount",
+            "P:VecNet.HnswMutableIndex.BaseLiveVectorCount",
+            "P:VecNet.HnswMutableIndex.DeltaPhysicalVectorCount",
+            "P:VecNet.HnswMutableIndex.DeltaLiveVectorCount",
+            "P:VecNet.HnswMutableIndex.LiveVectorCount",
+            "P:VecNet.HnswMutableIndex.BaseTombstoneCount",
+            "P:VecNet.HnswMutableIndex.DeltaTombstoneCount",
+            "P:VecNet.HnswMutableIndex.TombstoneCount",
+            "P:VecNet.HnswMutableIndex.DeletedReservedIdCount",
+            "P:VecNet.HnswMutableIndex.Generation",
+            "M:VecNet.HnswMutableIndex.TryAdd(System.UInt64,System.ReadOnlySpan{System.Single})",
+            "M:VecNet.HnswMutableIndex.TryDelete(System.UInt64)",
+            "M:VecNet.HnswMutableIndex.Search(System.ReadOnlySpan{System.Single},System.Span{VecNet.SearchResult},VecNet.HnswMutableSearchWorkspace)",
+            "M:VecNet.HnswMutableIndex.Search(System.ReadOnlySpan{System.Single},System.ReadOnlySpan{System.UInt64},System.Span{VecNet.SearchResult},VecNet.HnswMutableSearchWorkspace)",
+            "M:VecNet.HnswMutableIndex.Checkpoint(System.String)",
+            "T:VecNet.HnswMutableSearchWorkspace",
+            "M:VecNet.HnswMutableSearchWorkspace.#ctor(VecNet.HnswMutableIndex,System.Int32)",
+            "P:VecNet.HnswMutableSearchWorkspace.Generation",
+            "P:VecNet.HnswMutableSearchWorkspace.MaxBaseElements",
+            "P:VecNet.HnswMutableSearchWorkspace.MaxEfSearch",
+            "P:VecNet.HnswMutableSearchWorkspace.MaxBaseCandidates",
+            "P:VecNet.HnswMutableSearchWorkspace.MaxDeltaCandidates",
+            "P:VecNet.HnswMutableSearchWorkspace.MaxDeltaFilterElements",
+            "T:VecNet.HnswMutableCheckpointResult",
+            "M:VecNet.HnswMutableCheckpointResult.#ctor(VecNet.HnswMutableCheckpointStatus,System.Int64,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32)",
+            "P:VecNet.HnswMutableCheckpointResult.Status",
+            "P:VecNet.HnswMutableCheckpointResult.Generation",
+            "P:VecNet.HnswMutableCheckpointResult.RebuiltBaseVectorCount",
+            "P:VecNet.HnswMutableCheckpointResult.LiveVectorCount",
+            "P:VecNet.HnswMutableCheckpointResult.BasePhysicalVectorCount",
+            "P:VecNet.HnswMutableCheckpointResult.BaseLiveVectorCount",
+            "P:VecNet.HnswMutableCheckpointResult.DeltaPhysicalVectorCount",
+            "P:VecNet.HnswMutableCheckpointResult.DeltaLiveVectorCount",
+            "P:VecNet.HnswMutableCheckpointResult.BaseTombstoneCount",
+            "P:VecNet.HnswMutableCheckpointResult.DeltaTombstoneCount",
+            "P:VecNet.HnswMutableCheckpointResult.TombstoneCount",
+            "P:VecNet.HnswMutableCheckpointResult.DeletedReservedIdCount",
+            "P:VecNet.HnswMutableCheckpointResult.FoldedDeltaVectorCount",
+            "P:VecNet.HnswMutableCheckpointResult.FoldedBaseTombstoneCount",
+            "P:VecNet.HnswMutableCheckpointResult.FoldedDeltaTombstoneCount",
+            "T:VecNet.HnswMutableCheckpointStatus",
+            "F:VecNet.HnswMutableCheckpointStatus.Published",
+            "F:VecNet.HnswMutableCheckpointStatus.NoChanges"
         ];
 
         foreach (string expectedMember in expectedMembers)

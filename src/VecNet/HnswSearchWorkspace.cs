@@ -1,12 +1,13 @@
 namespace VecNet;
 
 /// <summary>
-/// Caller-owned reusable workspace for preview HNSW search.
+/// Caller-owned reusable workspace for preview approximate HNSW squared Euclidean search.
 /// </summary>
 /// <remarks>
 /// A workspace stores transient visited-set and candidate/result queue state for one search at a
 /// time. The caller owns its lifetime and must provide separate workspace instances for
-/// overlapping searches.
+/// overlapping searches. Size workspaces from the current HNSW index count and configured
+/// <see cref="HnswIndexOptions.EfSearch"/>; recreate them when the searched generation changes.
 /// </remarks>
 public sealed class HnswSearchWorkspace
 {

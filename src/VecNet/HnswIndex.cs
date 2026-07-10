@@ -8,11 +8,13 @@ namespace VecNet;
 /// <remarks>
 /// This preview surface supports build ingestion with <see cref="Add"/>, caller-owned workspace
 /// search with <see cref="Search(ReadOnlySpan{float}, Span{SearchResult}, HnswSearchWorkspace)"/>,
-/// and preview durable round trips with <see cref="Save"/> and <see cref="OpenReadOnly"/>.
-/// It currently supports only <see cref="VectorMetric.SquaredEuclidean"/>.
-/// HNSW allowlist filtering is limited to caller-owned external IDs. Cosine, inner product,
-/// update/delete, replacement, repair, direct graph mutation, and stable file-format compatibility
-/// are not supported by this preview API.
+/// caller-owned external-ID allowlist filtering, and preview durable round trips with
+/// <see cref="Save"/> and <see cref="OpenReadOnly"/>. Read-only searches may overlap only when each
+/// caller uses an independent result buffer and independent workspace. It currently supports only
+/// <see cref="VectorMetric.SquaredEuclidean"/>. Cosine HNSW, inner-product HNSW, stored labels,
+/// durable graph-aware filtering metadata, public ordinal filters, full filter-aware graph
+/// traversal, update/delete, replacement, repair, direct graph mutation, and stable file-format
+/// compatibility are not supported by this preview API.
 /// </remarks>
 public sealed partial class HnswIndex
 {
@@ -101,8 +103,9 @@ public sealed partial class HnswIndex
     public VectorMetric Metric { get; }
 
     /// <summary>
-    /// Gets the number of vectors ingested into this HNSW index.
+    /// Gets the number of vectors ingested into this preview HNSW index.
     /// </summary>
+    /// <remarks>This count is useful for sizing caller-owned <see cref="HnswSearchWorkspace"/> instances.</remarks>
     public int Count => _count;
 
     internal int EntryPoint => _entryPoint;
@@ -116,6 +119,7 @@ public sealed partial class HnswIndex
     /// <summary>
     /// Gets the preview HNSW options used by this index.
     /// </summary>
+    /// <remarks>The configured options are not public performance, recall, memory, allocation, capacity, or storage-size claims.</remarks>
     public HnswIndexOptions Options => _options;
 
     /// <summary>
@@ -253,8 +257,13 @@ public sealed partial class HnswIndex
     }
 
     /// <summary>
-    /// Searches this HNSW index and writes approximate nearest results in ascending distance order.
+    /// Searches this preview HNSW index and writes approximate nearest results in ascending distance order.
     /// </summary>
+    /// <remarks>
+    /// Results are ordered by the executing squared-L2 distance, with external ID breaking equal
+    /// computed-distance ties. The caller owns the result buffer and workspace. Do not share one
+    /// workspace or one result buffer across overlapping searches.
+    /// </remarks>
     /// <param name="query">The finite squared-L2 query vector.</param>
     /// <param name="results">
     /// The caller-owned destination buffer. Its length specifies the requested result count.
@@ -303,7 +312,7 @@ public sealed partial class HnswIndex
     }
 
     /// <summary>
-    /// Searches this HNSW index while emitting only vectors whose external identifiers are present in an allowlist.
+    /// Searches this preview HNSW index while emitting only vectors whose external identifiers are present in an allowlist.
     /// </summary>
     /// <remarks>
     /// The allowlist is caller-owned query input. Unknown identifiers are ignored and duplicates are

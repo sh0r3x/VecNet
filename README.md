@@ -8,8 +8,8 @@ vector retrieval.
 This package is a `0.1` preview. The currently documented surface focuses on
 exact flat indexing, canonical distance semantics, durable exact-flat save and
 open, exact allowlist filtering, reusable exact candidate sets, exact count
-inspection, exact mutation/checkpoint workflows, and a narrow squared-L2 HNSW
-developer-preview surface.
+inspection, exact mutation/checkpoint workflows, and preview squared-L2 HNSW
+surfaces.
 
 ## Current Support
 
@@ -30,8 +30,13 @@ developer-preview surface.
 - Exact-flat `TryAdd`, `TryDelete`, and `Checkpoint` for visible generation
   updates in the current process.
 - Preview HNSW approximate indexing for `VectorMetric.SquaredEuclidean` with
-  build ingestion, caller-owned workspace search, and preview durable
-  `Save`/`OpenReadOnly`.
+  build ingestion, caller-owned workspace search, caller-owned external-ID
+  allowlist filtering, preview durable `Save`/`OpenReadOnly`, opened read-only
+  search, and read-only concurrent search when each caller uses independent
+  result buffers and workspaces.
+- Preview update-oriented HNSW mode for squared L2 using an immutable HNSW
+  base plus exact in-memory delta rows, tombstones, search merge/rerank, and
+  caller-initiated checkpoint/rebuild into a new immutable HNSW snapshot.
 
 ## Preview Limitations
 
@@ -40,27 +45,44 @@ developer-preview surface.
 - VecNet stores vector IDs and vectors, not application records or payloads.
 - Application metadata filtering, authorization, transactions, backups, and
   record hydration remain the responsibility of the host application.
-- HNSW support is squared-L2-only and approximate. HNSW filtering, cosine,
-  inner product, update/delete, upsert, replacement, repair, direct graph
-  mutation, and base-plus-exact-delta search are not supported public HNSW
-  capabilities in this preview.
-- HNSW `Add` is build ingestion for an immutable graph, not a live-update
-  contract. HNSW indexes opened with `OpenReadOnly` are searchable but reject
-  mutation.
+- HNSW support is squared-L2-only and approximate. Cosine HNSW and
+  inner-product HNSW are not supported for 1.0; use exact-flat indexes for
+  those metrics.
+- HNSW `Add` is build ingestion for an immutable graph, not upsert,
+  replacement, delete, repair, direct graph mutation, or live graph update.
+  HNSW indexes opened with `OpenReadOnly` are searchable but reject mutation.
+- HNSW allowlist filtering uses caller-owned external `ulong` IDs only.
+  VecNet does not store labels, metadata, authorization rules, records,
+  payloads, durable graph-aware filter metadata, persisted candidate sets,
+  public graph ordinals, or reusable HNSW candidate sets.
+- For selective HNSW allowlists where the known live allowed count is within
+  `EfSearch`, VecNet uses exact filtered fallback. For broader allowlists,
+  HNSW traversal remains approximate and unfiltered; non-allowed candidates are
+  suppressed at emission and fewer than the requested number of results may be
+  returned.
+- Read-only HNSW searches may overlap only over a logically frozen index or
+  generation with independent caller-owned result buffers and independent
+  workspaces. Concurrent mutation/search, concurrent checkpoint/search, and
+  shared scratch are not supported.
+- The update-oriented HNSW mode does not mutate the graph in place. Delta rows
+  are exact in-memory rows, deletes are tombstones, checkpoint/rebuild writes a
+  new immutable HNSW snapshot after validation, and mutable overlay state is
+  not durably reopened.
 - HNSW durable files are a preview round-trip format and have no stable
   compatibility promise.
 - Compressed indexes, SSD-scale indexes, richer key mapping, optional
   integration adapters, and release-grade operational tooling are planned
   work, not supported public package capabilities in this preview.
-- This README does not make public performance, memory, allocation, recall,
-  storage-size, stable API, production-readiness, or platform support claims.
+- This README does not make public HNSW recall, latency, throughput,
+  allocation, memory, capacity, storage-size, comparison, stable file-format,
+  stable API, production-readiness, or platform support claims.
 
 ## Installation
 
 Add the published preview package to a .NET 10 project:
 
 ```bash
-dotnet add package VecNet --version 0.1.0-preview.3
+dotnet add package VecNet --version 0.1.0-preview.4
 ```
 
 ## Basic Usage
@@ -135,6 +157,24 @@ Span<SearchResult> results = stackalloc SearchResult[2];
 int written = index.Search([0.9f, 0.1f, 0.0f], results, workspace);
 ```
 
+For caller-owned external-ID allowlist filtering, pass the allowlist to
+`Search` with the same caller-owned result buffer and workspace pattern.
+
+```csharp
+ulong[] allowedIds = [1001, 1003];
+int filteredWritten = index.Search(
+    [0.9f, 0.1f, 0.0f],
+    allowedIds,
+    results,
+    workspace);
+```
+
+The allowlist contains application-owned external IDs. Unknown IDs are ignored
+and duplicates are coalesced. For selective allowlists within the configured
+`EfSearch` budget, VecNet uses exact filtered fallback. For broader allowlists,
+HNSW traversal remains approximate and may return fewer than the requested
+number of results even when exact filtered truth has enough live matches.
+
 For HNSW preview persistence, save to a new or empty directory and open it as
 read-only.
 
@@ -151,6 +191,48 @@ int openedWritten = opened.Search([0.9f, 0.1f, 0.0f], results, openedWorkspace);
 Opened HNSW indexes reject `Add`. HNSW callers own synchronization, result
 buffers, and workspaces; do not share a result buffer or workspace between
 overlapping searches.
+
+## HNSW Update-Oriented Preview
+
+The HNSW update-oriented preview searches an immutable HNSW base plus exact
+in-memory delta rows. Deletes are represented as tombstones over base or
+delta IDs. Checkpoint rebuilds the current live view into a new immutable HNSW
+snapshot and publishes that rebuilt base in the current instance after
+validation.
+
+```csharp
+using VecNet;
+
+var baseIndex = new HnswIndex(3, VectorMetric.SquaredEuclidean);
+baseIndex.Add(1001, [1.0f, 0.0f, 0.0f]);
+baseIndex.Add(1002, [0.0f, 1.0f, 0.0f]);
+
+var mutable = new HnswMutableIndex(baseIndex);
+
+VectorMutationResult add = mutable.TryAdd(1003, [0.0f, 0.0f, 1.0f]);
+VectorMutationResult delete = mutable.TryDelete(1002);
+
+var mutableWorkspace = new HnswMutableSearchWorkspace(mutable, maxResults: 2);
+Span<SearchResult> mutableResults = stackalloc SearchResult[2];
+int mutableWritten = mutable.Search(
+    [0.9f, 0.1f, 0.0f],
+    mutableResults,
+    mutableWorkspace);
+
+if (add.Status == VectorMutationStatus.Committed ||
+    delete.Status == VectorMutationStatus.Committed)
+{
+    HnswMutableCheckpointResult checkpoint =
+        mutable.Checkpoint("vecnet-hnsw-checkpoint");
+    Console.WriteLine(checkpoint.Status);
+}
+```
+
+Create mutable HNSW workspaces from the current mutable index shape. Recreate
+them after a committed `TryAdd`, committed `TryDelete`, or published
+`Checkpoint`. The mutable wrapper does not expose direct graph mutation,
+upsert, replacement, graph repair, checkpoint diagnostics, or durable mutable
+overlay reopen.
 
 ## Filtering
 
@@ -240,13 +322,13 @@ view and continue using the current index instance.
 
 ## Thread Safety And Workspaces
 
-Treat `ExactFlatIndex` as externally synchronized. Do not run mutation,
-checkpoint, save, candidate-set creation, or search concurrently against the
-same mutable instance unless your application provides its own coordination.
-Caller-owned result buffers and raw allowlist workspaces must not be shared by
-overlapping calls. Candidate sets are transient handles for one owner index and
-generation; rebuild rather than sharing stale handles across mutation
-boundaries.
+Treat `ExactFlatIndex` and `HnswMutableIndex` as externally synchronized. Do
+not run mutation, checkpoint, save, candidate-set creation, or search
+concurrently against the same mutable instance unless your application provides
+its own coordination. Caller-owned result buffers and workspaces must not be
+shared by overlapping calls. Candidate sets and mutable HNSW workspaces are
+transient handles for one owner index and generation; rebuild rather than
+sharing stale handles across mutation boundaries.
 
 ## Floating-Point Comparisons
 

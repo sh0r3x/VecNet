@@ -293,9 +293,10 @@ public sealed partial class ExactFlatIndex
             }
 
             var candidate = new SearchResult(_ids[row], CalculateDistance(row, query, queryMagnitude));
-            written = InsertCandidate(results, written, candidate);
+            written = SelectCandidate(results, written, candidate);
         }
 
+        SortSelectedResults(results, written);
         return written;
     }
 
@@ -387,9 +388,10 @@ public sealed partial class ExactFlatIndex
             }
 
             var candidate = new SearchResult(_ids[row], CalculateDistance(row, query, queryMagnitude));
-            written = InsertCandidate(results, written, candidate);
+            written = SelectCandidate(results, written, candidate);
         }
 
+        SortSelectedResults(results, written);
         return written;
     }
 
@@ -459,9 +461,10 @@ public sealed partial class ExactFlatIndex
             }
 
             var candidate = new SearchResult(_ids[row], CalculateDistance(row, query, queryMagnitude));
-            written = InsertCandidate(results, written, candidate);
+            written = SelectCandidate(results, written, candidate);
         }
 
+        SortSelectedResults(results, written);
         return written;
     }
 
@@ -705,5 +708,92 @@ public sealed partial class ExactFlatIndex
 
         results[insertionIndex] = candidate;
         return written < results.Length ? written + 1 : written;
+    }
+
+    private static int SelectCandidate(Span<SearchResult> results, int written, SearchResult candidate)
+    {
+        if (results.Length < 10)
+        {
+            return InsertCandidate(results, written, candidate);
+        }
+
+        if (written < results.Length)
+        {
+            results[written] = candidate;
+            SiftUpWorstFirst(results, written);
+            return written + 1;
+        }
+
+        if (CompareSearchResult(candidate, results[0]) >= 0)
+        {
+            return written;
+        }
+
+        results[0] = candidate;
+        SiftDownWorstFirst(results[..written], 0);
+        return written;
+    }
+
+    private static void SortSelectedResults(Span<SearchResult> results, int written)
+    {
+        if (written <= 1 || results.Length < 10)
+        {
+            return;
+        }
+
+        Span<SearchResult> heap = results[..written];
+        for (int end = heap.Length - 1; end > 0; end--)
+        {
+            (heap[0], heap[end]) = (heap[end], heap[0]);
+            SiftDownWorstFirst(heap[..end], 0);
+        }
+    }
+
+    private static void SiftUpWorstFirst(Span<SearchResult> heap, int index)
+    {
+        while (index > 0)
+        {
+            int parent = (index - 1) / 2;
+            if (CompareSearchResult(heap[parent], heap[index]) >= 0)
+            {
+                return;
+            }
+
+            (heap[parent], heap[index]) = (heap[index], heap[parent]);
+            index = parent;
+        }
+    }
+
+    private static void SiftDownWorstFirst(Span<SearchResult> heap, int index)
+    {
+        while (true)
+        {
+            int left = (index * 2) + 1;
+            if (left >= heap.Length)
+            {
+                return;
+            }
+
+            int right = left + 1;
+            int worse = right < heap.Length && CompareSearchResult(heap[right], heap[left]) > 0
+                ? right
+                : left;
+
+            if (CompareSearchResult(heap[index], heap[worse]) >= 0)
+            {
+                return;
+            }
+
+            (heap[index], heap[worse]) = (heap[worse], heap[index]);
+            index = worse;
+        }
+    }
+
+    private static int CompareSearchResult(SearchResult left, SearchResult right)
+    {
+        int distanceComparison = left.Distance.CompareTo(right.Distance);
+        return distanceComparison != 0
+            ? distanceComparison
+            : left.Id.CompareTo(right.Id);
     }
 }

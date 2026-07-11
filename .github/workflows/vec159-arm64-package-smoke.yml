@@ -38,8 +38,8 @@ jobs:
           "" >> $env:GITHUB_STEP_SUMMARY
           "| Field | Value |" >> $env:GITHUB_STEP_SUMMARY
           "| --- | --- |" >> $env:GITHUB_STEP_SUMMARY
-          "| Runner label | `${{ matrix.runner }}` |" >> $env:GITHUB_STEP_SUMMARY
-          "| RID under test | `${{ matrix.rid }}` |" >> $env:GITHUB_STEP_SUMMARY
+          "| Runner label | ``${{ matrix.runner }}`` |" >> $env:GITHUB_STEP_SUMMARY
+          "| RID under test | ``${{ matrix.rid }}`` |" >> $env:GITHUB_STEP_SUMMARY
           "| Runner OS | `$env:RUNNER_OS` |" >> $env:GITHUB_STEP_SUMMARY
           "| Runner arch | `$env:RUNNER_ARCH` |" >> $env:GITHUB_STEP_SUMMARY
           dotnet --info

@@ -1,4 +1,4 @@
-name: VEC-159 Arm64 Package Smoke Probe
+name: Arm64 Package Smoke
 
 on:
   workflow_dispatch:

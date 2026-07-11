@@ -31,7 +31,7 @@ public sealed partial class ExactFlatIndex
         ExactFlatIndexStorage.ValidateNewOrEmptyDirectoryPath(directoryPath);
 
         int foldedDeltaCount = DeltaVectorCount;
-        int foldedTombstoneCount = _visibilityTombstoneIds.Count;
+        int foldedTombstoneCount = _tombstoneCount;
         if (foldedDeltaCount == 0 && foldedTombstoneCount == 0)
         {
             return CreateCheckpointResult(
@@ -49,10 +49,11 @@ public sealed partial class ExactFlatIndex
         Dictionary<ulong, int> compactMap = BuildIdToOrdinalMap(compactIds);
         _ids = compactIds;
         _vectors = compactVectors;
+        _rowDeleted = new byte[compactIds.Length];
         _idToOrdinal = compactMap;
         _count = compactIds.Length;
         _baseRowCount = compactIds.Length;
-        _visibilityTombstoneIds.Clear();
+        _tombstoneCount = 0;
         _generation++;
 
         return CreateCheckpointResult(
@@ -130,7 +131,7 @@ public sealed partial class ExactFlatIndex
             LiveVectorCount,
             BaseVectorCount,
             DeltaVectorCount,
-            _visibilityTombstoneIds.Count,
+            _tombstoneCount,
             _deletedReservedIds.Count,
             foldedDeltaCount,
             foldedTombstoneCount);

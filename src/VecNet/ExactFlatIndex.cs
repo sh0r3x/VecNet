@@ -12,10 +12,11 @@ public sealed partial class ExactFlatIndex
     private readonly ExactFlatIndexDistanceMode _distanceMode;
     private ulong[] _ids = [];
     private float[] _vectors = [];
+    private byte[] _rowDeleted = [];
     private Dictionary<ulong, int> _idToOrdinal = new();
-    private HashSet<ulong> _visibilityTombstoneIds = [];
     private HashSet<ulong> _deletedReservedIds = [];
     private int _count;
+    private int _tombstoneCount;
     private int _baseRowCount = int.MaxValue;
     private long _generation;
     private bool _isReadOnly;
@@ -93,7 +94,7 @@ public sealed partial class ExactFlatIndex
     /// <summary>
     /// Gets the current number of live visible vectors returned by search.
     /// </summary>
-    public int LiveVectorCount => _count - _visibilityTombstoneIds.Count;
+    public int LiveVectorCount => _count - _tombstoneCount;
 
     /// <summary>
     /// Gets the current live base vector count.
@@ -144,7 +145,7 @@ public sealed partial class ExactFlatIndex
     /// <summary>
     /// Gets the current visibility tombstone count.
     /// </summary>
-    public int TombstoneCount => _visibilityTombstoneIds.Count;
+    public int TombstoneCount => _tombstoneCount;
 
     /// <summary>
     /// Gets the current deleted or otherwise reserved external identifier count.
@@ -236,13 +237,20 @@ public sealed partial class ExactFlatIndex
             return CreateMutationResult(VectorMutationStatus.AlreadyDeleted);
         }
 
-        if (!_idToOrdinal.ContainsKey(id))
+        if (!_idToOrdinal.TryGetValue(id, out int row))
         {
             return CreateMutationResult(VectorMutationStatus.UnknownId);
         }
 
+        if (IsDeleted(row))
+        {
+            _deletedReservedIds.Add(id);
+            return CreateMutationResult(VectorMutationStatus.AlreadyDeleted);
+        }
+
         EnsureDeltaBoundary();
-        _visibilityTombstoneIds.Add(id);
+        _rowDeleted[row] = 1;
+        _tombstoneCount++;
         _deletedReservedIds.Add(id);
         _generation++;
         return CreateMutationResult(VectorMutationStatus.Committed);
@@ -263,6 +271,7 @@ public sealed partial class ExactFlatIndex
         }
 
         _ids[_count] = id;
+        _rowDeleted[_count] = 0;
         _idToOrdinal.Add(id, _count);
         _count++;
     }
@@ -529,11 +538,14 @@ public sealed partial class ExactFlatIndex
 
         var newIds = new ulong[newCapacity];
         var newVectors = new float[checked(newCapacity * Dimension)];
+        var newRowDeleted = new byte[newCapacity];
         _ids.AsSpan(0, _count).CopyTo(newIds);
         _vectors.AsSpan(0, _count * Dimension).CopyTo(newVectors);
+        _rowDeleted.AsSpan(0, _count).CopyTo(newRowDeleted);
 
         _ids = newIds;
         _vectors = newVectors;
+        _rowDeleted = newRowDeleted;
     }
 
     private void EnsureDeltaBoundary()
@@ -548,7 +560,7 @@ public sealed partial class ExactFlatIndex
         _idToOrdinal.ContainsKey(id) || _deletedReservedIds.Contains(id);
 
     private bool IsDeleted(int row) =>
-        _visibilityTombstoneIds.Count != 0 && _visibilityTombstoneIds.Contains(_ids[row]);
+        _tombstoneCount != 0 && _rowDeleted[row] != 0;
 
     private VectorMutationResult CreateMutationResult(VectorMutationStatus status) =>
         new(status, _generation, LiveVectorCount, DeltaVectorCount, TombstoneCount);
@@ -634,9 +646,11 @@ public sealed partial class ExactFlatIndex
         {
             _ids = ids,
             _vectors = vectors,
+            _rowDeleted = new byte[ids.Length],
             _idToOrdinal = BuildIdToOrdinalMap(ids),
             _count = ids.Length,
             _baseRowCount = ids.Length,
+            _tombstoneCount = 0,
             _isReadOnly = true
         };
 

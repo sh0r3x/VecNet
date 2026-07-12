@@ -31,7 +31,29 @@ public sealed partial class ExactFlatIndex
     {
     }
 
+    /// <summary>
+    /// Initializes a new exact flat index with preallocated mutable row capacity.
+    /// </summary>
+    /// <param name="dimension">The required positive vector dimension.</param>
+    /// <param name="metric">The canonical distance metric.</param>
+    /// <param name="initialCapacity">
+    /// The non-negative number of vector rows to reserve in contiguous storage.
+    /// </param>
+    public ExactFlatIndex(int dimension, VectorMetric metric, int initialCapacity)
+        : this(dimension, metric, GetDefaultDistanceMode(metric), initialCapacity)
+    {
+    }
+
     internal ExactFlatIndex(int dimension, VectorMetric metric, ExactFlatIndexDistanceMode distanceMode)
+        : this(dimension, metric, distanceMode, initialCapacity: 0)
+    {
+    }
+
+    private ExactFlatIndex(
+        int dimension,
+        VectorMetric metric,
+        ExactFlatIndexDistanceMode distanceMode,
+        int initialCapacity)
     {
         if (dimension <= 0)
         {
@@ -59,6 +81,17 @@ public sealed partial class ExactFlatIndex
         Dimension = dimension;
         Metric = metric;
         _distanceMode = distanceMode;
+
+        ValidateVectorCapacity(initialCapacity, nameof(initialCapacity));
+        if (initialCapacity > 0)
+        {
+            _idToOrdinal = new Dictionary<ulong, int>(initialCapacity);
+            AllocateCapacity(initialCapacity);
+        }
+        else
+        {
+            _idToOrdinal = new Dictionary<ulong, int>(initialCapacity);
+        }
     }
 
     /// <summary>
@@ -163,6 +196,36 @@ public sealed partial class ExactFlatIndex
     public long Generation => _generation;
 
     /// <summary>
+    /// Gets the current allocated vector-row capacity of this exact-flat index.
+    /// </summary>
+    /// <remarks>
+    /// Capacity is storage reservation, not visible cardinality. Use <see cref="PhysicalVectorCount"/>
+    /// or <see cref="LiveVectorCount"/> for row counts.
+    /// </remarks>
+    public int Capacity => _ids.Length;
+
+    /// <summary>
+    /// Ensures this mutable exact-flat index can store at least the requested number of vector rows.
+    /// </summary>
+    /// <param name="vectorCapacity">The non-negative vector-row capacity to reserve.</param>
+    /// <remarks>
+    /// This method may allocate and copy existing row storage. It does not change vector counts,
+    /// generation, tombstones, deleted-ID reservations, candidate-set generation, or search results.
+    /// Exact-flat indexes opened with <see cref="OpenReadOnly(string)"/> reject this method.
+    /// </remarks>
+    public void EnsureCapacity(int vectorCapacity)
+    {
+        if (_isReadOnly)
+        {
+            throw new InvalidOperationException(
+                "This exact flat index was opened read-only and cannot be capacity planned.");
+        }
+
+        EnsureStorageCapacity(vectorCapacity, nameof(vectorCapacity), growForAppend: false);
+        _idToOrdinal.EnsureCapacity(vectorCapacity);
+    }
+
+    /// <summary>
     /// Inserts a vector associated with a caller-provided external identifier.
     /// </summary>
     /// <param name="id">The opaque external vector identifier.</param>
@@ -258,7 +321,7 @@ public sealed partial class ExactFlatIndex
 
     private void AddValidated(ulong id, ReadOnlySpan<float> vector, double magnitude)
     {
-        EnsureCapacity(_count + 1);
+        EnsureStorageCapacity(checked(_count + 1), nameof(vector), growForAppend: true);
 
         int offset = _count * Dimension;
         if (Metric == VectorMetric.Cosine)
@@ -523,21 +586,52 @@ public sealed partial class ExactFlatIndex
         }
     }
 
-    private void EnsureCapacity(int requiredCount)
+    private void EnsureStorageCapacity(int requiredCount, string parameterName, bool growForAppend)
     {
+        ValidateVectorCapacity(requiredCount, parameterName);
+
         if (_ids.Length >= requiredCount)
         {
             return;
         }
 
-        int newCapacity = _ids.Length == 0 ? InitialCapacity : checked(_ids.Length * 2);
+        int newCapacity = growForAppend
+            ? CalculateGrowthCapacity(requiredCount)
+            : requiredCount;
+
+        AllocateCapacity(newCapacity);
+    }
+
+    private int CalculateGrowthCapacity(int requiredCount)
+    {
+        int maxCapacity = GetMaximumVectorCapacity();
+        int newCapacity;
+        if (_ids.Length == 0)
+        {
+            newCapacity = Math.Min(InitialCapacity, maxCapacity);
+        }
+        else
+        {
+            newCapacity = _ids.Length <= maxCapacity / 2
+                ? _ids.Length * 2
+                : maxCapacity;
+        }
+
         if (newCapacity < requiredCount)
         {
             newCapacity = requiredCount;
         }
 
+        ValidateVectorCapacity(newCapacity, nameof(requiredCount));
+        return newCapacity;
+    }
+
+    private void AllocateCapacity(int newCapacity)
+    {
+        ValidateVectorCapacity(newCapacity, nameof(newCapacity));
+
         var newIds = new ulong[newCapacity];
-        var newVectors = new float[checked(newCapacity * Dimension)];
+        var newVectors = new float[newCapacity * Dimension];
         var newRowDeleted = new byte[newCapacity];
         _ids.AsSpan(0, _count).CopyTo(newIds);
         _vectors.AsSpan(0, _count * Dimension).CopyTo(newVectors);
@@ -547,6 +641,35 @@ public sealed partial class ExactFlatIndex
         _vectors = newVectors;
         _rowDeleted = newRowDeleted;
     }
+
+    private void ValidateVectorCapacity(int vectorCapacity, string parameterName)
+    {
+        if (vectorCapacity < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                vectorCapacity,
+                "Vector capacity must be non-negative.");
+        }
+
+        if (vectorCapacity > int.MaxValue / Dimension)
+        {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                vectorCapacity,
+                "Vector capacity times dimension exceeds the supported element count.");
+        }
+
+        if (vectorCapacity > GetMaximumVectorCapacity())
+        {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                vectorCapacity,
+                "Vector capacity exceeds the maximum contiguous vector-array capacity.");
+        }
+    }
+
+    private int GetMaximumVectorCapacity() => Array.MaxLength / Dimension;
 
     private void EnsureDeltaBoundary()
     {

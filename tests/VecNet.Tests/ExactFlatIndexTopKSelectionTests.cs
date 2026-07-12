@@ -137,22 +137,14 @@ public sealed class ExactFlatIndexTopKSelectionTests
     {
         Row[] rows = CreateDuplicateDistanceRows(rowCount: 256);
         var index = CreateIndex(rows);
+        float[] query = [0f];
         var results = new SearchResult[100];
 
-        Assert.Equal(100, index.Search([0f], results));
-
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 128; i++)
-        {
-            int written = index.Search([0f], results);
-            if (written != 100)
-            {
-                throw new InvalidOperationException("Unexpected exact search result count during allocation measurement.");
-            }
-        }
-
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.Equal(0, allocated);
+        ExactFlatAllocationSmoke.AssertUnfilteredSearchDoesNotAllocateAfterWarmup(
+            index,
+            query,
+            results,
+            expectedWritten: 100);
     }
 
     private static ExactFlatIndex CreateIndex(IEnumerable<Row> rows)
@@ -208,4 +200,88 @@ public sealed class ExactFlatIndexTopKSelectionTests
     }
 
     private readonly record struct Row(ulong Id, float Value);
+}
+
+internal static class ExactFlatAllocationSmoke
+{
+    public static void AssertUnfilteredSearchDoesNotAllocateAfterWarmup(
+        ExactFlatIndex index,
+        float[] query,
+        SearchResult[] results,
+        int expectedWritten)
+    {
+        const int WarmupIterations = 2_048;
+        const int MeasurementIterations = 256;
+        const int MeasurementAttempts = 8;
+
+        for (int i = 0; i < WarmupIterations; i++)
+        {
+            VerifyUnfilteredSearchCount(index, query, results, expectedWritten);
+        }
+
+        long allocated = long.MaxValue;
+        for (int attempt = 0; attempt < MeasurementAttempts; attempt++)
+        {
+            StabilizeGc();
+
+            allocated = MeasureUnfilteredSearchAllocation(
+                index,
+                query,
+                results,
+                expectedWritten,
+                MeasurementIterations);
+            if (allocated == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < WarmupIterations / 4; i++)
+            {
+                VerifyUnfilteredSearchCount(index, query, results, expectedWritten);
+            }
+        }
+
+        Assert.Equal(0, allocated);
+    }
+
+    private static long MeasureUnfilteredSearchAllocation(
+        ExactFlatIndex index,
+        float[] query,
+        SearchResult[] results,
+        int expectedWritten,
+        int iterations)
+    {
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < iterations; i++)
+        {
+            int written = index.Search(query, results);
+            if (written != expectedWritten)
+            {
+                throw new InvalidOperationException(
+                    "Unexpected exact search result count during allocation measurement.");
+            }
+        }
+
+        return GC.GetAllocatedBytesForCurrentThread() - before;
+    }
+
+    private static void VerifyUnfilteredSearchCount(
+        ExactFlatIndex index,
+        float[] query,
+        SearchResult[] results,
+        int expectedWritten)
+    {
+        int written = index.Search(query, results);
+        if (written != expectedWritten)
+        {
+            throw new InvalidOperationException("Unexpected exact search result count during allocation warmup.");
+        }
+    }
+
+    private static void StabilizeGc()
+    {
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        GC.WaitForPendingFinalizers();
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+    }
 }

@@ -52,6 +52,17 @@ public sealed partial class HnswIndex
     }
 
     /// <summary>
+    /// Initializes a preview HNSW index with <see cref="HnswIndexOptions.Default"/> and preallocated mutable row capacity.
+    /// </summary>
+    /// <param name="dimension">The required positive vector dimension.</param>
+    /// <param name="metric">The canonical distance metric. Only <see cref="VectorMetric.SquaredEuclidean"/> is supported.</param>
+    /// <param name="initialCapacity">The non-negative number of vector rows to reserve in contiguous HNSW storage.</param>
+    public HnswIndex(int dimension, VectorMetric metric, int initialCapacity)
+        : this(dimension, metric, HnswIndexOptions.Default, initialCapacity)
+    {
+    }
+
+    /// <summary>
     /// Initializes a preview HNSW index with explicit options.
     /// </summary>
     /// <param name="dimension">The required positive vector dimension.</param>
@@ -62,7 +73,29 @@ public sealed partial class HnswIndex
     {
     }
 
+    /// <summary>
+    /// Initializes a preview HNSW index with explicit options and preallocated mutable row capacity.
+    /// </summary>
+    /// <param name="dimension">The required positive vector dimension.</param>
+    /// <param name="metric">The canonical distance metric. Only <see cref="VectorMetric.SquaredEuclidean"/> is supported.</param>
+    /// <param name="options">The preview HNSW build and search options.</param>
+    /// <param name="initialCapacity">The non-negative number of vector rows to reserve in contiguous HNSW storage.</param>
+    public HnswIndex(int dimension, VectorMetric metric, HnswIndexOptions options, int initialCapacity)
+        : this(dimension, metric, options, initialCapacity, levelProvider: null)
+    {
+    }
+
     internal HnswIndex(int dimension, VectorMetric metric, HnswIndexOptions options, Func<int>? levelProvider)
+        : this(dimension, metric, options, initialCapacity: 0, levelProvider)
+    {
+    }
+
+    internal HnswIndex(
+        int dimension,
+        VectorMetric metric,
+        HnswIndexOptions options,
+        int initialCapacity,
+        Func<int>? levelProvider)
     {
         if (dimension <= 0)
         {
@@ -89,6 +122,13 @@ public sealed partial class HnswIndex
         _levelMultiplier = 1.0 / Math.Log(options.M);
         _randomState = options.RandomSeed;
         _levelProvider = levelProvider;
+
+        ValidateVectorCapacity(initialCapacity, nameof(initialCapacity));
+        if (initialCapacity > 0)
+        {
+            _idToOrdinal.EnsureCapacity(initialCapacity);
+            EnsureStorageCapacity(initialCapacity, requiredMaxLayer: -1, nameof(initialCapacity), growForAppend: false);
+        }
     }
 
     /// <summary>
@@ -108,6 +148,15 @@ public sealed partial class HnswIndex
     /// <remarks>This count is useful for sizing caller-owned <see cref="HnswSearchWorkspace"/> instances.</remarks>
     public int Count => _count;
 
+    /// <summary>
+    /// Gets the current allocated vector-row capacity of this preview HNSW index.
+    /// </summary>
+    /// <remarks>
+    /// Capacity is storage reservation, not vector cardinality. Use <see cref="Count"/>
+    /// for the number of ingested vectors.
+    /// </remarks>
+    public int Capacity => _ids.Length;
+
     internal int EntryPoint => _entryPoint;
 
     internal int MaxLayer => _maxLayer;
@@ -121,6 +170,28 @@ public sealed partial class HnswIndex
     /// </summary>
     /// <remarks>The configured options are not public performance, recall, memory, allocation, capacity, or storage-size claims.</remarks>
     public HnswIndexOptions Options => _options;
+
+    /// <summary>
+    /// Ensures this mutable preview HNSW index can store at least the requested number of vector rows.
+    /// </summary>
+    /// <param name="vectorCapacity">The non-negative vector-row capacity to reserve.</param>
+    /// <remarks>
+    /// This method may allocate and copy existing row, graph, and build-scratch storage. It does not
+    /// change <see cref="Count"/>, graph contents, insertion order, search results, or durable output.
+    /// HNSW indexes opened with <see cref="OpenReadOnly(string)"/> reject this method.
+    /// </remarks>
+    public void EnsureCapacity(int vectorCapacity)
+    {
+        if (_isReadOnly)
+        {
+            throw new InvalidOperationException(
+                "This HNSW index was opened read-only and cannot be capacity planned.");
+        }
+
+        EnsureStorageCapacity(vectorCapacity, requiredMaxLayer: -1, nameof(vectorCapacity), growForAppend: false);
+        _idToOrdinal.EnsureCapacity(vectorCapacity);
+        EnsurePlannedBuildScratch();
+    }
 
     /// <summary>
     /// Saves this preview HNSW index to a new or empty durable HNSW directory.
@@ -182,7 +253,7 @@ public sealed partial class HnswIndex
 
         int level = GenerateLevel();
         int ordinal = _count;
-        EnsureCapacity(checked(_count + 1), level);
+        EnsureStorageCapacity(checked(_count + 1), level, nameof(vector), growForAppend: true);
         _idToOrdinal.EnsureCapacity(checked(_count + 1));
 
         HnswBuildScratch? scratch = null;
@@ -409,6 +480,16 @@ public sealed partial class HnswIndex
 
     internal HnswSearchWorkspace? DebugBuildSearchWorkspace => _buildScratch?.Workspace;
 
+    internal int DebugGetLayerCapacity(int layer)
+    {
+        if (layer < 0 || layer >= _layers.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(layer));
+        }
+
+        return _layers[layer].Capacity;
+    }
+
     internal bool TryGetOrdinal(ulong id, out int ordinal) => _idToOrdinal.TryGetValue(id, out ordinal);
 
     internal float CalculateSquaredEuclideanDistance(ReadOnlySpan<float> query, int ordinal) =>
@@ -461,31 +542,14 @@ public sealed partial class HnswIndex
         }
     }
 
-    private void EnsureCapacity(int requiredCount, int requiredMaxLayer)
+    private void EnsureStorageCapacity(int requiredCount, int requiredMaxLayer, string parameterName, bool growForAppend)
     {
-        int oldCapacity = _ids.Length;
-        if (oldCapacity < requiredCount)
+        ValidateVectorCapacity(requiredCount, parameterName);
+
+        if (_ids.Length < requiredCount)
         {
-            int newCapacity = oldCapacity == 0 ? InitialCapacity : checked(oldCapacity * 2);
-            if (newCapacity < requiredCount)
-            {
-                newCapacity = requiredCount;
-            }
-
-            var ids = new ulong[newCapacity];
-            var vectors = new float[checked(newCapacity * Dimension)];
-            var levels = new int[newCapacity];
-            _ids.AsSpan(0, _count).CopyTo(ids);
-            _vectors.AsSpan(0, _count * Dimension).CopyTo(vectors);
-            _levels.AsSpan(0, _count).CopyTo(levels);
-            _ids = ids;
-            _vectors = vectors;
-            _levels = levels;
-
-            for (int i = 0; i < _layers.Length; i++)
-            {
-                _layers[i].EnsureCapacity(newCapacity);
-            }
+            int newCapacity = growForAppend ? CalculateGrowthCapacity(requiredCount) : requiredCount;
+            AllocateCapacity(newCapacity);
         }
 
         if (_layers.Length <= requiredMaxLayer)
@@ -498,6 +562,102 @@ public sealed partial class HnswIndex
                 _layers[layer] = new HnswGraphLayer(layer == 0 ? _mMax0 : _mMax, capacity);
             }
         }
+    }
+
+    private int CalculateGrowthCapacity(int requiredCount)
+    {
+        int maxCapacity = GetMaximumVectorCapacity();
+        int newCapacity;
+        if (_ids.Length == 0)
+        {
+            newCapacity = Math.Min(InitialCapacity, maxCapacity);
+        }
+        else
+        {
+            newCapacity = _ids.Length <= maxCapacity / 2
+                ? _ids.Length * 2
+                : maxCapacity;
+        }
+
+        if (newCapacity < requiredCount)
+        {
+            newCapacity = requiredCount;
+        }
+
+        ValidateVectorCapacity(newCapacity, nameof(requiredCount));
+        return newCapacity;
+    }
+
+    private void AllocateCapacity(int newCapacity)
+    {
+        ValidateVectorCapacity(newCapacity, nameof(newCapacity));
+
+        var ids = new ulong[newCapacity];
+        var vectors = new float[newCapacity * Dimension];
+        var levels = new int[newCapacity];
+        _ids.AsSpan(0, _count).CopyTo(ids);
+        _vectors.AsSpan(0, _count * Dimension).CopyTo(vectors);
+        _levels.AsSpan(0, _count).CopyTo(levels);
+        _ids = ids;
+        _vectors = vectors;
+        _levels = levels;
+
+        for (int i = 0; i < _layers.Length; i++)
+        {
+            _layers[i].EnsureCapacity(newCapacity);
+        }
+    }
+
+    private void ValidateVectorCapacity(int vectorCapacity, string parameterName)
+    {
+        if (vectorCapacity < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                vectorCapacity,
+                "Vector capacity must be non-negative.");
+        }
+
+        if (vectorCapacity > int.MaxValue / Dimension)
+        {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                vectorCapacity,
+                "Vector capacity times dimension exceeds the supported element count.");
+        }
+
+        if (vectorCapacity > int.MaxValue / _mMax0)
+        {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                vectorCapacity,
+                "Vector capacity times HNSW graph stride exceeds the supported element count.");
+        }
+
+        if (vectorCapacity > GetMaximumVectorCapacity())
+        {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                vectorCapacity,
+                "Vector capacity exceeds the maximum contiguous HNSW row or graph capacity.");
+        }
+    }
+
+    private int GetMaximumVectorCapacity() =>
+        Math.Min(Array.MaxLength / Dimension, Array.MaxLength / _mMax0);
+
+    private void EnsurePlannedBuildScratch()
+    {
+        if (_buildScratch is null)
+        {
+            return;
+        }
+
+        EnsureBuildScratch(
+            _ids.Length,
+            Math.Max(_options.EfConstruction, _mMax0 + 1),
+            _mMax0,
+            Math.Max(_options.EfConstruction, _mMax0 + 1));
     }
 
     private HnswBuildScratch EnsureBuildScratch(
@@ -1051,6 +1211,8 @@ public sealed partial class HnswIndex
         }
 
         internal int Stride { get; }
+
+        internal int Capacity => Counts.Length;
 
         internal int[] Neighbors { get; private set; }
 

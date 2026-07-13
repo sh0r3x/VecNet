@@ -12,7 +12,7 @@ public sealed class HnswIndexPublicPreviewApiTests
         Assert.True(typeof(HnswSearchWorkspace).IsPublic);
 
         Assert.Equal(
-            ["Add", "OpenReadOnly", "Save", "Search", "Search"],
+            ["Add", "EnsureCapacity", "OpenReadOnly", "Save", "Search", "Search"],
             typeof(HnswIndex)
                 .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
                 .Where(static method => !method.IsSpecialName)
@@ -21,7 +21,7 @@ public sealed class HnswIndexPublicPreviewApiTests
                 .ToArray());
 
         Assert.Equal(
-            ["Count", "Dimension", "Metric", "Options"],
+            ["Capacity", "Count", "Dimension", "Metric", "Options"],
             typeof(HnswIndex)
                 .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
                 .Select(static property => property.Name)
@@ -31,6 +31,8 @@ public sealed class HnswIndexPublicPreviewApiTests
         string[] expectedConstructors =
         [
             "Void .ctor(Int32, VecNet.VectorMetric)",
+            "Void .ctor(Int32, VecNet.VectorMetric, Int32)",
+            "Void .ctor(Int32, VecNet.VectorMetric, VecNet.HnswIndexOptions, Int32)",
             "Void .ctor(Int32, VecNet.VectorMetric, VecNet.HnswIndexOptions)"
         ];
         Array.Sort(expectedConstructors, StringComparer.Ordinal);
@@ -81,6 +83,7 @@ public sealed class HnswIndexPublicPreviewApiTests
         Assert.Equal(2, index.Dimension);
         Assert.Equal(VectorMetric.SquaredEuclidean, index.Metric);
         Assert.Equal(0, index.Count);
+        Assert.Equal(0, index.Capacity);
         Assert.Equal(HnswIndexOptions.Default, index.Options);
     }
 
@@ -115,6 +118,7 @@ public sealed class HnswIndexPublicPreviewApiTests
         Assert.Equal(written, openedWritten);
         Assert.Equal(results, openedResults);
         Assert.Throws<InvalidOperationException>(() => opened.Add(104, [1f, 1f, 1f]));
+        Assert.Throws<InvalidOperationException>(() => opened.EnsureCapacity(10));
     }
 
     private sealed class TempIndexDirectory : IDisposable

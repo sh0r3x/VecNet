@@ -665,7 +665,7 @@ internal sealed class HnswBasePlusExactDeltaIndex
 
     private HnswIndex BuildBaseIndex(ReadOnlySpan<ulong> ids, ReadOnlySpan<float> vectors)
     {
-        var rebuilt = new HnswIndex(Dimension, Metric, Options);
+        var rebuilt = new HnswIndex(Dimension, Metric, Options, ids.Length);
         for (int ordinal = 0; ordinal < ids.Length; ordinal++)
         {
             rebuilt.Add(ids[ordinal], vectors.Slice(ordinal * Dimension, Dimension));

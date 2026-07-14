@@ -105,14 +105,13 @@ public sealed class HnswIndexStorageIndependentTests
         AssertGraphPatchRejected(bytes =>
         {
             int layerOneEntry = HnswIndexStorage.GraphHeaderLength + HnswIndexStorage.GraphLayerDirectoryEntryLength;
-            BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(layerOneEntry + 24), 1);
+            BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(layerOneEntry + 40), 1);
         });
 
         AssertGraphPatchRejected(bytes =>
         {
-            (int stride, int countsOffset, int neighborsOffset) = Layer(bytes, 1);
-            BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(countsOffset + 2 * sizeof(int)), 1);
-            BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(neighborsOffset + 2 * stride * sizeof(int)), 0);
+            int ordinalsOffset = CompactOrdinalsOffset(bytes, 1);
+            BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(ordinalsOffset), 2);
         });
 
         AssertGraphPatchRejected(bytes =>
@@ -236,9 +235,15 @@ public sealed class HnswIndexStorageIndependentTests
     {
         int entryOffset = HnswIndexStorage.GraphHeaderLength + layer * HnswIndexStorage.GraphLayerDirectoryEntryLength;
         int stride = checked((int)BinaryPrimitives.ReadUInt32LittleEndian(graphBytes.AsSpan(entryOffset + 4)));
-        int countsOffset = checked((int)BinaryPrimitives.ReadUInt64LittleEndian(graphBytes.AsSpan(entryOffset + 8)));
-        int neighborsOffset = checked((int)BinaryPrimitives.ReadUInt64LittleEndian(graphBytes.AsSpan(entryOffset + 16)));
+        int countsOffset = checked((int)BinaryPrimitives.ReadUInt64LittleEndian(graphBytes.AsSpan(entryOffset + 24)));
+        int neighborsOffset = checked((int)BinaryPrimitives.ReadUInt64LittleEndian(graphBytes.AsSpan(entryOffset + 32)));
         return (stride, countsOffset, neighborsOffset);
+    }
+
+    private static int CompactOrdinalsOffset(byte[] graphBytes, int layer)
+    {
+        int entryOffset = HnswIndexStorage.GraphHeaderLength + layer * HnswIndexStorage.GraphLayerDirectoryEntryLength;
+        return checked((int)BinaryPrimitives.ReadUInt64LittleEndian(graphBytes.AsSpan(entryOffset + 16)));
     }
 
     private static string FilePropertyName(string fileName) =>

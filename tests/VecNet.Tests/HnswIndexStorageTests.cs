@@ -39,7 +39,7 @@ public sealed class HnswIndexStorageTests
         Assert.Equal(HnswIndexStorage.ManifestSchemaName, root.GetProperty("schemaName").GetString());
         Assert.Equal("1.0", root.GetProperty("schemaVersion").GetString());
         Assert.Equal("hnsw", root.GetProperty("formatFamily").GetString());
-        Assert.Equal("VEC-072", root.GetProperty("createdByTask").GetString());
+        Assert.Equal("VEC-176", root.GetProperty("createdByTask").GetString());
         Assert.Equal("squared-euclidean", root.GetProperty("index").GetProperty("metric").GetString());
         Assert.Equal("read-only", root.GetProperty("semantics").GetProperty("openedLifecycle").GetString());
         Assert.False(root.GetProperty("evidence").GetProperty("publicClaimEligible").GetBoolean());
@@ -259,8 +259,8 @@ public sealed class HnswIndexStorageTests
         AssertGraphPatchRejected(bytes =>
         {
             (_, int countsOffset, _) = Layer(bytes, 0);
-            long originalOffset = BinaryPrimitives.ReadInt64LittleEndian(bytes.AsSpan(64 + 8));
-            BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(64 + 8), checked((ulong)(originalOffset + sizeof(int))));
+            long originalOffset = BinaryPrimitives.ReadInt64LittleEndian(bytes.AsSpan(64 + 24));
+            BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(64 + 24), checked((ulong)(originalOffset + sizeof(int))));
         });
     }
 
@@ -375,8 +375,8 @@ public sealed class HnswIndexStorageTests
     {
         int entryOffset = HnswIndexStorage.GraphHeaderLength + layer * HnswIndexStorage.GraphLayerDirectoryEntryLength;
         int stride = checked((int)BinaryPrimitives.ReadUInt32LittleEndian(graphBytes.AsSpan(entryOffset + 4)));
-        int countsOffset = checked((int)BinaryPrimitives.ReadUInt64LittleEndian(graphBytes.AsSpan(entryOffset + 8)));
-        int neighborsOffset = checked((int)BinaryPrimitives.ReadUInt64LittleEndian(graphBytes.AsSpan(entryOffset + 16)));
+        int countsOffset = checked((int)BinaryPrimitives.ReadUInt64LittleEndian(graphBytes.AsSpan(entryOffset + 24)));
+        int neighborsOffset = checked((int)BinaryPrimitives.ReadUInt64LittleEndian(graphBytes.AsSpan(entryOffset + 32)));
         return (stride, countsOffset, neighborsOffset);
     }
 

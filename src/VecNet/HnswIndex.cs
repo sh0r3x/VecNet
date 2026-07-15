@@ -52,6 +52,17 @@ public sealed partial class HnswIndex
     }
 
     /// <summary>
+    /// Initializes a preview HNSW index with <see cref="HnswIndexOptions.Default"/> and preallocated mutable row capacity.
+    /// </summary>
+    /// <param name="dimension">The required positive vector dimension.</param>
+    /// <param name="metric">The canonical distance metric. Only <see cref="VectorMetric.SquaredEuclidean"/> is supported.</param>
+    /// <param name="initialCapacity">The non-negative number of vector rows to reserve in contiguous HNSW storage.</param>
+    public HnswIndex(int dimension, VectorMetric metric, int initialCapacity)
+        : this(dimension, metric, HnswIndexOptions.Default, initialCapacity)
+    {
+    }
+
+    /// <summary>
     /// Initializes a preview HNSW index with explicit options.
     /// </summary>
     /// <param name="dimension">The required positive vector dimension.</param>
@@ -62,7 +73,29 @@ public sealed partial class HnswIndex
     {
     }
 
+    /// <summary>
+    /// Initializes a preview HNSW index with explicit options and preallocated mutable row capacity.
+    /// </summary>
+    /// <param name="dimension">The required positive vector dimension.</param>
+    /// <param name="metric">The canonical distance metric. Only <see cref="VectorMetric.SquaredEuclidean"/> is supported.</param>
+    /// <param name="options">The preview HNSW build and search options.</param>
+    /// <param name="initialCapacity">The non-negative number of vector rows to reserve in contiguous HNSW storage.</param>
+    public HnswIndex(int dimension, VectorMetric metric, HnswIndexOptions options, int initialCapacity)
+        : this(dimension, metric, options, initialCapacity, levelProvider: null)
+    {
+    }
+
     internal HnswIndex(int dimension, VectorMetric metric, HnswIndexOptions options, Func<int>? levelProvider)
+        : this(dimension, metric, options, initialCapacity: 0, levelProvider)
+    {
+    }
+
+    internal HnswIndex(
+        int dimension,
+        VectorMetric metric,
+        HnswIndexOptions options,
+        int initialCapacity,
+        Func<int>? levelProvider)
     {
         if (dimension <= 0)
         {
@@ -89,6 +122,13 @@ public sealed partial class HnswIndex
         _levelMultiplier = 1.0 / Math.Log(options.M);
         _randomState = options.RandomSeed;
         _levelProvider = levelProvider;
+
+        ValidateVectorCapacity(initialCapacity, nameof(initialCapacity));
+        if (initialCapacity > 0)
+        {
+            _idToOrdinal.EnsureCapacity(initialCapacity);
+            EnsureStorageCapacity(initialCapacity, requiredMaxLayer: -1, nameof(initialCapacity), growForAppend: false);
+        }
     }
 
     /// <summary>
@@ -108,6 +148,15 @@ public sealed partial class HnswIndex
     /// <remarks>This count is useful for sizing caller-owned <see cref="HnswSearchWorkspace"/> instances.</remarks>
     public int Count => _count;
 
+    /// <summary>
+    /// Gets the current allocated vector-row capacity of this preview HNSW index.
+    /// </summary>
+    /// <remarks>
+    /// Capacity is storage reservation, not vector cardinality. Use <see cref="Count"/>
+    /// for the number of ingested vectors.
+    /// </remarks>
+    public int Capacity => _ids.Length;
+
     internal int EntryPoint => _entryPoint;
 
     internal int MaxLayer => _maxLayer;
@@ -116,11 +165,41 @@ public sealed partial class HnswIndex
 
     internal ReadOnlySpan<float> InternalVectors => _vectors.AsSpan(0, checked(_count * Dimension));
 
+    internal ReadOnlySpan<int> InternalLevels => _levels.AsSpan(0, _count);
+
+    internal int InternalMMax => _mMax;
+
+    internal int InternalMMax0 => _mMax0;
+
+    internal double InternalLevelMultiplier => _levelMultiplier;
+
     /// <summary>
     /// Gets the preview HNSW options used by this index.
     /// </summary>
     /// <remarks>The configured options are not public performance, recall, memory, allocation, capacity, or storage-size claims.</remarks>
     public HnswIndexOptions Options => _options;
+
+    /// <summary>
+    /// Ensures this mutable preview HNSW index can store at least the requested number of vector rows.
+    /// </summary>
+    /// <param name="vectorCapacity">The non-negative vector-row capacity to reserve.</param>
+    /// <remarks>
+    /// This method may allocate and copy existing row, graph, and build-scratch storage. It does not
+    /// change <see cref="Count"/>, graph contents, insertion order, search results, or durable output.
+    /// HNSW indexes opened with <see cref="OpenReadOnly(string)"/> reject this method.
+    /// </remarks>
+    public void EnsureCapacity(int vectorCapacity)
+    {
+        if (_isReadOnly)
+        {
+            throw new InvalidOperationException(
+                "This HNSW index was opened read-only and cannot be capacity planned.");
+        }
+
+        EnsureStorageCapacity(vectorCapacity, requiredMaxLayer: -1, nameof(vectorCapacity), growForAppend: false);
+        _idToOrdinal.EnsureCapacity(vectorCapacity);
+        EnsurePlannedBuildScratch();
+    }
 
     /// <summary>
     /// Saves this preview HNSW index to a new or empty durable HNSW directory.
@@ -137,7 +216,7 @@ public sealed partial class HnswIndex
     /// </param>
     public void Save(string directoryPath)
     {
-        HnswIndexStorage.Save(directoryPath, CreateStorageSnapshot());
+        HnswIndexStorage.Save(directoryPath, this);
     }
 
     /// <summary>
@@ -182,7 +261,7 @@ public sealed partial class HnswIndex
 
         int level = GenerateLevel();
         int ordinal = _count;
-        EnsureCapacity(checked(_count + 1), level);
+        EnsureStorageCapacity(checked(_count + 1), level, nameof(vector), growForAppend: true);
         _idToOrdinal.EnsureCapacity(checked(_count + 1));
 
         HnswBuildScratch? scratch = null;
@@ -198,6 +277,10 @@ public sealed partial class HnswIndex
         _ids[ordinal] = id;
         vector.CopyTo(_vectors.AsSpan(ordinal * Dimension, Dimension));
         _levels[ordinal] = level;
+        for (int layer = 1; layer <= level; layer++)
+        {
+            _layers[layer].EnsureParticipantRow(ordinal);
+        }
 
         if (_count == 0)
         {
@@ -233,11 +316,10 @@ public sealed partial class HnswIndex
                 scratch.NeighborCandidates);
             SetNeighbors(ordinal, layer, scratch.SelectedOrdinals, selectedCount);
 
-            HnswGraphLayer graphLayer = _layers[layer];
-            int newOrdinalOffset = ordinal * graphLayer.Stride;
+            ReadOnlySpan<int> selectedNeighbors = _layers[layer].GetNeighbors(ordinal);
             for (int i = 0; i < selectedCount; i++)
             {
-                AddOrPruneNeighbor(graphLayer.Neighbors[newOrdinalOffset + i], ordinal, layer, scratch);
+                AddOrPruneNeighbor(selectedNeighbors[i], ordinal, layer, scratch);
             }
 
             if (found > 0)
@@ -387,10 +469,15 @@ public sealed partial class HnswIndex
         }
 
         HnswGraphLayer graphLayer = _layers[layer];
-        int count = graphLayer.Counts[ordinal];
-        graphLayer.Neighbors.AsSpan(ordinal * graphLayer.Stride, Math.Min(count, destination.Length)).CopyTo(destination);
-        return count;
+        ReadOnlySpan<int> neighbors = graphLayer.GetNeighbors(ordinal);
+        neighbors[..Math.Min(neighbors.Length, destination.Length)].CopyTo(destination);
+        return neighbors.Length;
     }
+
+    internal int InternalGetGraphStride(int layer) => _layers[layer].Stride;
+
+    internal ReadOnlySpan<int> InternalGetGraphNeighbors(int layer, int ordinal) =>
+        _layers[layer].GetNeighbors(ordinal);
 
     internal int DebugSelectNeighbors(int baseOrdinal, ReadOnlySpan<int> candidates, Span<int> selected, int layer)
     {
@@ -408,6 +495,46 @@ public sealed partial class HnswIndex
     }
 
     internal HnswSearchWorkspace? DebugBuildSearchWorkspace => _buildScratch?.Workspace;
+
+    internal int DebugGetLayerCapacity(int layer)
+    {
+        if (layer < 0 || layer >= _layers.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(layer));
+        }
+
+        return _layers[layer].Capacity;
+    }
+
+    internal int DebugGetLayerCompactRowCount(int layer)
+    {
+        if (layer < 0 || layer >= _layers.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(layer));
+        }
+
+        return _layers[layer].CompactRowCount;
+    }
+
+    internal int DebugGetLayerCountStorageLength(int layer)
+    {
+        if (layer < 0 || layer >= _layers.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(layer));
+        }
+
+        return _layers[layer].CountStorageLength;
+    }
+
+    internal int DebugGetLayerNeighborStorageLength(int layer)
+    {
+        if (layer < 0 || layer >= _layers.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(layer));
+        }
+
+        return _layers[layer].NeighborStorageLength;
+    }
 
     internal bool TryGetOrdinal(ulong id, out int ordinal) => _idToOrdinal.TryGetValue(id, out ordinal);
 
@@ -461,31 +588,14 @@ public sealed partial class HnswIndex
         }
     }
 
-    private void EnsureCapacity(int requiredCount, int requiredMaxLayer)
+    private void EnsureStorageCapacity(int requiredCount, int requiredMaxLayer, string parameterName, bool growForAppend)
     {
-        int oldCapacity = _ids.Length;
-        if (oldCapacity < requiredCount)
+        ValidateVectorCapacity(requiredCount, parameterName);
+
+        if (_ids.Length < requiredCount)
         {
-            int newCapacity = oldCapacity == 0 ? InitialCapacity : checked(oldCapacity * 2);
-            if (newCapacity < requiredCount)
-            {
-                newCapacity = requiredCount;
-            }
-
-            var ids = new ulong[newCapacity];
-            var vectors = new float[checked(newCapacity * Dimension)];
-            var levels = new int[newCapacity];
-            _ids.AsSpan(0, _count).CopyTo(ids);
-            _vectors.AsSpan(0, _count * Dimension).CopyTo(vectors);
-            _levels.AsSpan(0, _count).CopyTo(levels);
-            _ids = ids;
-            _vectors = vectors;
-            _levels = levels;
-
-            for (int i = 0; i < _layers.Length; i++)
-            {
-                _layers[i].EnsureCapacity(newCapacity);
-            }
+            int newCapacity = growForAppend ? CalculateGrowthCapacity(requiredCount) : requiredCount;
+            AllocateCapacity(newCapacity);
         }
 
         if (_layers.Length <= requiredMaxLayer)
@@ -495,9 +605,105 @@ public sealed partial class HnswIndex
             int capacity = _ids.Length;
             for (int layer = oldLayerCount; layer < _layers.Length; layer++)
             {
-                _layers[layer] = new HnswGraphLayer(layer == 0 ? _mMax0 : _mMax, capacity);
+                _layers[layer] = new HnswGraphLayer(layer == 0 ? _mMax0 : _mMax, capacity, sparse: layer > 0);
             }
         }
+    }
+
+    private int CalculateGrowthCapacity(int requiredCount)
+    {
+        int maxCapacity = GetMaximumVectorCapacity();
+        int newCapacity;
+        if (_ids.Length == 0)
+        {
+            newCapacity = Math.Min(InitialCapacity, maxCapacity);
+        }
+        else
+        {
+            newCapacity = _ids.Length <= maxCapacity / 2
+                ? _ids.Length * 2
+                : maxCapacity;
+        }
+
+        if (newCapacity < requiredCount)
+        {
+            newCapacity = requiredCount;
+        }
+
+        ValidateVectorCapacity(newCapacity, nameof(requiredCount));
+        return newCapacity;
+    }
+
+    private void AllocateCapacity(int newCapacity)
+    {
+        ValidateVectorCapacity(newCapacity, nameof(newCapacity));
+
+        var ids = new ulong[newCapacity];
+        var vectors = new float[newCapacity * Dimension];
+        var levels = new int[newCapacity];
+        _ids.AsSpan(0, _count).CopyTo(ids);
+        _vectors.AsSpan(0, _count * Dimension).CopyTo(vectors);
+        _levels.AsSpan(0, _count).CopyTo(levels);
+        _ids = ids;
+        _vectors = vectors;
+        _levels = levels;
+
+        for (int i = 0; i < _layers.Length; i++)
+        {
+            _layers[i].EnsureCapacity(newCapacity);
+        }
+    }
+
+    private void ValidateVectorCapacity(int vectorCapacity, string parameterName)
+    {
+        if (vectorCapacity < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                vectorCapacity,
+                "Vector capacity must be non-negative.");
+        }
+
+        if (vectorCapacity > int.MaxValue / Dimension)
+        {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                vectorCapacity,
+                "Vector capacity times dimension exceeds the supported element count.");
+        }
+
+        if (vectorCapacity > int.MaxValue / _mMax0)
+        {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                vectorCapacity,
+                "Vector capacity times HNSW graph stride exceeds the supported element count.");
+        }
+
+        if (vectorCapacity > GetMaximumVectorCapacity())
+        {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                vectorCapacity,
+                "Vector capacity exceeds the maximum contiguous HNSW row or graph capacity.");
+        }
+    }
+
+    private int GetMaximumVectorCapacity() =>
+        Math.Min(Array.MaxLength / Dimension, Array.MaxLength / _mMax0);
+
+    private void EnsurePlannedBuildScratch()
+    {
+        if (_buildScratch is null)
+        {
+            return;
+        }
+
+        EnsureBuildScratch(
+            _ids.Length,
+            Math.Max(_options.EfConstruction, _mMax0 + 1),
+            _mMax0,
+            Math.Max(_options.EfConstruction, _mMax0 + 1));
     }
 
     private HnswBuildScratch EnsureBuildScratch(
@@ -602,11 +808,10 @@ public sealed partial class HnswIndex
                 break;
             }
 
-            int neighborCount = graphLayer.Counts[current];
-            int offset = current * graphLayer.Stride;
-            for (int i = 0; i < neighborCount; i++)
+            ReadOnlySpan<int> neighbors = graphLayer.GetNeighbors(current);
+            for (int i = 0; i < neighbors.Length; i++)
             {
-                int neighbor = graphLayer.Neighbors[offset + i];
+                int neighbor = neighbors[i];
                 if ((uint)neighbor >= (uint)validCount || workspace.VisitMarks[neighbor] == visitMark)
                 {
                     continue;
@@ -798,19 +1003,18 @@ public sealed partial class HnswIndex
     private void SetNeighbors(int ordinal, int layer, ReadOnlySpan<int> selected, int selectedCount)
     {
         HnswGraphLayer graphLayer = _layers[layer];
-        graphLayer.Counts[ordinal] = selectedCount;
-        selected[..selectedCount].CopyTo(graphLayer.Neighbors.AsSpan(ordinal * graphLayer.Stride, selectedCount));
+        graphLayer.SetNeighbors(ordinal, selected, selectedCount);
     }
 
     private void AddOrPruneNeighbor(int baseOrdinal, int newNeighbor, int layer, HnswBuildScratch scratch)
     {
         HnswGraphLayer graphLayer = _layers[layer];
-        int offset = baseOrdinal * graphLayer.Stride;
-        int count = graphLayer.Counts[baseOrdinal];
+        ReadOnlySpan<int> existingNeighbors = graphLayer.GetNeighbors(baseOrdinal);
+        int count = existingNeighbors.Length;
 
         for (int i = 0; i < count; i++)
         {
-            if (graphLayer.Neighbors[offset + i] == newNeighbor)
+            if (existingNeighbors[i] == newNeighbor)
             {
                 return;
             }
@@ -818,13 +1022,12 @@ public sealed partial class HnswIndex
 
         if (count < graphLayer.Stride)
         {
-            graphLayer.Neighbors[offset + count] = newNeighbor;
-            graphLayer.Counts[baseOrdinal] = count + 1;
+            graphLayer.AppendNeighbor(baseOrdinal, newNeighbor);
             return;
         }
 
         Span<int> candidates = scratch.CandidateOrdinals.AsSpan(0, count + 1);
-        graphLayer.Neighbors.AsSpan(offset, count).CopyTo(candidates);
+        existingNeighbors.CopyTo(candidates);
         candidates[count] = newNeighbor;
         int selectedCount = SelectNeighbors(
             baseOrdinal,
@@ -951,46 +1154,6 @@ public sealed partial class HnswIndex
         return results.Length;
     }
 
-    private HnswStorageSnapshot CreateStorageSnapshot()
-    {
-        var ids = new ulong[_count];
-        var vectors = new float[checked(_count * Dimension)];
-        var levels = new int[_count];
-        _ids.AsSpan(0, _count).CopyTo(ids);
-        _vectors.AsSpan(0, _count * Dimension).CopyTo(vectors);
-        _levels.AsSpan(0, _count).CopyTo(levels);
-
-        var layers = new HnswLayerSnapshot[_layers.Length];
-        for (int layer = 0; layer < _layers.Length; layer++)
-        {
-            HnswGraphLayer source = _layers[layer];
-            var counts = new int[_count];
-            var neighbors = new int[checked(_count * source.Stride)];
-            source.Counts.AsSpan(0, _count).CopyTo(counts);
-            for (int ordinal = 0; ordinal < _count; ordinal++)
-            {
-                source.Neighbors.AsSpan(ordinal * source.Stride, source.Stride)
-                    .CopyTo(neighbors.AsSpan(ordinal * source.Stride, source.Stride));
-            }
-
-            layers[layer] = new HnswLayerSnapshot(source.Stride, counts, neighbors);
-        }
-
-        return new HnswStorageSnapshot(
-            Dimension,
-            Metric,
-            _options,
-            _mMax,
-            _mMax0,
-            _levelMultiplier,
-            _entryPoint,
-            _maxLayer,
-            ids,
-            vectors,
-            levels,
-            layers);
-    }
-
     internal static HnswIndex HydrateReadOnly(HnswStorageSnapshot snapshot)
     {
         var index = new HnswIndex(snapshot.Dimension, snapshot.Metric, snapshot.Options)
@@ -1008,10 +1171,18 @@ public sealed partial class HnswIndex
         for (int layer = 0; layer < snapshot.Layers.Length; layer++)
         {
             HnswLayerSnapshot source = snapshot.Layers[layer];
-            var graphLayer = new HnswGraphLayer(source.Stride, snapshot.Ids.Length);
-            source.Counts.CopyTo(graphLayer.Counts, 0);
-            source.Neighbors.CopyTo(graphLayer.Neighbors, 0);
-            index._layers[layer] = graphLayer;
+            index._layers[layer] = layer == 0
+                ? HnswGraphLayer.CreateDenseFromStorage(
+                    source.Stride,
+                    snapshot.Ids.Length,
+                    source.Counts,
+                    source.Neighbors)
+                : HnswGraphLayer.CreateSparseFromStorage(
+                    source.Stride,
+                    snapshot.Ids.Length,
+                    source.RowOrdinals,
+                    source.Counts,
+                    source.Neighbors);
         }
 
         for (int ordinal = 0; ordinal < snapshot.Ids.Length; ordinal++)
@@ -1038,44 +1209,247 @@ public sealed partial class HnswIndex
 
     internal sealed record HnswLayerSnapshot(
         int Stride,
+        int[] RowOrdinals,
         int[] Counts,
         int[] Neighbors);
 
     private sealed class HnswGraphLayer
     {
-        internal HnswGraphLayer(int stride, int capacity)
+        private int[] _counts;
+        private int[] _neighbors;
+        private int[] _ordinalToCompactRow;
+        private int[] _rowOrdinals;
+        private int _compactRowCount;
+
+        internal HnswGraphLayer(int stride, int capacity, bool sparse)
         {
             Stride = stride;
-            Neighbors = new int[checked(capacity * stride)];
-            Counts = new int[capacity];
+            IsSparse = sparse;
+            if (sparse)
+            {
+                _ordinalToCompactRow = new int[capacity];
+                Array.Fill(_ordinalToCompactRow, -1);
+                _rowOrdinals = [];
+                _counts = [];
+                _neighbors = [];
+            }
+            else
+            {
+                _ordinalToCompactRow = [];
+                _rowOrdinals = [];
+                _counts = new int[capacity];
+                _neighbors = new int[checked(capacity * stride)];
+            }
         }
 
         internal int Stride { get; }
 
-        internal int[] Neighbors { get; private set; }
+        internal bool IsSparse { get; }
 
-        internal int[] Counts { get; private set; }
+        internal int Capacity => IsSparse ? _ordinalToCompactRow.Length : _counts.Length;
+
+        internal int CompactRowCount => IsSparse ? _compactRowCount : _counts.Length;
+
+        internal int CountStorageLength => _counts.Length;
+
+        internal int NeighborStorageLength => _neighbors.Length;
 
         internal void EnsureCapacity(int capacity)
         {
-            if (Counts.Length >= capacity)
+            if (Capacity >= capacity)
             {
+                return;
+            }
+
+            if (IsSparse)
+            {
+                int oldLength = _ordinalToCompactRow.Length;
+                Array.Resize(ref _ordinalToCompactRow, capacity);
+                _ordinalToCompactRow.AsSpan(oldLength).Fill(-1);
                 return;
             }
 
             var neighbors = new int[checked(capacity * Stride)];
             var counts = new int[capacity];
-            Counts.AsSpan().CopyTo(counts);
+            _counts.AsSpan().CopyTo(counts);
 
-            int oldCapacity = Counts.Length;
+            int oldCapacity = _counts.Length;
             for (int ordinal = 0; ordinal < oldCapacity; ordinal++)
             {
-                Neighbors.AsSpan(ordinal * Stride, Counts[ordinal])
-                    .CopyTo(neighbors.AsSpan(ordinal * Stride, Counts[ordinal]));
+                _neighbors.AsSpan(ordinal * Stride, _counts[ordinal])
+                    .CopyTo(neighbors.AsSpan(ordinal * Stride, _counts[ordinal]));
             }
 
-            Neighbors = neighbors;
-            Counts = counts;
+            _neighbors = neighbors;
+            _counts = counts;
+        }
+
+        internal ReadOnlySpan<int> GetNeighbors(int ordinal)
+        {
+            int row = GetCompactRowOrMissing(ordinal);
+            if (row < 0)
+            {
+                return [];
+            }
+
+            return _neighbors.AsSpan(row * Stride, _counts[row]);
+        }
+
+        internal void SetNeighbors(int ordinal, ReadOnlySpan<int> selected, int selectedCount)
+        {
+            int row = EnsureRow(ordinal);
+            _counts[row] = selectedCount;
+            selected[..selectedCount].CopyTo(_neighbors.AsSpan(row * Stride, selectedCount));
+        }
+
+        internal void AppendNeighbor(int ordinal, int neighbor)
+        {
+            int row = EnsureRow(ordinal);
+            int count = _counts[row];
+            _neighbors[(row * Stride) + count] = neighbor;
+            _counts[row] = count + 1;
+        }
+
+        internal void EnsureParticipantRow(int ordinal)
+        {
+            if (!IsSparse)
+            {
+                return;
+            }
+
+            _ = EnsureRow(ordinal);
+        }
+
+        internal void LoadDenseRows(int[] counts, int[] neighbors)
+        {
+            if (IsSparse ||
+                counts.Length != _counts.Length ||
+                neighbors.Length != _neighbors.Length)
+            {
+                throw new InvalidOperationException("HNSW graph layer dense payload shape is invalid.");
+            }
+
+            counts.CopyTo(_counts, 0);
+            neighbors.CopyTo(_neighbors, 0);
+        }
+
+        internal static HnswGraphLayer CreateDenseFromStorage(
+            int stride,
+            int capacity,
+            int[] counts,
+            int[] neighbors)
+        {
+            if (counts.Length != capacity || neighbors.Length != checked(capacity * stride))
+            {
+                throw new InvalidOperationException("HNSW graph layer dense payload shape is invalid.");
+            }
+
+            return new HnswGraphLayer(stride, 0, sparse: false)
+            {
+                _counts = counts,
+                _neighbors = neighbors
+            };
+        }
+
+        internal static HnswGraphLayer CreateSparseFromStorage(
+            int stride,
+            int capacity,
+            int[] rowOrdinals,
+            int[] counts,
+            int[] neighbors)
+        {
+            if (rowOrdinals.Length != counts.Length || neighbors.Length != checked(counts.Length * stride))
+            {
+                throw new InvalidOperationException("HNSW graph layer sparse payload shape is invalid.");
+            }
+
+            var graphLayer = new HnswGraphLayer(stride, capacity, sparse: true)
+            {
+                _rowOrdinals = rowOrdinals,
+                _counts = counts,
+                _neighbors = neighbors,
+                _compactRowCount = rowOrdinals.Length
+            };
+
+            for (int compactRow = 0; compactRow < rowOrdinals.Length; compactRow++)
+            {
+                int ordinal = rowOrdinals[compactRow];
+                if ((uint)ordinal >= (uint)capacity || graphLayer._ordinalToCompactRow[ordinal] >= 0)
+                {
+                    throw new InvalidOperationException("HNSW graph layer compact row ordinals are invalid.");
+                }
+
+                graphLayer._ordinalToCompactRow[ordinal] = compactRow;
+            }
+
+            return graphLayer;
+        }
+
+        private int GetCompactRowOrMissing(int ordinal)
+        {
+            if (!IsSparse)
+            {
+                return ordinal;
+            }
+
+            return (uint)ordinal < (uint)_ordinalToCompactRow.Length
+                ? _ordinalToCompactRow[ordinal]
+                : -1;
+        }
+
+        private int EnsureRow(int ordinal)
+        {
+            if (!IsSparse)
+            {
+                return ordinal;
+            }
+
+            if ((uint)ordinal >= (uint)_ordinalToCompactRow.Length)
+            {
+                EnsureCapacity(ordinal + 1);
+            }
+
+            int existingRow = _ordinalToCompactRow[ordinal];
+            if (existingRow >= 0)
+            {
+                return existingRow;
+            }
+
+            EnsureCompactCapacity(_compactRowCount + 1);
+            int row = _compactRowCount++;
+            _ordinalToCompactRow[ordinal] = row;
+            _rowOrdinals[row] = ordinal;
+            return row;
+        }
+
+        private void EnsureCompactCapacity(int requiredRows)
+        {
+            if (_counts.Length >= requiredRows)
+            {
+                return;
+            }
+
+            int maxRows = Array.MaxLength / Stride;
+            int newCapacity = _counts.Length == 0
+                ? 4
+                : _counts.Length <= maxRows / 2
+                    ? _counts.Length * 2
+                    : maxRows;
+            if (newCapacity < requiredRows)
+            {
+                newCapacity = requiredRows;
+            }
+
+            Array.Resize(ref _rowOrdinals, newCapacity);
+            Array.Resize(ref _counts, newCapacity);
+            var neighbors = new int[checked(newCapacity * Stride)];
+            for (int row = 0; row < _compactRowCount; row++)
+            {
+                _neighbors.AsSpan(row * Stride, _counts[row])
+                    .CopyTo(neighbors.AsSpan(row * Stride, _counts[row]));
+            }
+
+            _neighbors = neighbors;
         }
     }
 

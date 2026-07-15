@@ -12,10 +12,11 @@ public sealed partial class ExactFlatIndex
     private readonly ExactFlatIndexDistanceMode _distanceMode;
     private ulong[] _ids = [];
     private float[] _vectors = [];
+    private byte[] _rowDeleted = [];
     private Dictionary<ulong, int> _idToOrdinal = new();
-    private HashSet<ulong> _visibilityTombstoneIds = [];
     private HashSet<ulong> _deletedReservedIds = [];
     private int _count;
+    private int _tombstoneCount;
     private int _baseRowCount = int.MaxValue;
     private long _generation;
     private bool _isReadOnly;
@@ -30,7 +31,29 @@ public sealed partial class ExactFlatIndex
     {
     }
 
+    /// <summary>
+    /// Initializes a new exact flat index with preallocated mutable row capacity.
+    /// </summary>
+    /// <param name="dimension">The required positive vector dimension.</param>
+    /// <param name="metric">The canonical distance metric.</param>
+    /// <param name="initialCapacity">
+    /// The non-negative number of vector rows to reserve in contiguous storage.
+    /// </param>
+    public ExactFlatIndex(int dimension, VectorMetric metric, int initialCapacity)
+        : this(dimension, metric, GetDefaultDistanceMode(metric), initialCapacity)
+    {
+    }
+
     internal ExactFlatIndex(int dimension, VectorMetric metric, ExactFlatIndexDistanceMode distanceMode)
+        : this(dimension, metric, distanceMode, initialCapacity: 0)
+    {
+    }
+
+    private ExactFlatIndex(
+        int dimension,
+        VectorMetric metric,
+        ExactFlatIndexDistanceMode distanceMode,
+        int initialCapacity)
     {
         if (dimension <= 0)
         {
@@ -58,6 +81,17 @@ public sealed partial class ExactFlatIndex
         Dimension = dimension;
         Metric = metric;
         _distanceMode = distanceMode;
+
+        ValidateVectorCapacity(initialCapacity, nameof(initialCapacity));
+        if (initialCapacity > 0)
+        {
+            _idToOrdinal = new Dictionary<ulong, int>(initialCapacity);
+            AllocateCapacity(initialCapacity);
+        }
+        else
+        {
+            _idToOrdinal = new Dictionary<ulong, int>(initialCapacity);
+        }
     }
 
     /// <summary>
@@ -93,7 +127,7 @@ public sealed partial class ExactFlatIndex
     /// <summary>
     /// Gets the current number of live visible vectors returned by search.
     /// </summary>
-    public int LiveVectorCount => _count - _visibilityTombstoneIds.Count;
+    public int LiveVectorCount => _count - _tombstoneCount;
 
     /// <summary>
     /// Gets the current live base vector count.
@@ -144,7 +178,7 @@ public sealed partial class ExactFlatIndex
     /// <summary>
     /// Gets the current visibility tombstone count.
     /// </summary>
-    public int TombstoneCount => _visibilityTombstoneIds.Count;
+    public int TombstoneCount => _tombstoneCount;
 
     /// <summary>
     /// Gets the current deleted or otherwise reserved external identifier count.
@@ -160,6 +194,36 @@ public sealed partial class ExactFlatIndex
     /// index instances, or cross-process coordination mechanism.
     /// </remarks>
     public long Generation => _generation;
+
+    /// <summary>
+    /// Gets the current allocated vector-row capacity of this exact-flat index.
+    /// </summary>
+    /// <remarks>
+    /// Capacity is storage reservation, not visible cardinality. Use <see cref="PhysicalVectorCount"/>
+    /// or <see cref="LiveVectorCount"/> for row counts.
+    /// </remarks>
+    public int Capacity => _ids.Length;
+
+    /// <summary>
+    /// Ensures this mutable exact-flat index can store at least the requested number of vector rows.
+    /// </summary>
+    /// <param name="vectorCapacity">The non-negative vector-row capacity to reserve.</param>
+    /// <remarks>
+    /// This method may allocate and copy existing row storage. It does not change vector counts,
+    /// generation, tombstones, deleted-ID reservations, candidate-set generation, or search results.
+    /// Exact-flat indexes opened with <see cref="OpenReadOnly(string)"/> reject this method.
+    /// </remarks>
+    public void EnsureCapacity(int vectorCapacity)
+    {
+        if (_isReadOnly)
+        {
+            throw new InvalidOperationException(
+                "This exact flat index was opened read-only and cannot be capacity planned.");
+        }
+
+        EnsureStorageCapacity(vectorCapacity, nameof(vectorCapacity), growForAppend: false);
+        _idToOrdinal.EnsureCapacity(vectorCapacity);
+    }
 
     /// <summary>
     /// Inserts a vector associated with a caller-provided external identifier.
@@ -236,13 +300,20 @@ public sealed partial class ExactFlatIndex
             return CreateMutationResult(VectorMutationStatus.AlreadyDeleted);
         }
 
-        if (!_idToOrdinal.ContainsKey(id))
+        if (!_idToOrdinal.TryGetValue(id, out int row))
         {
             return CreateMutationResult(VectorMutationStatus.UnknownId);
         }
 
+        if (IsDeleted(row))
+        {
+            _deletedReservedIds.Add(id);
+            return CreateMutationResult(VectorMutationStatus.AlreadyDeleted);
+        }
+
         EnsureDeltaBoundary();
-        _visibilityTombstoneIds.Add(id);
+        _rowDeleted[row] = 1;
+        _tombstoneCount++;
         _deletedReservedIds.Add(id);
         _generation++;
         return CreateMutationResult(VectorMutationStatus.Committed);
@@ -250,7 +321,7 @@ public sealed partial class ExactFlatIndex
 
     private void AddValidated(ulong id, ReadOnlySpan<float> vector, double magnitude)
     {
-        EnsureCapacity(_count + 1);
+        EnsureStorageCapacity(checked(_count + 1), nameof(vector), growForAppend: true);
 
         int offset = _count * Dimension;
         if (Metric == VectorMetric.Cosine)
@@ -263,6 +334,7 @@ public sealed partial class ExactFlatIndex
         }
 
         _ids[_count] = id;
+        _rowDeleted[_count] = 0;
         _idToOrdinal.Add(id, _count);
         _count++;
     }
@@ -293,9 +365,10 @@ public sealed partial class ExactFlatIndex
             }
 
             var candidate = new SearchResult(_ids[row], CalculateDistance(row, query, queryMagnitude));
-            written = InsertCandidate(results, written, candidate);
+            written = SelectCandidate(results, written, candidate);
         }
 
+        SortSelectedResults(results, written);
         return written;
     }
 
@@ -387,9 +460,10 @@ public sealed partial class ExactFlatIndex
             }
 
             var candidate = new SearchResult(_ids[row], CalculateDistance(row, query, queryMagnitude));
-            written = InsertCandidate(results, written, candidate);
+            written = SelectCandidate(results, written, candidate);
         }
 
+        SortSelectedResults(results, written);
         return written;
     }
 
@@ -459,9 +533,10 @@ public sealed partial class ExactFlatIndex
             }
 
             var candidate = new SearchResult(_ids[row], CalculateDistance(row, query, queryMagnitude));
-            written = InsertCandidate(results, written, candidate);
+            written = SelectCandidate(results, written, candidate);
         }
 
+        SortSelectedResults(results, written);
         return written;
     }
 
@@ -511,27 +586,90 @@ public sealed partial class ExactFlatIndex
         }
     }
 
-    private void EnsureCapacity(int requiredCount)
+    private void EnsureStorageCapacity(int requiredCount, string parameterName, bool growForAppend)
     {
+        ValidateVectorCapacity(requiredCount, parameterName);
+
         if (_ids.Length >= requiredCount)
         {
             return;
         }
 
-        int newCapacity = _ids.Length == 0 ? InitialCapacity : checked(_ids.Length * 2);
+        int newCapacity = growForAppend
+            ? CalculateGrowthCapacity(requiredCount)
+            : requiredCount;
+
+        AllocateCapacity(newCapacity);
+    }
+
+    private int CalculateGrowthCapacity(int requiredCount)
+    {
+        int maxCapacity = GetMaximumVectorCapacity();
+        int newCapacity;
+        if (_ids.Length == 0)
+        {
+            newCapacity = Math.Min(InitialCapacity, maxCapacity);
+        }
+        else
+        {
+            newCapacity = _ids.Length <= maxCapacity / 2
+                ? _ids.Length * 2
+                : maxCapacity;
+        }
+
         if (newCapacity < requiredCount)
         {
             newCapacity = requiredCount;
         }
 
+        ValidateVectorCapacity(newCapacity, nameof(requiredCount));
+        return newCapacity;
+    }
+
+    private void AllocateCapacity(int newCapacity)
+    {
+        ValidateVectorCapacity(newCapacity, nameof(newCapacity));
+
         var newIds = new ulong[newCapacity];
-        var newVectors = new float[checked(newCapacity * Dimension)];
+        var newVectors = new float[newCapacity * Dimension];
+        var newRowDeleted = new byte[newCapacity];
         _ids.AsSpan(0, _count).CopyTo(newIds);
         _vectors.AsSpan(0, _count * Dimension).CopyTo(newVectors);
+        _rowDeleted.AsSpan(0, _count).CopyTo(newRowDeleted);
 
         _ids = newIds;
         _vectors = newVectors;
+        _rowDeleted = newRowDeleted;
     }
+
+    private void ValidateVectorCapacity(int vectorCapacity, string parameterName)
+    {
+        if (vectorCapacity < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                vectorCapacity,
+                "Vector capacity must be non-negative.");
+        }
+
+        if (vectorCapacity > int.MaxValue / Dimension)
+        {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                vectorCapacity,
+                "Vector capacity times dimension exceeds the supported element count.");
+        }
+
+        if (vectorCapacity > GetMaximumVectorCapacity())
+        {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                vectorCapacity,
+                "Vector capacity exceeds the maximum contiguous vector-array capacity.");
+        }
+    }
+
+    private int GetMaximumVectorCapacity() => Array.MaxLength / Dimension;
 
     private void EnsureDeltaBoundary()
     {
@@ -545,7 +683,7 @@ public sealed partial class ExactFlatIndex
         _idToOrdinal.ContainsKey(id) || _deletedReservedIds.Contains(id);
 
     private bool IsDeleted(int row) =>
-        _visibilityTombstoneIds.Count != 0 && _visibilityTombstoneIds.Contains(_ids[row]);
+        _tombstoneCount != 0 && _rowDeleted[row] != 0;
 
     private VectorMutationResult CreateMutationResult(VectorMutationStatus status) =>
         new(status, _generation, LiveVectorCount, DeltaVectorCount, TombstoneCount);
@@ -631,9 +769,11 @@ public sealed partial class ExactFlatIndex
         {
             _ids = ids,
             _vectors = vectors,
+            _rowDeleted = new byte[ids.Length],
             _idToOrdinal = BuildIdToOrdinalMap(ids),
             _count = ids.Length,
             _baseRowCount = ids.Length,
+            _tombstoneCount = 0,
             _isReadOnly = true
         };
 
@@ -705,5 +845,92 @@ public sealed partial class ExactFlatIndex
 
         results[insertionIndex] = candidate;
         return written < results.Length ? written + 1 : written;
+    }
+
+    private static int SelectCandidate(Span<SearchResult> results, int written, SearchResult candidate)
+    {
+        if (results.Length < 10)
+        {
+            return InsertCandidate(results, written, candidate);
+        }
+
+        if (written < results.Length)
+        {
+            results[written] = candidate;
+            SiftUpWorstFirst(results, written);
+            return written + 1;
+        }
+
+        if (CompareSearchResult(candidate, results[0]) >= 0)
+        {
+            return written;
+        }
+
+        results[0] = candidate;
+        SiftDownWorstFirst(results[..written], 0);
+        return written;
+    }
+
+    private static void SortSelectedResults(Span<SearchResult> results, int written)
+    {
+        if (written <= 1 || results.Length < 10)
+        {
+            return;
+        }
+
+        Span<SearchResult> heap = results[..written];
+        for (int end = heap.Length - 1; end > 0; end--)
+        {
+            (heap[0], heap[end]) = (heap[end], heap[0]);
+            SiftDownWorstFirst(heap[..end], 0);
+        }
+    }
+
+    private static void SiftUpWorstFirst(Span<SearchResult> heap, int index)
+    {
+        while (index > 0)
+        {
+            int parent = (index - 1) / 2;
+            if (CompareSearchResult(heap[parent], heap[index]) >= 0)
+            {
+                return;
+            }
+
+            (heap[parent], heap[index]) = (heap[index], heap[parent]);
+            index = parent;
+        }
+    }
+
+    private static void SiftDownWorstFirst(Span<SearchResult> heap, int index)
+    {
+        while (true)
+        {
+            int left = (index * 2) + 1;
+            if (left >= heap.Length)
+            {
+                return;
+            }
+
+            int right = left + 1;
+            int worse = right < heap.Length && CompareSearchResult(heap[right], heap[left]) > 0
+                ? right
+                : left;
+
+            if (CompareSearchResult(heap[index], heap[worse]) >= 0)
+            {
+                return;
+            }
+
+            (heap[index], heap[worse]) = (heap[worse], heap[index]);
+            index = worse;
+        }
+    }
+
+    private static int CompareSearchResult(SearchResult left, SearchResult right)
+    {
+        int distanceComparison = left.Distance.CompareTo(right.Distance);
+        return distanceComparison != 0
+            ? distanceComparison
+            : left.Id.CompareTo(right.Id);
     }
 }

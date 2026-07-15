@@ -192,7 +192,19 @@ public sealed class ExactFlatIndexCandidateSetIndependentTests
             .Where(static method => !method.IsSpecialName)
             .ToArray();
         Assert.Equal(
-            ["Add", "Checkpoint", "CreateCandidateSet", "OpenReadOnly", "Save", "Search", "Search", "Search", "TryAdd", "TryDelete"],
+            [
+                "Add",
+                "Checkpoint",
+                "CreateCandidateSet",
+                "EnsureCapacity",
+                "OpenReadOnly",
+                "Save",
+                "Search",
+                "Search",
+                "Search",
+                "TryAdd",
+                "TryDelete"
+            ],
             exactFlatMethods.Select(static method => method.Name).Order(StringComparer.Ordinal).ToArray());
         Assert.DoesNotContain(
             exactFlatMethods.SelectMany(static method => method.GetParameters()),

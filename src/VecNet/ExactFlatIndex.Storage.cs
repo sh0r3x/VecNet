@@ -31,7 +31,7 @@ public sealed partial class ExactFlatIndex
         ExactFlatIndexStorage.ValidateNewOrEmptyDirectoryPath(directoryPath);
 
         int foldedDeltaCount = DeltaVectorCount;
-        int foldedTombstoneCount = _visibilityTombstoneIds.Count;
+        int foldedTombstoneCount = _tombstoneCount;
         if (foldedDeltaCount == 0 && foldedTombstoneCount == 0)
         {
             return CreateCheckpointResult(
@@ -42,17 +42,16 @@ public sealed partial class ExactFlatIndex
 
         (ulong[] compactIds, float[] compactVectors) = CreateLiveSnapshot();
         ExactFlatIndexStorage.Save(directoryPath, Dimension, Metric, compactIds, compactVectors);
-
-        ExactFlatIndex validated = ExactFlatIndexStorage.OpenReadOnly(directoryPath);
-        ValidateCheckpointOutput(validated, compactIds, compactVectors);
+        ExactFlatIndexStorage.ValidateSavedCompactSnapshot(directoryPath, Dimension, Metric, compactIds, compactVectors);
 
         Dictionary<ulong, int> compactMap = BuildIdToOrdinalMap(compactIds);
         _ids = compactIds;
         _vectors = compactVectors;
+        _rowDeleted = new byte[compactIds.Length];
         _idToOrdinal = compactMap;
         _count = compactIds.Length;
         _baseRowCount = compactIds.Length;
-        _visibilityTombstoneIds.Clear();
+        _tombstoneCount = 0;
         _generation++;
 
         return CreateCheckpointResult(
@@ -76,8 +75,25 @@ public sealed partial class ExactFlatIndex
     public void Save(string directoryPath)
     {
         ExactFlatIndexStorage.ValidateNewOrEmptyDirectoryPath(directoryPath);
-        (ulong[] ids, float[] vectors) = CreateLiveSnapshot();
-        ExactFlatIndexStorage.Save(directoryPath, Dimension, Metric, ids, vectors);
+        if (_tombstoneCount == 0)
+        {
+            ExactFlatIndexStorage.Save(
+                directoryPath,
+                Dimension,
+                Metric,
+                _ids.AsSpan(0, _count),
+                _vectors.AsSpan(0, checked(_count * Dimension)));
+            return;
+        }
+
+        ExactFlatIndexStorage.Save(
+            directoryPath,
+            Dimension,
+            Metric,
+            LiveVectorCount,
+            _ids.AsSpan(0, _count),
+            _vectors.AsSpan(0, checked(_count * Dimension)),
+            _rowDeleted.AsSpan(0, _count));
     }
 
     /// <summary>
@@ -130,25 +146,11 @@ public sealed partial class ExactFlatIndex
             LiveVectorCount,
             BaseVectorCount,
             DeltaVectorCount,
-            _visibilityTombstoneIds.Count,
+            _tombstoneCount,
             _deletedReservedIds.Count,
             foldedDeltaCount,
             foldedTombstoneCount);
 
-    private void ValidateCheckpointOutput(
-        ExactFlatIndex validated,
-        ReadOnlySpan<ulong> expectedIds,
-        ReadOnlySpan<float> expectedVectors)
-    {
-        if (validated.Dimension != Dimension ||
-            validated.Metric != Metric ||
-            validated.VectorCount != expectedIds.Length ||
-            !validated._ids.AsSpan(0, validated._count).SequenceEqual(expectedIds) ||
-            !validated._vectors.AsSpan(0, checked(expectedIds.Length * Dimension)).SequenceEqual(expectedVectors))
-        {
-            throw new InvalidDataException("Exact flat checkpoint output failed read-only validation.");
-        }
-    }
 }
 
 internal static class ExactFlatIndexStorage
@@ -194,6 +196,25 @@ internal static class ExactFlatIndexStorage
         ReadOnlySpan<ulong> ids,
         ReadOnlySpan<float> vectors)
     {
+        Save(
+            directoryPath,
+            dimension,
+            metric,
+            ids.Length,
+            ids,
+            vectors,
+            []);
+    }
+
+    internal static void Save(
+        string directoryPath,
+        int dimension,
+        VectorMetric metric,
+        int liveRowCount,
+        ReadOnlySpan<ulong> sourceIds,
+        ReadOnlySpan<float> sourceVectors,
+        ReadOnlySpan<byte> sourceRowDeleted)
+    {
         string directory = PrepareSaveDirectory(directoryPath, out bool createdDirectory);
         string tempSuffix = ".tmp-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
         string idsTempPath = Path.Combine(directory, IdsFileName + tempSuffix);
@@ -202,8 +223,9 @@ internal static class ExactFlatIndexStorage
 
         try
         {
-            WriteIdsFile(idsTempPath, ids);
-            WriteVectorsFile(vectorsTempPath, dimension, metric, ids.Length, vectors);
+            ValidateLiveRowSource(dimension, liveRowCount, sourceIds, sourceVectors, sourceRowDeleted);
+            WriteIdsFile(idsTempPath, liveRowCount, sourceIds, sourceRowDeleted);
+            WriteVectorsFile(vectorsTempPath, dimension, metric, liveRowCount, sourceVectors, sourceRowDeleted);
 
             var idsMetadata = CreateBinaryFileMetadata(idsTempPath, IdsFileName, IdsMagicText);
             var vectorsMetadata = CreateBinaryFileMetadata(vectorsTempPath, VectorsFileName, VectorsMagicText);
@@ -211,7 +233,7 @@ internal static class ExactFlatIndexStorage
                 manifestTempPath,
                 dimension,
                 metric,
-                ids.Length,
+                liveRowCount,
                 idsMetadata,
                 vectorsMetadata);
 
@@ -231,6 +253,52 @@ internal static class ExactFlatIndexStorage
 
             throw;
         }
+    }
+
+    internal static void ValidateSavedCompactSnapshot(
+        string directoryPath,
+        int dimension,
+        VectorMetric metric,
+        ReadOnlySpan<ulong> expectedIds,
+        ReadOnlySpan<float> expectedVectors)
+    {
+        if (expectedVectors.Length != checked(expectedIds.Length * dimension))
+        {
+            throw new InvalidOperationException("Vector payload length does not match index metadata.");
+        }
+
+        string directory = GetFullDirectoryPath(directoryPath);
+        if (File.Exists(directory))
+        {
+            throw new IOException("Exact flat index path is an existing file, not a directory.");
+        }
+
+        if (!Directory.Exists(directory))
+        {
+            throw new DirectoryNotFoundException($"Exact flat index directory was not found: {directoryPath}");
+        }
+
+        string manifestPath = Path.Combine(directory, ManifestFileName);
+        if (!File.Exists(manifestPath))
+        {
+            throw new FileNotFoundException("Exact flat index manifest was not found.", manifestPath);
+        }
+
+        Manifest manifest = ReadManifest(manifestPath);
+        if (manifest.Dimension != dimension ||
+            manifest.Metric != metric ||
+            manifest.VectorCount != expectedIds.Length)
+        {
+            throw new InvalidDataException("Exact flat checkpoint manifest metadata does not match the compact snapshot.");
+        }
+
+        string idsPath = ResolveManifestFilePath(directory, manifest.IdsFile.RelativePath, IdsFileName);
+        string vectorsPath = ResolveManifestFilePath(directory, manifest.VectorsFile.RelativePath, VectorsFileName);
+
+        ValidateFileExistsLengthAndHash(idsPath, manifest.IdsFile, "ID");
+        ValidateFileExistsLengthAndHash(vectorsPath, manifest.VectorsFile, "vector");
+        ValidateIdsFileMatches(idsPath, expectedIds);
+        ValidateVectorsFileMatches(vectorsPath, dimension, metric, expectedIds.Length, expectedVectors);
     }
 
     internal static ExactFlatIndex OpenReadOnly(string directoryPath)
@@ -324,7 +392,39 @@ internal static class ExactFlatIndexStorage
         return Path.GetFullPath(directoryPath);
     }
 
-    private static void WriteIdsFile(string path, ReadOnlySpan<ulong> ids)
+    private static void ValidateLiveRowSource(
+        int dimension,
+        int liveRowCount,
+        ReadOnlySpan<ulong> sourceIds,
+        ReadOnlySpan<float> sourceVectors,
+        ReadOnlySpan<byte> sourceRowDeleted)
+    {
+        if (dimension <= 0)
+        {
+            throw new InvalidOperationException("Index dimension must be positive.");
+        }
+
+        if (liveRowCount < 0 || liveRowCount > sourceIds.Length)
+        {
+            throw new InvalidOperationException("Live row count does not match source metadata.");
+        }
+
+        if (sourceVectors.Length != checked(sourceIds.Length * dimension))
+        {
+            throw new InvalidOperationException("Vector payload length does not match index metadata.");
+        }
+
+        if (!sourceRowDeleted.IsEmpty && sourceRowDeleted.Length != sourceIds.Length)
+        {
+            throw new InvalidOperationException("Row tombstone payload length does not match source metadata.");
+        }
+    }
+
+    private static void WriteIdsFile(
+        string path,
+        int liveRowCount,
+        ReadOnlySpan<ulong> sourceIds,
+        ReadOnlySpan<byte> sourceRowDeleted)
     {
         using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         Span<byte> header = stackalloc byte[IdsHeaderLength];
@@ -332,15 +432,27 @@ internal static class ExactFlatIndexStorage
         BinaryPrimitives.WriteUInt16LittleEndian(header[8..], BinaryMajorVersion);
         BinaryPrimitives.WriteUInt16LittleEndian(header[10..], BinaryMinorVersion);
         BinaryPrimitives.WriteUInt32LittleEndian(header[12..], IdsHeaderLength);
-        BinaryPrimitives.WriteUInt64LittleEndian(header[16..], checked((ulong)ids.Length));
+        BinaryPrimitives.WriteUInt64LittleEndian(header[16..], checked((ulong)liveRowCount));
         BinaryPrimitives.WriteUInt64LittleEndian(header[24..], 0);
         stream.Write(header);
 
         Span<byte> buffer = stackalloc byte[sizeof(ulong)];
-        foreach (ulong id in ids)
+        int written = 0;
+        for (int row = 0; row < sourceIds.Length; row++)
         {
-            BinaryPrimitives.WriteUInt64LittleEndian(buffer, id);
+            if (IsSourceRowDeleted(sourceRowDeleted, row))
+            {
+                continue;
+            }
+
+            BinaryPrimitives.WriteUInt64LittleEndian(buffer, sourceIds[row]);
             stream.Write(buffer);
+            written++;
+        }
+
+        if (written != liveRowCount)
+        {
+            throw new InvalidOperationException("Live row count does not match source metadata.");
         }
     }
 
@@ -348,21 +460,17 @@ internal static class ExactFlatIndexStorage
         string path,
         int dimension,
         VectorMetric metric,
-        int rowCount,
-        ReadOnlySpan<float> vectors)
+        int liveRowCount,
+        ReadOnlySpan<float> sourceVectors,
+        ReadOnlySpan<byte> sourceRowDeleted)
     {
-        if (vectors.Length != checked(rowCount * dimension))
-        {
-            throw new InvalidOperationException("Vector payload length does not match index metadata.");
-        }
-
         using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         Span<byte> header = stackalloc byte[VectorsHeaderLength];
         VectorsMagic.CopyTo(header);
         BinaryPrimitives.WriteUInt16LittleEndian(header[8..], BinaryMajorVersion);
         BinaryPrimitives.WriteUInt16LittleEndian(header[10..], BinaryMinorVersion);
         BinaryPrimitives.WriteUInt32LittleEndian(header[12..], VectorsHeaderLength);
-        BinaryPrimitives.WriteUInt64LittleEndian(header[16..], checked((ulong)rowCount));
+        BinaryPrimitives.WriteUInt64LittleEndian(header[16..], checked((ulong)liveRowCount));
         BinaryPrimitives.WriteUInt32LittleEndian(header[24..], checked((uint)dimension));
         BinaryPrimitives.WriteUInt32LittleEndian(header[28..], Float32RowMajorRepresentationCode);
         BinaryPrimitives.WriteUInt32LittleEndian(
@@ -373,12 +481,32 @@ internal static class ExactFlatIndexStorage
         stream.Write(header);
 
         Span<byte> buffer = stackalloc byte[sizeof(float)];
-        foreach (float value in vectors)
+        int writtenRows = 0;
+        for (int row = 0; row < sourceVectors.Length / dimension; row++)
         {
-            BinaryPrimitives.WriteInt32LittleEndian(buffer, BitConverter.SingleToInt32Bits(value));
-            stream.Write(buffer);
+            if (IsSourceRowDeleted(sourceRowDeleted, row))
+            {
+                continue;
+            }
+
+            int offset = row * dimension;
+            for (int i = 0; i < dimension; i++)
+            {
+                BinaryPrimitives.WriteInt32LittleEndian(buffer, BitConverter.SingleToInt32Bits(sourceVectors[offset + i]));
+                stream.Write(buffer);
+            }
+
+            writtenRows++;
+        }
+
+        if (writtenRows != liveRowCount)
+        {
+            throw new InvalidOperationException("Live row count does not match source metadata.");
         }
     }
+
+    private static bool IsSourceRowDeleted(ReadOnlySpan<byte> sourceRowDeleted, int row) =>
+        !sourceRowDeleted.IsEmpty && sourceRowDeleted[row] != 0;
 
     private static BinaryFileMetadata CreateBinaryFileMetadata(string path, string relativePath, string magic)
     {
@@ -620,6 +748,81 @@ internal static class ExactFlatIndexStorage
     private static ulong[] ReadIdsFile(string path, int expectedRowCount)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        ValidateIdsFileHeader(stream, expectedRowCount);
+
+        var ids = new ulong[expectedRowCount];
+        Span<byte> buffer = stackalloc byte[sizeof(ulong)];
+        for (int i = 0; i < ids.Length; i++)
+        {
+            stream.ReadExactly(buffer);
+            ids[i] = BinaryPrimitives.ReadUInt64LittleEndian(buffer);
+        }
+
+        return ids;
+    }
+
+    private static void ValidateIdsFileMatches(string path, ReadOnlySpan<ulong> expectedIds)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        ValidateIdsFileHeader(stream, expectedIds.Length);
+
+        Span<byte> buffer = stackalloc byte[sizeof(ulong)];
+        for (int i = 0; i < expectedIds.Length; i++)
+        {
+            stream.ReadExactly(buffer);
+            ulong actual = BinaryPrimitives.ReadUInt64LittleEndian(buffer);
+            if (actual != expectedIds[i])
+            {
+                throw new InvalidDataException("Exact flat checkpoint ID file payload does not match the compact snapshot.");
+            }
+        }
+    }
+
+    private static float[] ReadVectorsFile(
+        string path,
+        int expectedDimension,
+        VectorMetric metric,
+        int expectedRowCount)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        ValidateVectorsFileHeader(stream, expectedDimension, metric, expectedRowCount);
+
+        int valueCount = checked(expectedRowCount * expectedDimension);
+        var vectors = new float[valueCount];
+        Span<byte> buffer = stackalloc byte[sizeof(float)];
+        for (int i = 0; i < vectors.Length; i++)
+        {
+            stream.ReadExactly(buffer);
+            vectors[i] = BitConverter.Int32BitsToSingle(BinaryPrimitives.ReadInt32LittleEndian(buffer));
+        }
+
+        return vectors;
+    }
+
+    private static void ValidateVectorsFileMatches(
+        string path,
+        int expectedDimension,
+        VectorMetric metric,
+        int expectedRowCount,
+        ReadOnlySpan<float> expectedVectors)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        ValidateVectorsFileHeader(stream, expectedDimension, metric, expectedRowCount);
+
+        Span<byte> buffer = stackalloc byte[sizeof(float)];
+        for (int i = 0; i < expectedVectors.Length; i++)
+        {
+            stream.ReadExactly(buffer);
+            int actualBits = BinaryPrimitives.ReadInt32LittleEndian(buffer);
+            if (actualBits != BitConverter.SingleToInt32Bits(expectedVectors[i]))
+            {
+                throw new InvalidDataException("Exact flat checkpoint vector file payload does not match the compact snapshot.");
+            }
+        }
+    }
+
+    private static void ValidateIdsFileHeader(FileStream stream, int expectedRowCount)
+    {
         if (stream.Length < IdsHeaderLength)
         {
             throw new InvalidDataException("Exact flat index ID file is shorter than the pinned header length.");
@@ -657,25 +860,14 @@ internal static class ExactFlatIndexStorage
         {
             throw new InvalidDataException("Exact flat index ID file payload length is invalid.");
         }
-
-        var ids = new ulong[expectedRowCount];
-        Span<byte> buffer = stackalloc byte[sizeof(ulong)];
-        for (int i = 0; i < ids.Length; i++)
-        {
-            stream.ReadExactly(buffer);
-            ids[i] = BinaryPrimitives.ReadUInt64LittleEndian(buffer);
-        }
-
-        return ids;
     }
 
-    private static float[] ReadVectorsFile(
-        string path,
+    private static void ValidateVectorsFileHeader(
+        FileStream stream,
         int expectedDimension,
         VectorMetric metric,
         int expectedRowCount)
     {
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
         if (stream.Length < VectorsHeaderLength)
         {
             throw new InvalidDataException("Exact flat index vector file is shorter than the pinned header length.");
@@ -735,16 +927,6 @@ internal static class ExactFlatIndexStorage
         {
             throw new InvalidDataException("Exact flat index vector file payload length is invalid.");
         }
-
-        var vectors = new float[valueCount];
-        Span<byte> buffer = stackalloc byte[sizeof(float)];
-        for (int i = 0; i < vectors.Length; i++)
-        {
-            stream.ReadExactly(buffer);
-            vectors[i] = BitConverter.Int32BitsToSingle(BinaryPrimitives.ReadInt32LittleEndian(buffer));
-        }
-
-        return vectors;
     }
 
     private static void ValidateBinaryVersion(ReadOnlySpan<byte> versionBytes, string artifactName)

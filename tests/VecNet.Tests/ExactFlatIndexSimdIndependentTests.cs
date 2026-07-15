@@ -11,10 +11,21 @@ public sealed class ExactFlatIndexSimdIndependentTests
     {
         var publicConstructors = typeof(ExactFlatIndex).GetConstructors();
 
-        var constructor = Assert.Single(publicConstructors);
         Assert.Equal(
-            [typeof(int), typeof(VectorMetric)],
-            constructor.GetParameters().Select(static parameter => parameter.ParameterType));
+            [
+                "Int32,VectorMetric",
+                "Int32,VectorMetric,Int32"
+            ],
+            publicConstructors
+                .Select(static constructor => constructor
+                    .GetParameters()
+                    .Select(static parameter => parameter.ParameterType.Name)
+                    .Aggregate(static (left, right) => left + "," + right))
+                .Order(StringComparer.Ordinal)
+                .ToArray());
+        Assert.DoesNotContain(
+            publicConstructors.SelectMany(static constructor => constructor.GetParameters()),
+            static parameter => parameter.ParameterType == typeof(ExactFlatIndexDistanceMode));
     }
 
     [Fact]

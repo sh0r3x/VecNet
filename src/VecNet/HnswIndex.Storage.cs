@@ -27,23 +27,28 @@ internal static class HnswIndexStorage
     internal const int VectorsHeaderLength = 48;
     internal const int LevelsHeaderLength = 32;
     internal const int GraphHeaderLength = 64;
-    internal const int GraphLayerDirectoryEntryLength = 32;
+    internal const int GraphLayerDirectoryEntryLength = 48;
 
     private const int MinM = 2;
     private const int MaxM = 64;
     private const int MaxEf = 4096;
     private const int MaxManifestBytes = 1024 * 1024;
-    private const string CreatedByTask = "VEC-072";
+    private const string CreatedByTask = "VEC-176";
     private const string MetricText = "squared-euclidean";
     private const string BinaryVersionText = "1.0";
+    private const string GraphAdjacencyLayout = "dense-layer0-sparse-upper-v1";
+    private const uint GraphLayerLayoutDense = 0;
+    private const uint GraphLayerLayoutSparse = 1;
 
     private static readonly byte[] IdsMagic = "VNETHI01"u8.ToArray();
     private static readonly byte[] VectorsMagic = "VNETHV01"u8.ToArray();
     private static readonly byte[] LevelsMagic = "VNETHL01"u8.ToArray();
     private static readonly byte[] GraphMagic = "VNETHG01"u8.ToArray();
 
-    internal static void Save(string directoryPath, HnswIndex.HnswStorageSnapshot snapshot)
+    internal static void Save(string directoryPath, HnswIndex index)
     {
+        ArgumentNullException.ThrowIfNull(index);
+
         string directory = PrepareSaveDirectory(directoryPath, out bool createdDirectory);
         string tempSuffix = ".tmp-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
         string idsTempPath = Path.Combine(directory, IdsFileName + tempSuffix);
@@ -54,16 +59,16 @@ internal static class HnswIndexStorage
 
         try
         {
-            WriteIdsFile(idsTempPath, snapshot.Ids);
-            WriteVectorsFile(vectorsTempPath, snapshot.Dimension, snapshot.Ids.Length, snapshot.Vectors);
-            WriteLevelsFile(levelsTempPath, snapshot.Levels);
-            WriteGraphFile(graphTempPath, snapshot);
+            WriteIdsFile(idsTempPath, index.InternalIds);
+            WriteVectorsFile(vectorsTempPath, index.Dimension, index.Count, index.InternalVectors);
+            WriteLevelsFile(levelsTempPath, index.InternalLevels);
+            WriteGraphFile(graphTempPath, index);
 
             var idsMetadata = CreateBinaryFileMetadata(idsTempPath, IdsFileName, IdsMagicText);
             var vectorsMetadata = CreateBinaryFileMetadata(vectorsTempPath, VectorsFileName, VectorsMagicText);
             var levelsMetadata = CreateBinaryFileMetadata(levelsTempPath, LevelsFileName, LevelsMagicText);
             var graphMetadata = CreateBinaryFileMetadata(graphTempPath, GraphFileName, GraphMagicText);
-            WriteManifest(manifestTempPath, snapshot, idsMetadata, vectorsMetadata, levelsMetadata, graphMetadata);
+            WriteManifest(manifestTempPath, index, idsMetadata, vectorsMetadata, levelsMetadata, graphMetadata);
 
             File.Move(idsTempPath, Path.Combine(directory, IdsFileName));
             File.Move(vectorsTempPath, Path.Combine(directory, VectorsFileName));
@@ -144,6 +149,376 @@ internal static class HnswIndexStorage
             levels,
             layers);
         return HnswIndex.HydrateReadOnly(snapshot);
+    }
+
+    internal static void ValidateSavedIndex(string directoryPath, HnswIndex expected)
+    {
+        ArgumentNullException.ThrowIfNull(directoryPath);
+        ArgumentNullException.ThrowIfNull(expected);
+        if (string.IsNullOrWhiteSpace(directoryPath))
+        {
+            throw new ArgumentException("Directory path must not be empty.", nameof(directoryPath));
+        }
+
+        string directory = Path.GetFullPath(directoryPath);
+        if (File.Exists(directory))
+        {
+            throw new IOException("HNSW index path is an existing file, not a directory.");
+        }
+
+        if (!Directory.Exists(directory))
+        {
+            throw new DirectoryNotFoundException($"HNSW index directory was not found: {directoryPath}");
+        }
+
+        string manifestPath = Path.Combine(directory, ManifestFileName);
+        if (!File.Exists(manifestPath))
+        {
+            throw new FileNotFoundException("HNSW index manifest was not found.", manifestPath);
+        }
+
+        Manifest manifest = ReadManifest(manifestPath);
+        ValidateManifestMatchesExpected(manifest, expected);
+
+        string idsPath = ResolveManifestFilePath(directory, manifest.IdsFile.RelativePath, IdsFileName);
+        string vectorsPath = ResolveManifestFilePath(directory, manifest.VectorsFile.RelativePath, VectorsFileName);
+        string levelsPath = ResolveManifestFilePath(directory, manifest.LevelsFile.RelativePath, LevelsFileName);
+        string graphPath = ResolveManifestFilePath(directory, manifest.GraphFile.RelativePath, GraphFileName);
+
+        ValidateFileExistsLengthAndHash(idsPath, manifest.IdsFile, "ID");
+        ValidateFileExistsLengthAndHash(vectorsPath, manifest.VectorsFile, "vector");
+        ValidateFileExistsLengthAndHash(levelsPath, manifest.LevelsFile, "level");
+        ValidateFileExistsLengthAndHash(graphPath, manifest.GraphFile, "graph");
+
+        ValidateIdsFileMatches(idsPath, expected.InternalIds);
+        ValidateVectorsFileMatches(vectorsPath, expected.Dimension, expected.Count, expected.InternalVectors);
+        ValidateLevelsFileMatches(levelsPath, expected.InternalLevels, expected.MaxLayer);
+        ValidateGraphFileMatches(graphPath, manifest, expected);
+    }
+
+    private static void ValidateManifestMatchesExpected(Manifest manifest, HnswIndex expected)
+    {
+        int expectedLayerCount = expected.Count == 0 ? 0 : expected.MaxLayer + 1;
+        if (manifest.Dimension != expected.Dimension ||
+            manifest.VectorCount != expected.Count ||
+            manifest.Options != expected.Options ||
+            manifest.MMax != expected.InternalMMax ||
+            manifest.MMax0 != expected.InternalMMax0 ||
+            Math.Abs(manifest.LevelMultiplier - expected.InternalLevelMultiplier) > 1e-12 ||
+            manifest.EntryPoint != expected.EntryPoint ||
+            manifest.MaxLayer != expected.MaxLayer ||
+            manifest.LayerCount != expectedLayerCount ||
+            manifest.Layer0Stride != expected.InternalMMax0 ||
+            manifest.UpperLayerStride != expected.InternalMMax)
+        {
+            throw new InvalidDataException("HNSW checkpoint manifest does not match the rebuilt base.");
+        }
+    }
+
+    private static void ValidateIdsFileMatches(string path, ReadOnlySpan<ulong> expectedIds)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        ValidateIdsFileHeader(stream, expectedIds.Length);
+
+        Span<byte> buffer = stackalloc byte[sizeof(ulong)];
+        for (int i = 0; i < expectedIds.Length; i++)
+        {
+            stream.ReadExactly(buffer);
+            if (BinaryPrimitives.ReadUInt64LittleEndian(buffer) != expectedIds[i])
+            {
+                throw new InvalidDataException("HNSW checkpoint ID payload does not match the rebuilt base.");
+            }
+        }
+    }
+
+    private static void ValidateVectorsFileMatches(
+        string path,
+        int expectedDimension,
+        int expectedRowCount,
+        ReadOnlySpan<float> expectedVectors)
+    {
+        if (expectedVectors.Length != checked(expectedRowCount * expectedDimension))
+        {
+            throw new InvalidOperationException("HNSW expected vector payload length is invalid.");
+        }
+
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        ValidateVectorsFileHeader(stream, expectedDimension, expectedRowCount);
+
+        Span<byte> buffer = stackalloc byte[sizeof(float)];
+        for (int i = 0; i < expectedVectors.Length; i++)
+        {
+            stream.ReadExactly(buffer);
+            float actual = BitConverter.Int32BitsToSingle(BinaryPrimitives.ReadInt32LittleEndian(buffer));
+            if (BitConverter.SingleToInt32Bits(actual) != BitConverter.SingleToInt32Bits(expectedVectors[i]))
+            {
+                throw new InvalidDataException("HNSW checkpoint vector payload does not match the rebuilt base.");
+            }
+        }
+    }
+
+    private static void ValidateLevelsFileMatches(
+        string path,
+        ReadOnlySpan<int> expectedLevels,
+        int expectedMaxLayer)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        ValidateLevelsFileHeader(stream, expectedLevels.Length);
+
+        Span<byte> buffer = stackalloc byte[sizeof(int)];
+        bool hasMaxLayer = expectedLevels.Length == 0;
+        for (int i = 0; i < expectedLevels.Length; i++)
+        {
+            stream.ReadExactly(buffer);
+            int actual = BinaryPrimitives.ReadInt32LittleEndian(buffer);
+            if (actual != expectedLevels[i] || actual < 0 || actual > expectedMaxLayer)
+            {
+                throw new InvalidDataException("HNSW checkpoint level payload does not match the rebuilt base.");
+            }
+
+            hasMaxLayer |= actual == expectedMaxLayer;
+        }
+
+        if (!hasMaxLayer)
+        {
+            throw new InvalidDataException("HNSW checkpoint levels do not contain the max layer.");
+        }
+    }
+
+    private static void ValidateGraphFileMatches(string path, Manifest manifest, HnswIndex expected)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (stream.Length < GraphHeaderLength)
+        {
+            throw new InvalidDataException("HNSW index graph file is shorter than the pinned header length.");
+        }
+
+        Span<byte> header = stackalloc byte[GraphHeaderLength];
+        stream.ReadExactly(header);
+        if (!header[..8].SequenceEqual(GraphMagic))
+        {
+            throw new InvalidDataException("HNSW index graph file magic is invalid.");
+        }
+
+        ValidateBinaryVersion(header[8..], "graph");
+        RequireHeaderLength(header[12..], GraphHeaderLength, "graph");
+        ulong rowCount = BinaryPrimitives.ReadUInt64LittleEndian(header[16..]);
+        uint layerCount = BinaryPrimitives.ReadUInt32LittleEndian(header[24..]);
+        int entryPoint = BinaryPrimitives.ReadInt32LittleEndian(header[28..]);
+        int maxLayer = BinaryPrimitives.ReadInt32LittleEndian(header[32..]);
+        uint m = BinaryPrimitives.ReadUInt32LittleEndian(header[36..]);
+        uint mMax0 = BinaryPrimitives.ReadUInt32LittleEndian(header[40..]);
+        uint mMax = BinaryPrimitives.ReadUInt32LittleEndian(header[44..]);
+        ulong directoryOffset = BinaryPrimitives.ReadUInt64LittleEndian(header[48..]);
+        ulong reserved = BinaryPrimitives.ReadUInt64LittleEndian(header[56..]);
+        if (rowCount != checked((ulong)manifest.VectorCount) ||
+            layerCount != checked((uint)manifest.LayerCount) ||
+            entryPoint != manifest.EntryPoint ||
+            maxLayer != manifest.MaxLayer ||
+            m != checked((uint)manifest.Options.M) ||
+            mMax0 != checked((uint)manifest.MMax0) ||
+            mMax != checked((uint)manifest.MMax) ||
+            directoryOffset != GraphHeaderLength ||
+            reserved != 0)
+        {
+            throw new InvalidDataException("HNSW index graph file header is inconsistent.");
+        }
+
+        long directoryLength = checked((long)manifest.LayerCount * GraphLayerDirectoryEntryLength);
+        if (stream.Length < GraphHeaderLength + directoryLength)
+        {
+            throw new InvalidDataException("HNSW index graph layer directory is truncated.");
+        }
+
+        var entries = new GraphLayerEntry[manifest.LayerCount];
+        Span<byte> entryBuffer = stackalloc byte[GraphLayerDirectoryEntryLength];
+        for (int layer = 0; layer < manifest.LayerCount; layer++)
+        {
+            stream.ReadExactly(entryBuffer);
+            uint layerNumber = BinaryPrimitives.ReadUInt32LittleEndian(entryBuffer);
+            uint stride = BinaryPrimitives.ReadUInt32LittleEndian(entryBuffer[4..]);
+            uint storedRows = BinaryPrimitives.ReadUInt32LittleEndian(entryBuffer[8..]);
+            uint layout = BinaryPrimitives.ReadUInt32LittleEndian(entryBuffer[12..]);
+            long ordinalsOffset = ReadGraphOffset(entryBuffer[16..]);
+            long countsOffset = ReadGraphOffset(entryBuffer[24..]);
+            long neighborsOffset = ReadGraphOffset(entryBuffer[32..]);
+            ulong entryReserved = BinaryPrimitives.ReadUInt64LittleEndian(entryBuffer[40..]);
+            int expectedStride = layer == 0 ? manifest.MMax0 : manifest.MMax;
+            int expectedStoredRows = layer == 0
+                ? manifest.VectorCount
+                : CountParticipatingRows(expected.InternalLevels, layer);
+            uint expectedLayout = layer == 0 ? GraphLayerLayoutDense : GraphLayerLayoutSparse;
+            if (layerNumber != checked((uint)layer) ||
+                stride != checked((uint)expectedStride) ||
+                storedRows != checked((uint)expectedStoredRows) ||
+                layout != expectedLayout ||
+                (layer == 0 && ordinalsOffset != 0) ||
+                entryReserved != 0)
+            {
+                throw new InvalidDataException("HNSW checkpoint graph layer directory entry is invalid.");
+            }
+
+            entries[layer] = new GraphLayerEntry((int)stride, (int)storedRows, ordinalsOffset, countsOffset, neighborsOffset);
+        }
+
+        ValidateGraphRanges(entries, stream.Length);
+
+        Span<byte> intBuffer = stackalloc byte[sizeof(int)];
+        for (int layer = 0; layer < manifest.LayerCount; layer++)
+        {
+            GraphLayerEntry entry = entries[layer];
+            if (layer > 0)
+            {
+                stream.Position = entry.OrdinalsOffset;
+                for (int ordinal = 0; ordinal < expected.Count; ordinal++)
+                {
+                    if (expected.InternalLevels[ordinal] < layer)
+                    {
+                        continue;
+                    }
+
+                    stream.ReadExactly(intBuffer);
+                    if (BinaryPrimitives.ReadInt32LittleEndian(intBuffer) != ordinal)
+                    {
+                        throw new InvalidDataException("HNSW checkpoint compact graph row ordinal is invalid.");
+                    }
+                }
+            }
+
+            stream.Position = entry.CountsOffset;
+            for (int ordinal = 0; ordinal < expected.Count; ordinal++)
+            {
+                if (layer > 0 && expected.InternalLevels[ordinal] < layer)
+                {
+                    continue;
+                }
+
+                stream.ReadExactly(intBuffer);
+                int actualCount = BinaryPrimitives.ReadInt32LittleEndian(intBuffer);
+                if (actualCount != expected.InternalGetGraphNeighbors(layer, ordinal).Length)
+                {
+                    throw new InvalidDataException("HNSW checkpoint graph neighbor count does not match the rebuilt base.");
+                }
+            }
+
+            stream.Position = entry.NeighborsOffset;
+            for (int ordinal = 0; ordinal < expected.Count; ordinal++)
+            {
+                if (layer > 0 && expected.InternalLevels[ordinal] < layer)
+                {
+                    continue;
+                }
+
+                ReadOnlySpan<int> expectedNeighbors = expected.InternalGetGraphNeighbors(layer, ordinal);
+                for (int i = 0; i < entry.Stride; i++)
+                {
+                    stream.ReadExactly(intBuffer);
+                    int actual = BinaryPrimitives.ReadInt32LittleEndian(intBuffer);
+                    int expectedNeighbor = i < expectedNeighbors.Length ? expectedNeighbors[i] : 0;
+                    if (actual != expectedNeighbor)
+                    {
+                        throw new InvalidDataException("HNSW checkpoint graph neighbor payload does not match the rebuilt base.");
+                    }
+                }
+            }
+        }
+    }
+
+    private static void ValidateIdsFileHeader(FileStream stream, int expectedRowCount)
+    {
+        if (stream.Length < IdsHeaderLength)
+        {
+            throw new InvalidDataException("HNSW index ID file is shorter than the pinned header length.");
+        }
+
+        Span<byte> header = stackalloc byte[IdsHeaderLength];
+        stream.ReadExactly(header);
+        if (!header[..8].SequenceEqual(IdsMagic))
+        {
+            throw new InvalidDataException("HNSW index ID file magic is invalid.");
+        }
+
+        ValidateBinaryVersion(header[8..], "ID");
+        RequireHeaderLength(header[12..], IdsHeaderLength, "ID");
+        ulong rowCount = BinaryPrimitives.ReadUInt64LittleEndian(header[16..]);
+        ulong reserved = BinaryPrimitives.ReadUInt64LittleEndian(header[24..]);
+        if (reserved != 0 || rowCount != checked((ulong)expectedRowCount))
+        {
+            throw new InvalidDataException("HNSW index ID file header is inconsistent.");
+        }
+
+        if (stream.Length != checked(IdsHeaderLength + (long)expectedRowCount * sizeof(ulong)))
+        {
+            throw new InvalidDataException("HNSW index ID file payload length is invalid.");
+        }
+    }
+
+    private static void ValidateVectorsFileHeader(FileStream stream, int expectedDimension, int expectedRowCount)
+    {
+        if (stream.Length < VectorsHeaderLength)
+        {
+            throw new InvalidDataException("HNSW index vector file is shorter than the pinned header length.");
+        }
+
+        Span<byte> header = stackalloc byte[VectorsHeaderLength];
+        stream.ReadExactly(header);
+        if (!header[..8].SequenceEqual(VectorsMagic))
+        {
+            throw new InvalidDataException("HNSW index vector file magic is invalid.");
+        }
+
+        ValidateBinaryVersion(header[8..], "vector");
+        RequireHeaderLength(header[12..], VectorsHeaderLength, "vector");
+        ulong rowCount = BinaryPrimitives.ReadUInt64LittleEndian(header[16..]);
+        uint dimension = BinaryPrimitives.ReadUInt32LittleEndian(header[24..]);
+        uint representation = BinaryPrimitives.ReadUInt32LittleEndian(header[28..]);
+        uint metric = BinaryPrimitives.ReadUInt32LittleEndian(header[32..]);
+        uint normalization = BinaryPrimitives.ReadUInt32LittleEndian(header[36..]);
+        ulong reserved = BinaryPrimitives.ReadUInt64LittleEndian(header[40..]);
+        if (rowCount != checked((ulong)expectedRowCount) ||
+            dimension != checked((uint)expectedDimension) ||
+            representation != 1 ||
+            metric != 1 ||
+            normalization != 0 ||
+            reserved != 0)
+        {
+            throw new InvalidDataException("HNSW index vector file header is inconsistent.");
+        }
+
+        int valueCount = checked(expectedRowCount * expectedDimension);
+        if (stream.Length != checked(VectorsHeaderLength + (long)valueCount * sizeof(float)))
+        {
+            throw new InvalidDataException("HNSW index vector file payload length is invalid.");
+        }
+    }
+
+    private static void ValidateLevelsFileHeader(FileStream stream, int expectedRowCount)
+    {
+        if (stream.Length < LevelsHeaderLength)
+        {
+            throw new InvalidDataException("HNSW index level file is shorter than the pinned header length.");
+        }
+
+        Span<byte> header = stackalloc byte[LevelsHeaderLength];
+        stream.ReadExactly(header);
+        if (!header[..8].SequenceEqual(LevelsMagic))
+        {
+            throw new InvalidDataException("HNSW index level file magic is invalid.");
+        }
+
+        ValidateBinaryVersion(header[8..], "level");
+        RequireHeaderLength(header[12..], LevelsHeaderLength, "level");
+        ulong rowCount = BinaryPrimitives.ReadUInt64LittleEndian(header[16..]);
+        ulong reserved = BinaryPrimitives.ReadUInt64LittleEndian(header[24..]);
+        if (reserved != 0 || rowCount != checked((ulong)expectedRowCount))
+        {
+            throw new InvalidDataException("HNSW index level file header is inconsistent.");
+        }
+
+        if (stream.Length != checked(LevelsHeaderLength + (long)expectedRowCount * sizeof(int)))
+        {
+            throw new InvalidDataException("HNSW index level file payload length is invalid.");
+        }
     }
 
     private static string PrepareSaveDirectory(string directoryPath, out bool createdDirectory)
@@ -247,22 +622,33 @@ internal static class HnswIndexStorage
         }
     }
 
-    private static void WriteGraphFile(string path, HnswIndex.HnswStorageSnapshot snapshot)
+    private static void WriteGraphFile(string path, HnswIndex index)
     {
-        int rowCount = snapshot.Ids.Length;
-        int layerCount = rowCount == 0 ? 0 : snapshot.MaxLayer + 1;
+        int rowCount = index.Count;
+        int layerCount = rowCount == 0 ? 0 : index.MaxLayer + 1;
+        ReadOnlySpan<int> levels = index.InternalLevels;
         long directoryOffset = GraphHeaderLength;
         long payloadOffset = checked(directoryOffset + (long)layerCount * GraphLayerDirectoryEntryLength);
+        var ordinalOffsets = new long[layerCount];
         var countOffsets = new long[layerCount];
         var neighborOffsets = new long[layerCount];
+        var storedRowsByLayer = new int[layerCount];
 
         for (int layer = 0; layer < layerCount; layer++)
         {
-            HnswIndex.HnswLayerSnapshot source = snapshot.Layers[layer];
+            int stride = index.InternalGetGraphStride(layer);
+            int storedRows = layer == 0 ? rowCount : CountParticipatingRows(levels, layer);
+            storedRowsByLayer[layer] = storedRows;
+            if (layer > 0)
+            {
+                ordinalOffsets[layer] = payloadOffset;
+                payloadOffset = checked(payloadOffset + (long)storedRows * sizeof(int));
+            }
+
             countOffsets[layer] = payloadOffset;
-            payloadOffset = checked(payloadOffset + (long)rowCount * sizeof(int));
+            payloadOffset = checked(payloadOffset + (long)storedRows * sizeof(int));
             neighborOffsets[layer] = payloadOffset;
-            payloadOffset = checked(payloadOffset + (long)rowCount * source.Stride * sizeof(int));
+            payloadOffset = checked(payloadOffset + (long)storedRows * stride * sizeof(int));
         }
 
         using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
@@ -273,11 +659,11 @@ internal static class HnswIndexStorage
         BinaryPrimitives.WriteUInt32LittleEndian(header[12..], GraphHeaderLength);
         BinaryPrimitives.WriteUInt64LittleEndian(header[16..], checked((ulong)rowCount));
         BinaryPrimitives.WriteUInt32LittleEndian(header[24..], checked((uint)layerCount));
-        BinaryPrimitives.WriteInt32LittleEndian(header[28..], snapshot.EntryPoint);
-        BinaryPrimitives.WriteInt32LittleEndian(header[32..], snapshot.MaxLayer);
-        BinaryPrimitives.WriteUInt32LittleEndian(header[36..], checked((uint)snapshot.Options.M));
-        BinaryPrimitives.WriteUInt32LittleEndian(header[40..], checked((uint)snapshot.MMax0));
-        BinaryPrimitives.WriteUInt32LittleEndian(header[44..], checked((uint)snapshot.MMax));
+        BinaryPrimitives.WriteInt32LittleEndian(header[28..], index.EntryPoint);
+        BinaryPrimitives.WriteInt32LittleEndian(header[32..], index.MaxLayer);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[36..], checked((uint)index.Options.M));
+        BinaryPrimitives.WriteUInt32LittleEndian(header[40..], checked((uint)index.InternalMMax0));
+        BinaryPrimitives.WriteUInt32LittleEndian(header[44..], checked((uint)index.InternalMMax));
         BinaryPrimitives.WriteUInt64LittleEndian(header[48..], checked((ulong)directoryOffset));
         BinaryPrimitives.WriteUInt64LittleEndian(header[56..], 0);
         stream.Write(header);
@@ -286,27 +672,67 @@ internal static class HnswIndexStorage
         for (int layer = 0; layer < layerCount; layer++)
         {
             entry.Clear();
+            int stride = index.InternalGetGraphStride(layer);
             BinaryPrimitives.WriteUInt32LittleEndian(entry, checked((uint)layer));
-            BinaryPrimitives.WriteUInt32LittleEndian(entry[4..], checked((uint)snapshot.Layers[layer].Stride));
-            BinaryPrimitives.WriteUInt64LittleEndian(entry[8..], checked((ulong)countOffsets[layer]));
-            BinaryPrimitives.WriteUInt64LittleEndian(entry[16..], checked((ulong)neighborOffsets[layer]));
-            BinaryPrimitives.WriteUInt64LittleEndian(entry[24..], 0);
+            BinaryPrimitives.WriteUInt32LittleEndian(entry[4..], checked((uint)stride));
+            BinaryPrimitives.WriteUInt32LittleEndian(entry[8..], checked((uint)storedRowsByLayer[layer]));
+            BinaryPrimitives.WriteUInt32LittleEndian(entry[12..], layer == 0 ? GraphLayerLayoutDense : GraphLayerLayoutSparse);
+            BinaryPrimitives.WriteUInt64LittleEndian(entry[16..], checked((ulong)ordinalOffsets[layer]));
+            BinaryPrimitives.WriteUInt64LittleEndian(entry[24..], checked((ulong)countOffsets[layer]));
+            BinaryPrimitives.WriteUInt64LittleEndian(entry[32..], checked((ulong)neighborOffsets[layer]));
+            BinaryPrimitives.WriteUInt64LittleEndian(entry[40..], 0);
             stream.Write(entry);
         }
 
         Span<byte> buffer = stackalloc byte[sizeof(int)];
         for (int layer = 0; layer < layerCount; layer++)
         {
-            foreach (int count in snapshot.Layers[layer].Counts)
+            int stride = index.InternalGetGraphStride(layer);
+            if (layer > 0)
             {
-                BinaryPrimitives.WriteInt32LittleEndian(buffer, count);
+                for (int ordinal = 0; ordinal < rowCount; ordinal++)
+                {
+                    if (levels[ordinal] < layer)
+                    {
+                        continue;
+                    }
+
+                    BinaryPrimitives.WriteInt32LittleEndian(buffer, ordinal);
+                    stream.Write(buffer);
+                }
+            }
+
+            for (int ordinal = 0; ordinal < rowCount; ordinal++)
+            {
+                if (layer > 0 && levels[ordinal] < layer)
+                {
+                    continue;
+                }
+
+                ReadOnlySpan<int> neighbors = index.InternalGetGraphNeighbors(layer, ordinal);
+                BinaryPrimitives.WriteInt32LittleEndian(buffer, neighbors.Length);
                 stream.Write(buffer);
             }
 
-            foreach (int neighbor in snapshot.Layers[layer].Neighbors)
+            for (int ordinal = 0; ordinal < rowCount; ordinal++)
             {
-                BinaryPrimitives.WriteInt32LittleEndian(buffer, neighbor);
-                stream.Write(buffer);
+                if (layer > 0 && levels[ordinal] < layer)
+                {
+                    continue;
+                }
+
+                ReadOnlySpan<int> neighbors = index.InternalGetGraphNeighbors(layer, ordinal);
+                for (int i = 0; i < neighbors.Length; i++)
+                {
+                    BinaryPrimitives.WriteInt32LittleEndian(buffer, neighbors[i]);
+                    stream.Write(buffer);
+                }
+
+                BinaryPrimitives.WriteInt32LittleEndian(buffer, 0);
+                for (int i = neighbors.Length; i < stride; i++)
+                {
+                    stream.Write(buffer);
+                }
             }
         }
     }
@@ -319,7 +745,7 @@ internal static class HnswIndexStorage
 
     private static void WriteManifest(
         string path,
-        HnswIndex.HnswStorageSnapshot snapshot,
+        HnswIndex index,
         BinaryFileMetadata idsFile,
         BinaryFileMetadata vectorsFile,
         BinaryFileMetadata levelsFile,
@@ -327,7 +753,7 @@ internal static class HnswIndexStorage
     {
         using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = false });
-        int layerCount = snapshot.Ids.Length == 0 ? 0 : snapshot.MaxLayer + 1;
+        int layerCount = index.Count == 0 ? 0 : index.MaxLayer + 1;
 
         writer.WriteStartObject();
         writer.WriteString("schemaName", ManifestSchemaName);
@@ -344,9 +770,9 @@ internal static class HnswIndexStorage
         writer.WriteEndObject();
 
         writer.WriteStartObject("index");
-        writer.WriteNumber("dimension", snapshot.Dimension);
+        writer.WriteNumber("dimension", index.Dimension);
         writer.WriteString("metric", MetricText);
-        writer.WriteNumber("vectorCount", snapshot.Ids.Length);
+        writer.WriteNumber("vectorCount", index.Count);
         writer.WriteString("idType", "uint64");
         writer.WriteString("ordinalType", "int32");
         writer.WriteString("vectorElementType", "float32");
@@ -356,25 +782,25 @@ internal static class HnswIndexStorage
 
         writer.WriteStartObject("hnsw");
         writer.WriteStartObject("options");
-        writer.WriteNumber("m", snapshot.Options.M);
-        writer.WriteNumber("efConstruction", snapshot.Options.EfConstruction);
-        writer.WriteNumber("efSearch", snapshot.Options.EfSearch);
-        writer.WriteNumber("randomSeed", snapshot.Options.RandomSeed);
+        writer.WriteNumber("m", index.Options.M);
+        writer.WriteNumber("efConstruction", index.Options.EfConstruction);
+        writer.WriteNumber("efSearch", index.Options.EfSearch);
+        writer.WriteNumber("randomSeed", index.Options.RandomSeed);
         writer.WriteEndObject();
         writer.WriteStartObject("derivedParameters");
-        writer.WriteNumber("mMax", snapshot.MMax);
-        writer.WriteNumber("mMax0", snapshot.MMax0);
-        writer.WriteNumber("levelMultiplier", snapshot.LevelMultiplier);
+        writer.WriteNumber("mMax", index.InternalMMax);
+        writer.WriteNumber("mMax0", index.InternalMMax0);
+        writer.WriteNumber("levelMultiplier", index.InternalLevelMultiplier);
         writer.WriteBoolean("extendCandidates", false);
         writer.WriteBoolean("keepPrunedConnections", false);
         writer.WriteEndObject();
         writer.WriteStartObject("graph");
-        writer.WriteNumber("entryPoint", snapshot.EntryPoint);
-        writer.WriteNumber("maxLayer", snapshot.MaxLayer);
+        writer.WriteNumber("entryPoint", index.EntryPoint);
+        writer.WriteNumber("maxLayer", index.MaxLayer);
         writer.WriteNumber("layerCount", layerCount);
-        writer.WriteNumber("layer0Stride", snapshot.MMax0);
-        writer.WriteNumber("upperLayerStride", snapshot.MMax);
-        writer.WriteString("adjacencyLayout", "fixed-stride-counts-and-neighbors");
+        writer.WriteNumber("layer0Stride", index.InternalMMax0);
+        writer.WriteNumber("upperLayerStride", index.InternalMMax);
+        writer.WriteString("adjacencyLayout", GraphAdjacencyLayout);
         writer.WriteString("levelGenerator", "SplitMix64.VEC-034");
         writer.WriteString("insertionOrder", "ordinal-row-order");
         writer.WriteEndObject();
@@ -490,7 +916,7 @@ internal static class HnswIndexStorage
             int layerCount = GetRequiredInt32(graph, "layerCount", minimumValue: 0);
             int layer0Stride = GetRequiredInt32(graph, "layer0Stride", minimumValue: 1);
             int upperLayerStride = GetRequiredInt32(graph, "upperLayerStride", minimumValue: 1);
-            RequireString(graph, "adjacencyLayout", "fixed-stride-counts-and-neighbors");
+            RequireString(graph, "adjacencyLayout", GraphAdjacencyLayout);
             RequireString(graph, "levelGenerator", "SplitMix64.VEC-034");
             RequireString(graph, "insertionOrder", "ordinal-row-order");
             ValidateGraphHeaderValues(vectorCount, entryPoint, maxLayer, layerCount, layer0Stride, upperLayerStride, mMax0, mMax);
@@ -886,27 +1312,49 @@ internal static class HnswIndexStorage
             stream.ReadExactly(entryBuffer);
             uint layerNumber = BinaryPrimitives.ReadUInt32LittleEndian(entryBuffer);
             uint stride = BinaryPrimitives.ReadUInt32LittleEndian(entryBuffer[4..]);
-            long countsOffset = ReadGraphOffset(entryBuffer[8..]);
-            long neighborsOffset = ReadGraphOffset(entryBuffer[16..]);
-            ulong entryReserved = BinaryPrimitives.ReadUInt64LittleEndian(entryBuffer[24..]);
+            uint storedRows = BinaryPrimitives.ReadUInt32LittleEndian(entryBuffer[8..]);
+            uint layout = BinaryPrimitives.ReadUInt32LittleEndian(entryBuffer[12..]);
+            long ordinalsOffset = ReadGraphOffset(entryBuffer[16..]);
+            long countsOffset = ReadGraphOffset(entryBuffer[24..]);
+            long neighborsOffset = ReadGraphOffset(entryBuffer[32..]);
+            ulong entryReserved = BinaryPrimitives.ReadUInt64LittleEndian(entryBuffer[40..]);
             int expectedStride = layer == 0 ? manifest.MMax0 : manifest.MMax;
-            if (layerNumber != checked((uint)layer) || stride != checked((uint)expectedStride) || entryReserved != 0)
+            uint expectedLayout = layer == 0 ? GraphLayerLayoutDense : GraphLayerLayoutSparse;
+            uint expectedRows = layer == 0 ? checked((uint)manifest.VectorCount) : checked((uint)manifest.VectorCount);
+            if (layerNumber != checked((uint)layer) ||
+                stride != checked((uint)expectedStride) ||
+                layout != expectedLayout ||
+                storedRows > expectedRows ||
+                (layer == 0 && storedRows != expectedRows) ||
+                (layer == 0 && ordinalsOffset != 0) ||
+                entryReserved != 0)
             {
                 throw new InvalidDataException("HNSW index graph layer directory entry is invalid.");
             }
 
-            entries[layer] = new GraphLayerEntry((int)stride, countsOffset, neighborsOffset);
+            entries[layer] = new GraphLayerEntry((int)stride, (int)storedRows, ordinalsOffset, countsOffset, neighborsOffset);
         }
 
-        ValidateGraphRanges(entries, manifest.VectorCount, stream.Length);
+        ValidateGraphRanges(entries, stream.Length);
 
         var layers = new HnswIndex.HnswLayerSnapshot[manifest.LayerCount];
         Span<byte> intBuffer = stackalloc byte[sizeof(int)];
         for (int layer = 0; layer < manifest.LayerCount; layer++)
         {
             GraphLayerEntry entry = entries[layer];
-            var counts = new int[manifest.VectorCount];
-            var neighbors = new int[checked(manifest.VectorCount * entry.Stride)];
+            int[] rowOrdinals = layer == 0 ? [] : new int[entry.StoredRows];
+            var counts = new int[entry.StoredRows];
+            var neighbors = new int[checked(entry.StoredRows * entry.Stride)];
+
+            if (layer > 0)
+            {
+                stream.Position = entry.OrdinalsOffset;
+                for (int i = 0; i < rowOrdinals.Length; i++)
+                {
+                    stream.ReadExactly(intBuffer);
+                    rowOrdinals[i] = BinaryPrimitives.ReadInt32LittleEndian(intBuffer);
+                }
+            }
 
             stream.Position = entry.CountsOffset;
             for (int i = 0; i < counts.Length; i++)
@@ -922,13 +1370,13 @@ internal static class HnswIndexStorage
                 neighbors[i] = BinaryPrimitives.ReadInt32LittleEndian(intBuffer);
             }
 
-            layers[layer] = new HnswIndex.HnswLayerSnapshot(entry.Stride, counts, neighbors);
+            layers[layer] = new HnswIndex.HnswLayerSnapshot(entry.Stride, rowOrdinals, counts, neighbors);
         }
 
         return layers;
     }
 
-    private static void ValidateGraphRanges(GraphLayerEntry[] entries, int rowCount, long fileLength)
+    private static void ValidateGraphRanges(GraphLayerEntry[] entries, long fileLength)
     {
         var ranges = new List<(long Start, long End)>(1 + entries.Length * 2)
         {
@@ -937,8 +1385,14 @@ internal static class HnswIndexStorage
 
         foreach (GraphLayerEntry entry in entries)
         {
-            long countsLength = checked((long)rowCount * sizeof(int));
-            long neighborsLength = checked((long)rowCount * entry.Stride * sizeof(int));
+            if (entry.OrdinalsOffset != 0)
+            {
+                long ordinalsLength = checked((long)entry.StoredRows * sizeof(int));
+                ranges.Add((entry.OrdinalsOffset, checked(entry.OrdinalsOffset + ordinalsLength)));
+            }
+
+            long countsLength = checked((long)entry.StoredRows * sizeof(int));
+            long neighborsLength = checked((long)entry.StoredRows * entry.Stride * sizeof(int));
             ranges.Add((entry.CountsOffset, checked(entry.CountsOffset + countsLength)));
             ranges.Add((entry.NeighborsOffset, checked(entry.NeighborsOffset + neighborsLength)));
         }
@@ -1015,33 +1469,36 @@ internal static class HnswIndexStorage
         {
             HnswIndex.HnswLayerSnapshot graphLayer = layers[layer];
             int expectedStride = layer == 0 ? manifest.MMax0 : manifest.MMax;
+            int expectedRows = layer == 0 ? manifest.VectorCount : CountParticipatingRows(levels, layer);
             if (graphLayer.Stride != expectedStride ||
-                graphLayer.Counts.Length != manifest.VectorCount ||
-                graphLayer.Neighbors.Length != checked(manifest.VectorCount * expectedStride))
+                graphLayer.Counts.Length != expectedRows ||
+                graphLayer.Neighbors.Length != checked(expectedRows * expectedStride) ||
+                (layer == 0 && graphLayer.RowOrdinals.Length != 0) ||
+                (layer > 0 && graphLayer.RowOrdinals.Length != expectedRows))
             {
                 throw new InvalidDataException("HNSW index graph layer shape is invalid.");
             }
 
-            for (int ordinal = 0; ordinal < manifest.VectorCount; ordinal++)
+            int previousOrdinal = -1;
+            for (int row = 0; row < expectedRows; row++)
             {
-                int count = graphLayer.Counts[ordinal];
+                int ordinal = layer == 0 ? row : graphLayer.RowOrdinals[row];
+                if ((uint)ordinal >= (uint)manifest.VectorCount ||
+                    ordinal <= previousOrdinal ||
+                    levels[ordinal] < layer)
+                {
+                    throw new InvalidDataException("HNSW index compact graph row ordinal is invalid.");
+                }
+
+                previousOrdinal = ordinal;
+                int count = graphLayer.Counts[row];
                 if (count < 0 || count > graphLayer.Stride)
                 {
                     throw new InvalidDataException("HNSW index graph neighbor count is invalid.");
                 }
 
-                if (layer > levels[ordinal])
-                {
-                    if (count != 0)
-                    {
-                        throw new InvalidDataException("HNSW index graph references a layer above an ordinal level.");
-                    }
-
-                    continue;
-                }
-
                 var seenNeighbors = new HashSet<int>();
-                int offset = ordinal * graphLayer.Stride;
+                int offset = row * graphLayer.Stride;
                 for (int i = 0; i < count; i++)
                 {
                     int neighbor = graphLayer.Neighbors[offset + i];
@@ -1055,6 +1512,20 @@ internal static class HnswIndexStorage
                 }
             }
         }
+    }
+
+    private static int CountParticipatingRows(ReadOnlySpan<int> levels, int layer)
+    {
+        int count = 0;
+        foreach (int level in levels)
+        {
+            if (level >= layer)
+            {
+                count++;
+            }
+        }
+
+        return count;
     }
 
     private static void ValidateBinaryVersion(ReadOnlySpan<byte> versionBytes, string artifactName)
@@ -1282,5 +1753,10 @@ internal static class HnswIndexStorage
         string BinaryMagic,
         string BinaryVersion);
 
-    private readonly record struct GraphLayerEntry(int Stride, long CountsOffset, long NeighborsOffset);
+    private readonly record struct GraphLayerEntry(
+        int Stride,
+        int StoredRows,
+        long OrdinalsOffset,
+        long CountsOffset,
+        long NeighborsOffset);
 }

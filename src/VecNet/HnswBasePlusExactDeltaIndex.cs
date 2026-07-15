@@ -161,28 +161,24 @@ internal sealed class HnswBasePlusExactDeltaIndex
         HnswBasePlusExactDeltaCheckpointPhaseDiagnostics openValidationDiagnostics = HnswBasePlusExactDeltaCheckpointPhaseDiagnostics.NotExecuted;
         HnswBasePlusExactDeltaCheckpointPhaseDiagnostics publicationDiagnostics = HnswBasePlusExactDeltaCheckpointPhaseDiagnostics.NotExecuted;
 
-        (ulong[] liveIds, float[] liveVectors) = MeasurePhase(
-            () => CreateLiveSnapshot(),
+        int liveVectorCount = MeasurePhase(
+            ValidateLiveRowsForCheckpoint,
             ref liveSnapshotDiagnostics);
         HnswIndex rebuilt = MeasurePhase(
-            () => BuildBaseIndex(liveIds, liveVectors),
+            () => BuildBaseIndexFromLiveRows(liveVectorCount),
             ref rebuildBuildDiagnostics);
         MeasurePhase(
             () => rebuilt.Save(directoryPath),
             ref saveDiagnostics);
 
         MeasurePhase(
-            () =>
-            {
-                HnswIndex validated = HnswIndex.OpenReadOnly(directoryPath);
-                ValidateCheckpointOutput(rebuilt, validated, liveIds, liveVectors);
-            },
+            () => HnswIndexStorage.ValidateSavedIndex(directoryPath, rebuilt),
             ref openValidationDiagnostics);
 
         MeasurePhase(
             () =>
             {
-                PublishRebuiltBase(rebuilt, liveIds);
+                PublishRebuiltBase(rebuilt);
                 _generation++;
             },
             ref publicationDiagnostics);
@@ -621,15 +617,40 @@ internal sealed class HnswBasePlusExactDeltaIndex
             foldedBaseTombstoneCount,
             foldedDeltaTombstoneCount);
 
-    private (ulong[] Ids, float[] Vectors) CreateLiveSnapshot()
+    private int ValidateLiveRowsForCheckpoint()
     {
-        int liveCount = LiveVectorCount;
-        var ids = new ulong[liveCount];
-        var vectors = new float[checked(liveCount * Dimension)];
+        int liveCount = 0;
+        ReadOnlySpan<ulong> baseIds = _baseIndex.InternalIds;
+        for (int sourceOrdinal = 0; sourceOrdinal < _basePhysicalVectorCount; sourceOrdinal++)
+        {
+            if (!_baseTombstoneIds.Contains(baseIds[sourceOrdinal]))
+            {
+                liveCount++;
+            }
+        }
+
+        for (int sourceOrdinal = 0; sourceOrdinal < _deltaPhysicalVectorCount; sourceOrdinal++)
+        {
+            if (!_deltaTombstoneIds.Contains(_deltaIds[sourceOrdinal]))
+            {
+                liveCount++;
+            }
+        }
+
+        if (liveCount != LiveVectorCount)
+        {
+            throw new InvalidOperationException("HNSW base-plus-exact-delta live row accounting is inconsistent.");
+        }
+
+        return liveCount;
+    }
+
+    private HnswIndex BuildBaseIndexFromLiveRows(int liveCount)
+    {
+        var rebuilt = new HnswIndex(Dimension, Metric, Options, liveCount);
         ReadOnlySpan<ulong> baseIds = _baseIndex.InternalIds;
         ReadOnlySpan<float> baseVectors = _baseIndex.InternalVectors;
 
-        int destinationOrdinal = 0;
         for (int sourceOrdinal = 0; sourceOrdinal < _basePhysicalVectorCount; sourceOrdinal++)
         {
             ulong id = baseIds[sourceOrdinal];
@@ -638,11 +659,7 @@ internal sealed class HnswBasePlusExactDeltaIndex
                 continue;
             }
 
-            ids[destinationOrdinal] = id;
-            baseVectors
-                .Slice(sourceOrdinal * Dimension, Dimension)
-                .CopyTo(vectors.AsSpan(destinationOrdinal * Dimension, Dimension));
-            destinationOrdinal++;
+            rebuilt.Add(id, baseVectors.Slice(sourceOrdinal * Dimension, Dimension));
         }
 
         for (int sourceOrdinal = 0; sourceOrdinal < _deltaPhysicalVectorCount; sourceOrdinal++)
@@ -653,53 +670,23 @@ internal sealed class HnswBasePlusExactDeltaIndex
                 continue;
             }
 
-            ids[destinationOrdinal] = id;
-            _deltaVectors
-                .AsSpan(sourceOrdinal * Dimension, Dimension)
-                .CopyTo(vectors.AsSpan(destinationOrdinal * Dimension, Dimension));
-            destinationOrdinal++;
+            rebuilt.Add(id, _deltaVectors.AsSpan(sourceOrdinal * Dimension, Dimension));
         }
 
-        return (ids, vectors);
-    }
-
-    private HnswIndex BuildBaseIndex(ReadOnlySpan<ulong> ids, ReadOnlySpan<float> vectors)
-    {
-        var rebuilt = new HnswIndex(Dimension, Metric, Options, ids.Length);
-        for (int ordinal = 0; ordinal < ids.Length; ordinal++)
+        if (rebuilt.Count != liveCount)
         {
-            rebuilt.Add(ids[ordinal], vectors.Slice(ordinal * Dimension, Dimension));
+            throw new InvalidOperationException("HNSW checkpoint rebuilt base count is inconsistent.");
         }
 
         return rebuilt;
     }
 
-    private void ValidateCheckpointOutput(
-        HnswIndex rebuilt,
-        HnswIndex validated,
-        ReadOnlySpan<ulong> expectedIds,
-        ReadOnlySpan<float> expectedVectors)
-    {
-        if (validated.Dimension != Dimension ||
-            validated.Metric != Metric ||
-            validated.Options != Options ||
-            validated.Count != expectedIds.Length ||
-            rebuilt.Count != expectedIds.Length ||
-            !validated.InternalIds.SequenceEqual(expectedIds) ||
-            !validated.InternalVectors.SequenceEqual(expectedVectors) ||
-            !rebuilt.InternalIds.SequenceEqual(expectedIds) ||
-            !rebuilt.InternalVectors.SequenceEqual(expectedVectors))
-        {
-            throw new InvalidDataException("HNSW base-plus-exact-delta checkpoint output failed read-only validation.");
-        }
-    }
-
-    private void PublishRebuiltBase(HnswIndex rebuilt, ReadOnlySpan<ulong> liveIds)
+    private void PublishRebuiltBase(HnswIndex rebuilt)
     {
         _baseIndex = rebuilt;
         _basePhysicalVectorCount = rebuilt.Count;
         _baseIds.Clear();
-        foreach (ulong id in liveIds)
+        foreach (ulong id in rebuilt.InternalIds)
         {
             _baseIds.Add(id);
         }

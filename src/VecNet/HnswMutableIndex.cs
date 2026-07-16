@@ -1,13 +1,13 @@
 namespace VecNet;
 
 /// <summary>
-/// Preview update-oriented approximate HNSW index for squared Euclidean distance.
+/// Update-oriented approximate HNSW index for squared Euclidean distance.
 /// </summary>
 /// <remarks>
 /// This wrapper searches an immutable HNSW base plus exact in-memory delta rows. Deletes are
 /// tombstones over base or delta external IDs. <see cref="Checkpoint"/> rebuilds the live view into
 /// a new immutable HNSW snapshot and publishes that rebuilt base in the current instance after
-/// validation. This preview does not mutate the HNSW graph in place, reopen a durable mutable
+/// validation. This API does not mutate the HNSW graph in place, reopen a durable mutable
 /// overlay, expose checkpoint diagnostics, support upsert/replacement/repair, or support
 /// concurrent mutation/search or concurrent checkpoint/search.
 /// </remarks>
@@ -16,7 +16,7 @@ public sealed class HnswMutableIndex
     private readonly HnswBasePlusExactDeltaIndex _inner;
 
     /// <summary>
-    /// Initializes a preview mutable HNSW wrapper over an existing immutable squared-L2 HNSW base.
+    /// Initializes a mutable HNSW wrapper over an existing immutable squared-L2 HNSW base.
     /// </summary>
     /// <param name="baseIndex">
     /// The immutable HNSW base generation. The base must not be modified after constructing this
@@ -34,12 +34,12 @@ public sealed class HnswMutableIndex
     public int Dimension => _inner.Dimension;
 
     /// <summary>
-    /// Gets the supported metric. Mutable HNSW preview supports only squared Euclidean distance.
+    /// Gets the supported metric. Mutable HNSW supports only squared Euclidean distance.
     /// </summary>
     public VectorMetric Metric => _inner.Metric;
 
     /// <summary>
-    /// Gets the preview HNSW options used for the immutable base and checkpoint rebuilds.
+    /// Gets the HNSW options used for the immutable base and checkpoint rebuilds.
     /// </summary>
     public HnswIndexOptions Options => _inner.Options;
 
@@ -174,7 +174,7 @@ public sealed class HnswMutableIndex
     /// diagnostic timing/allocation phases are not part of this public API.
     /// </remarks>
     /// <param name="directoryPath">The new or empty output directory path.</param>
-    /// <returns>A preview checkpoint result.</returns>
+    /// <returns>A checkpoint result.</returns>
     public HnswMutableCheckpointResult Checkpoint(string directoryPath) =>
         FromInternal(_inner.Checkpoint(directoryPath));
 

@@ -1,7 +1,7 @@
 namespace VecNet;
 
 /// <summary>
-/// Caller-owned reusable workspace for preview mutable HNSW search.
+/// Caller-owned reusable workspace for mutable HNSW search.
 /// </summary>
 /// <remarks>
 /// A workspace stores transient HNSW and exact-delta search state for one search at a time. It is

@@ -18,7 +18,7 @@ reusable exact candidate sets, exact count inspection, exact mutation/
 checkpoint workflows, squared-L2 HNSW surfaces, and the separate optional
 exact-flat VectorData adapter.
 
-## Current Support
+## Supported 1.0.0 Feature List
 
 - Target framework: `net10.0`.
 - The core `VecNet` package is dependency-free and ships managed `lib/net10.0`
@@ -53,7 +53,7 @@ exact-flat VectorData adapter.
   records, VectorData CRUD/search, and expression filters evaluated in memory
   and converted to VecNet allowlists.
 
-## Limitations And Unsupported Claims
+## Unsupported 1.0.0 Features And Claims
 
 - VecNet stores vector IDs and vectors, not application records or payloads.
 - Application metadata filtering, authorization, transactions, backups, and
@@ -91,10 +91,11 @@ exact-flat VectorData adapter.
 - Compressed indexes, SSD-scale indexes, richer core key mapping, broader
   integration adapters, and release-grade operational tooling are planned
   work, not supported public package capabilities in the current package line.
-- This README does not make public HNSW recall, latency, throughput,
-  allocation, memory, capacity, storage-size, comparison, stable file-format,
-  stable API, production-readiness, platform support, NativeAOT, or trimming
-  claims.
+- `1.0.0` is the stable API compatibility line for the admitted public API
+  surfaces described here. This README does not make public HNSW recall,
+  latency, throughput, allocation, memory, capacity, storage-size, comparison,
+  stable file-format, production-readiness, platform support, NativeAOT, or
+  trimming claims.
 
 ## Install And Package Posture
 

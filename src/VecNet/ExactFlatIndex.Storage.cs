@@ -100,7 +100,7 @@ public sealed partial class ExactFlatIndex
     /// Opens a durable exact-flat index directory as an immutable read-only index.
     /// </summary>
     /// <remarks>
-    /// Open validates the manifest and binary files using broad preview failure categories such as
+    /// Open validates the manifest and binary files using broad failure categories such as
     /// invalid data, missing files, unsupported format, or I/O errors. It does not establish a
     /// stable complete exception taxonomy and does not open the index for mutation.
     /// </remarks>

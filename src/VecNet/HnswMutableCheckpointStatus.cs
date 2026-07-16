@@ -1,7 +1,7 @@
 namespace VecNet;
 
 /// <summary>
-/// Preview status returned by <see cref="HnswMutableIndex.Checkpoint"/>.
+/// Status returned by <see cref="HnswMutableIndex.Checkpoint"/>.
 /// </summary>
 public enum HnswMutableCheckpointStatus
 {

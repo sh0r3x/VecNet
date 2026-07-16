@@ -1,7 +1,7 @@
 namespace VecNet;
 
 /// <summary>
-/// Broad preview status returned by a status-reporting vector mutation operation.
+/// Broad status returned by a status-reporting vector mutation operation.
 /// </summary>
 /// <remarks>
 /// These values describe supported exact-flat mutation outcomes. They are not a complete stable

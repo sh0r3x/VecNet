@@ -3,18 +3,18 @@ using System.Numerics;
 namespace VecNet;
 
 /// <summary>
-/// Preview approximate HNSW index for squared Euclidean distance.
+/// Approximate HNSW index for squared Euclidean distance.
 /// </summary>
 /// <remarks>
-/// This preview surface supports build ingestion with <see cref="Add"/>, caller-owned workspace
+/// This API supports build ingestion with <see cref="Add"/>, caller-owned workspace
 /// search with <see cref="Search(ReadOnlySpan{float}, Span{SearchResult}, HnswSearchWorkspace)"/>,
-/// caller-owned external-ID allowlist filtering, and preview durable round trips with
+/// caller-owned external-ID allowlist filtering, and durable round trips with
 /// <see cref="Save"/> and <see cref="OpenReadOnly"/>. Read-only searches may overlap only when each
 /// caller uses an independent result buffer and independent workspace. It currently supports only
 /// <see cref="VectorMetric.SquaredEuclidean"/>. Cosine HNSW, inner-product HNSW, stored labels,
 /// durable graph-aware filtering metadata, public ordinal filters, full filter-aware graph
 /// traversal, update/delete, replacement, repair, direct graph mutation, and stable file-format
-/// compatibility are not supported by this preview API.
+/// compatibility are not supported by this API.
 /// </remarks>
 public sealed partial class HnswIndex
 {
@@ -42,7 +42,7 @@ public sealed partial class HnswIndex
     private HnswBuildScratch? _buildScratch;
 
     /// <summary>
-    /// Initializes a preview HNSW index with <see cref="HnswIndexOptions.Default"/>.
+    /// Initializes an HNSW index with <see cref="HnswIndexOptions.Default"/>.
     /// </summary>
     /// <param name="dimension">The required positive vector dimension.</param>
     /// <param name="metric">The canonical distance metric. Only <see cref="VectorMetric.SquaredEuclidean"/> is supported.</param>
@@ -52,7 +52,7 @@ public sealed partial class HnswIndex
     }
 
     /// <summary>
-    /// Initializes a preview HNSW index with <see cref="HnswIndexOptions.Default"/> and preallocated mutable row capacity.
+    /// Initializes an HNSW index with <see cref="HnswIndexOptions.Default"/> and preallocated mutable row capacity.
     /// </summary>
     /// <param name="dimension">The required positive vector dimension.</param>
     /// <param name="metric">The canonical distance metric. Only <see cref="VectorMetric.SquaredEuclidean"/> is supported.</param>
@@ -63,22 +63,22 @@ public sealed partial class HnswIndex
     }
 
     /// <summary>
-    /// Initializes a preview HNSW index with explicit options.
+    /// Initializes an HNSW index with explicit options.
     /// </summary>
     /// <param name="dimension">The required positive vector dimension.</param>
     /// <param name="metric">The canonical distance metric. Only <see cref="VectorMetric.SquaredEuclidean"/> is supported.</param>
-    /// <param name="options">The preview HNSW build and search options.</param>
+    /// <param name="options">The HNSW build and search options.</param>
     public HnswIndex(int dimension, VectorMetric metric, HnswIndexOptions options)
         : this(dimension, metric, options, levelProvider: null)
     {
     }
 
     /// <summary>
-    /// Initializes a preview HNSW index with explicit options and preallocated mutable row capacity.
+    /// Initializes an HNSW index with explicit options and preallocated mutable row capacity.
     /// </summary>
     /// <param name="dimension">The required positive vector dimension.</param>
     /// <param name="metric">The canonical distance metric. Only <see cref="VectorMetric.SquaredEuclidean"/> is supported.</param>
-    /// <param name="options">The preview HNSW build and search options.</param>
+    /// <param name="options">The HNSW build and search options.</param>
     /// <param name="initialCapacity">The non-negative number of vector rows to reserve in contiguous HNSW storage.</param>
     public HnswIndex(int dimension, VectorMetric metric, HnswIndexOptions options, int initialCapacity)
         : this(dimension, metric, options, initialCapacity, levelProvider: null)
@@ -139,17 +139,17 @@ public sealed partial class HnswIndex
     /// <summary>
     /// Gets the canonical distance metric used by this HNSW index.
     /// </summary>
-    /// <remarks>Only <see cref="VectorMetric.SquaredEuclidean"/> is supported in this preview.</remarks>
+    /// <remarks>Only <see cref="VectorMetric.SquaredEuclidean"/> is supported.</remarks>
     public VectorMetric Metric { get; }
 
     /// <summary>
-    /// Gets the number of vectors ingested into this preview HNSW index.
+    /// Gets the number of vectors ingested into this HNSW index.
     /// </summary>
     /// <remarks>This count is useful for sizing caller-owned <see cref="HnswSearchWorkspace"/> instances.</remarks>
     public int Count => _count;
 
     /// <summary>
-    /// Gets the current allocated vector-row capacity of this preview HNSW index.
+    /// Gets the current allocated vector-row capacity of this HNSW index.
     /// </summary>
     /// <remarks>
     /// Capacity is storage reservation, not vector cardinality. Use <see cref="Count"/>
@@ -174,13 +174,13 @@ public sealed partial class HnswIndex
     internal double InternalLevelMultiplier => _levelMultiplier;
 
     /// <summary>
-    /// Gets the preview HNSW options used by this index.
+    /// Gets the HNSW options used by this index.
     /// </summary>
     /// <remarks>The configured options are not public performance, recall, memory, allocation, capacity, or storage-size claims.</remarks>
     public HnswIndexOptions Options => _options;
 
     /// <summary>
-    /// Ensures this mutable preview HNSW index can store at least the requested number of vector rows.
+    /// Ensures this mutable HNSW index can store at least the requested number of vector rows.
     /// </summary>
     /// <param name="vectorCapacity">The non-negative vector-row capacity to reserve.</param>
     /// <remarks>
@@ -202,10 +202,10 @@ public sealed partial class HnswIndex
     }
 
     /// <summary>
-    /// Saves this preview HNSW index to a new or empty durable HNSW directory.
+    /// Saves this HNSW index to a new or empty durable HNSW directory.
     /// </summary>
     /// <remarks>
-    /// Save writes preview HNSW round-trip files only. It requires a new or empty target location
+    /// Save writes HNSW round-trip files. It requires a new or empty target location
     /// and does not replace an active index directory, coordinate with other processes, provide
     /// caller-level crash recovery for directory swaps, or establish a stable file-format
     /// compatibility promise.
@@ -220,19 +220,19 @@ public sealed partial class HnswIndex
     }
 
     /// <summary>
-    /// Opens a durable preview HNSW directory as an immutable read-only index.
+    /// Opens a durable HNSW directory as an immutable read-only index.
     /// </summary>
     /// <remarks>
-    /// Open validates the preview manifest and binary files using broad failure categories such as
+    /// Open validates the manifest and binary files using broad failure categories such as
     /// invalid data, missing files, unsupported format, or I/O errors. It does not establish a
     /// stable complete exception taxonomy, does not open the index for mutation, and does not make
     /// a stable file-format compatibility promise.
     /// </remarks>
     /// <param name="directoryPath">
     /// The HNSW index directory path. It must not be null or whitespace and must name an existing
-    /// preview HNSW directory containing a valid manifest and binary files.
+    /// HNSW directory containing a valid manifest and binary files.
     /// </param>
-    /// <returns>A searchable read-only preview HNSW index.</returns>
+    /// <returns>A searchable read-only HNSW index.</returns>
     public static HnswIndex OpenReadOnly(string directoryPath) =>
         HnswIndexStorage.OpenReadOnly(directoryPath);
 
@@ -240,7 +240,7 @@ public sealed partial class HnswIndex
     /// Inserts a vector associated with a caller-provided external identifier during HNSW build ingestion.
     /// </summary>
     /// <remarks>
-    /// This is build ingestion for an immutable-preview HNSW index, not an upsert, delete, repair,
+    /// This is build ingestion for an immutable HNSW index, not an upsert, delete, repair,
     /// replacement, direct graph mutation, or live-update contract. Indexes opened with
     /// <see cref="OpenReadOnly"/> reject this operation.
     /// </remarks>
@@ -339,7 +339,7 @@ public sealed partial class HnswIndex
     }
 
     /// <summary>
-    /// Searches this preview HNSW index and writes approximate nearest results in ascending distance order.
+    /// Searches this HNSW index and writes approximate nearest results in ascending distance order.
     /// </summary>
     /// <remarks>
     /// Results are ordered by the executing squared-L2 distance, with external ID breaking equal
@@ -394,7 +394,7 @@ public sealed partial class HnswIndex
     }
 
     /// <summary>
-    /// Searches this preview HNSW index while emitting only vectors whose external identifiers are present in an allowlist.
+    /// Searches this HNSW index while emitting only vectors whose external identifiers are present in an allowlist.
     /// </summary>
     /// <remarks>
     /// The allowlist is caller-owned query input. Unknown identifiers are ignored and duplicates are

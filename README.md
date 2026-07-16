@@ -1,19 +1,28 @@
 # VecNet
 
-VecNet is an embedded vector indexing library for .NET applications. It is
-designed for applications that keep their records, metadata, authorization,
+VecNet is an embedded vector indexing library for .NET applications. It is for
+applications that keep records, metadata, authorization, embedding generation,
 and application storage outside the vector engine while using VecNet for dense
 vector retrieval.
 
-This package is a `0.1` preview. The currently documented surface focuses on
-exact flat indexing, canonical distance semantics, durable exact-flat save and
-open, exact allowlist filtering, reusable exact candidate sets, exact count
-inspection, exact mutation/checkpoint workflows, and preview squared-L2 HNSW
-surfaces.
+VecNet is not a vector database, distributed service, metadata query engine,
+authorization system, embedding model host, full-text index, GPU library, or
+application record store. It returns vector IDs and distances; the calling
+application owns record hydration, final permission checks, grouping,
+deduplication, freshness checks, reranking, and presentation.
 
-## Current Support
+The package set is aligned for version `1.0.0`. This README describes the
+admitted `1.0` surface for the current line: exact flat indexing, canonical
+distance semantics, durable exact-flat save/open, exact allowlist filtering,
+reusable exact candidate sets, exact count inspection, exact mutation/
+checkpoint workflows, squared-L2 HNSW surfaces, and the separate optional
+exact-flat VectorData adapter.
+
+## Supported 1.0.0 Feature List
 
 - Target framework: `net10.0`.
+- The core `VecNet` package is dependency-free and ships managed `lib/net10.0`
+  assets without native, RID-specific, build, analyzer, or content assets.
 - Dense `float` vectors with fixed per-index dimension.
 - External vector IDs as caller-owned `ulong` values.
 - Exact exhaustive search with these canonical distances:
@@ -29,19 +38,23 @@ surfaces.
 - Exact raw allowlist filtering and reusable exact candidate sets.
 - Exact-flat `TryAdd`, `TryDelete`, and `Checkpoint` for visible generation
   updates in the current process.
-- Preview HNSW approximate indexing for `VectorMetric.SquaredEuclidean` with
+- HNSW approximate indexing for `VectorMetric.SquaredEuclidean` with
   build ingestion, caller-owned workspace search, caller-owned external-ID
-  allowlist filtering, preview durable `Save`/`OpenReadOnly`, opened read-only
-  search, and read-only concurrent search when each caller uses independent
-  result buffers and workspaces.
-- Preview update-oriented HNSW mode for squared L2 using an immutable HNSW
-  base plus exact in-memory delta rows, tombstones, search merge/rerank, and
+  allowlist filtering, durable `Save`/`OpenReadOnly`, opened read-only search,
+  and read-only concurrent search when each caller uses independent result
+  buffers and workspaces.
+- Update-oriented HNSW mode for squared L2 using an immutable HNSW base plus
+  exact in-memory delta rows, tombstones, search merge/rerank, and
   caller-initiated checkpoint/rebuild into a new immutable HNSW snapshot.
+- Optional `Microsoft.Extensions.VectorData` support through the separate
+  `VecNet.Integration.VectorData` adapter package. The adapter is exact-flat
+  and in-memory, supports pregenerated `float[]` or `ReadOnlyMemory<float>`
+  vectors, adapter-owned `TKey` mapping to VecNet `ulong` IDs, adapter-owned
+  records, VectorData CRUD/search, and expression filters evaluated in memory
+  and converted to VecNet allowlists.
 
-## Preview Limitations
+## Unsupported 1.0.0 Features And Claims
 
-- APIs and file formats are still preview and may change before a stable
-  release.
 - VecNet stores vector IDs and vectors, not application records or payloads.
 - Application metadata filtering, authorization, transactions, backups, and
   record hydration remain the responsibility of the host application.
@@ -68,22 +81,94 @@ surfaces.
   are exact in-memory rows, deletes are tombstones, checkpoint/rebuild writes a
   new immutable HNSW snapshot after validation, and mutable overlay state is
   not durably reopened.
-- HNSW durable files are a preview round-trip format and have no stable
-  compatibility promise.
-- Compressed indexes, SSD-scale indexes, richer key mapping, optional
+- HNSW durable files are a current round-trip format and do not carry a
+  cross-version compatibility promise.
+- The optional VectorData adapter does not support HNSW VectorData indexes,
+  durable VectorData collection open/reopen, durable record or key-map
+  storage, embedding generation, hybrid search, multiple vector properties,
+  store-generated keys, sparse vectors, binary vectors, quantized vectors, or
+  provider-specific vector types.
+- Compressed indexes, SSD-scale indexes, richer core key mapping, broader
   integration adapters, and release-grade operational tooling are planned
-  work, not supported public package capabilities in this preview.
-- This README does not make public HNSW recall, latency, throughput,
-  allocation, memory, capacity, storage-size, comparison, stable file-format,
-  stable API, production-readiness, or platform support claims.
+  work, not supported public package capabilities in the current package line.
+- `1.0.0` is the stable API compatibility line for the admitted public API
+  surfaces described here. This README does not make public HNSW recall,
+  latency, throughput, allocation, memory, capacity, storage-size, comparison,
+  stable file-format, production-readiness, platform support, NativeAOT, or
+  trimming claims.
 
-## Installation
+## Install And Package Posture
 
-Add the published preview package to a .NET 10 project:
+Use VecNet from a `.NET 10` project. The core package intentionally has no
+runtime package dependencies and no dependency on `Microsoft.Extensions.VectorData`.
+
+Add the core package:
 
 ```bash
-dotnet add package VecNet --version 0.1.0-preview.4
+dotnet add package VecNet --version 1.0.0
 ```
+
+For `Microsoft.Extensions.VectorData` applications, add the separate optional
+adapter package in addition to the core package. The adapter is a separate
+package because VectorData is not the core engine abstraction:
+
+```bash
+dotnet add package VecNet.Integration.VectorData --version 1.0.0
+```
+
+The package-smoke evidence is functional package-consumer evidence. It is not
+a public performance, platform support, NativeAOT, trimming, or universal
+deployment claim.
+
+## Choosing An Index
+
+| Need | Use | Boundary |
+| --- | --- | --- |
+| Exhaustive results for squared L2, inner product, or cosine | `ExactFlatIndex` | Scans live rows and ranks by canonical distance. |
+| Durable exact snapshot | `ExactFlatIndex.Save` and `ExactFlatIndex.OpenReadOnly` | Opens as immutable read-only exact search. |
+| Exact changing data in one process | `ExactFlatIndex.TryAdd`, `TryDelete`, and `Checkpoint` | Deletes are tombstones until checkpoint compaction; deleted IDs remain reserved. |
+| Approximate in-memory graph search | `HnswIndex` | Squared-L2 only; build ingestion is not upsert or graph mutation. |
+| Durable read-only HNSW generation | `HnswIndex.Save` and `HnswIndex.OpenReadOnly` | Searchable read-only generation; opened indexes reject `Add`. |
+| Update-oriented HNSW workflow | `HnswMutableIndex` | Immutable HNSW base plus exact delta/tombstones; checkpoint rebuilds a new immutable HNSW base. |
+| VectorData integration | `VecNet.Integration.VectorData` | Separate optional exact-flat in-memory adapter, not HNSW or durable VectorData storage. |
+
+## Metric Selection
+
+Use `VectorMetric.SquaredEuclidean` when lower squared L2 distance is the
+desired ranking. VecNet keeps L2 squared; it does not take a square root merely
+for display.
+
+Use `VectorMetric.InnerProduct` when larger dot product should rank better.
+VecNet reports the canonical distance as negative dot product so all result
+ordering remains "lower distance is better."
+
+Use `VectorMetric.Cosine` when angle/direction should rank better. VecNet
+normalizes inserted and query vectors for cosine indexes, rejects zero vectors,
+and reports `1 - dot(normalizedQuery, normalizedStored)`.
+
+HNSW currently supports only squared L2. For cosine or inner-product retrieval,
+use exact flat or the exact-flat VectorData adapter.
+
+## Optional VectorData Adapter
+
+`VecNet.Integration.VectorData` wraps VecNet exact-flat collections behind
+`Microsoft.Extensions.VectorData` abstractions. It is intended for applications
+that already own records, metadata, authorization, embedding generation, and
+durable application storage.
+
+The adapter creates in-memory exact-flat collections from `IndexKind.Flat`
+VectorData definitions or attributes. It accepts pregenerated `float[]` or
+`ReadOnlyMemory<float>` vectors, maps VectorData keys to internal VecNet
+`ulong` IDs, keeps records in adapter-owned memory, supports upsert, delete,
+get, search, `Skip`, `ScoreThreshold`, and in-memory expression filters, and
+projects scores for Euclidean squared distance, Euclidean distance, cosine
+distance, cosine similarity, and dot-product similarity.
+
+The adapter is not a durable record store and does not add dependencies to the
+core `VecNet` package. It does not provide HNSW VectorData collections,
+durable VectorData collection open/reopen, durable records or key maps,
+embedding generation, hybrid search, multiple vector properties, or public
+performance, platform, NativeAOT, or trimming claims.
 
 ## Basic Usage
 
@@ -130,11 +215,11 @@ int written = reopened.Search([1.0f, 0.0f, 0.0f], results);
 `Save` does not overwrite an existing non-empty directory. It writes only the
 current live view, so deleted rows are not searchable in the saved output.
 
-## HNSW Preview
+## HNSW
 
-`HnswIndex` is a developer-preview approximate index for squared L2 only. Use
-`HnswIndexOptions` to choose preview build/search parameters, and pass a
-caller-owned `HnswSearchWorkspace` to every search.
+`HnswIndex` is an approximate index for squared L2 only. Use
+`HnswIndexOptions` to choose build/search parameters, and pass a caller-owned
+`HnswSearchWorkspace` to every search.
 
 ```csharp
 using VecNet;
@@ -175,8 +260,7 @@ and duplicates are coalesced. For selective allowlists within the configured
 HNSW traversal remains approximate and may return fewer than the requested
 number of results even when exact filtered truth has enough live matches.
 
-For HNSW preview persistence, save to a new or empty directory and open it as
-read-only.
+For HNSW persistence, save to a new or empty directory and open it as read-only.
 
 ```csharp
 string path = Path.Combine(Environment.CurrentDirectory, "vecnet-hnsw");
@@ -192,11 +276,36 @@ Opened HNSW indexes reject `Add`. HNSW callers own synchronization, result
 buffers, and workspaces; do not share a result buffer or workspace between
 overlapping searches.
 
-## HNSW Update-Oriented Preview
+### HNSW Capacity, Workspace, And Scratch Guidance
 
-The HNSW update-oriented preview searches an immutable HNSW base plus exact
-in-memory delta rows. Deletes are represented as tombstones over base or
-delta IDs. Checkpoint rebuilds the current live view into a new immutable HNSW
+Plan HNSW construction around the number of rows the application expects to
+ingest. The `initialCapacity` constructors and `EnsureCapacity` reserve vector
+row, graph, ID-map, and build-scratch storage for mutable/buildable HNSW
+instances. `Capacity` is storage reservation, not vector cardinality or a
+published supported scale limit.
+
+Buildable HNSW instances retain build scratch so additional `Add` operations
+can continue without a separate seal step. Applications that want to serve a
+logically frozen HNSW generation without build scratch should save the
+generation and open it with `OpenReadOnly`.
+
+Create one `HnswSearchWorkspace` per overlapping search. Size immutable HNSW
+workspaces from the current `Count` and the configured `EfSearch`; recreate a
+workspace when either value can exceed the workspace's recorded capacity. High
+`EfSearch` values and high concurrent reader counts increase caller-owned
+workspace memory that the application must budget.
+
+`Save`, `OpenReadOnly`, and mutable checkpoint/rebuild operate over the index
+state and may need temporary memory and disk space while publishing or
+validating output. This README gives qualitative planning guidance only; it
+does not publish numeric memory, capacity, storage-size, latency, throughput,
+or recall claims.
+
+## HNSW Update-Oriented Mode
+
+The HNSW update-oriented mode searches an immutable HNSW base plus exact
+in-memory delta rows. Deletes are represented as tombstones over base or delta
+IDs. Checkpoint rebuilds the current live view into a new immutable HNSW
 snapshot and publishes that rebuilt base in the current instance after
 validation.
 
@@ -234,7 +343,18 @@ them after a committed `TryAdd`, committed `TryDelete`, or published
 upsert, replacement, graph repair, checkpoint diagnostics, or durable mutable
 overlay reopen.
 
+For planned mutable HNSW checkpoint/rebuild workflows, capacity-plan the HNSW
+base around the expected live row count after folding delta rows and
+tombstones. Mutable HNSW workspaces are tied to the wrapper generation and
+must be recreated after any generation-changing mutation or checkpoint.
+
 ## Filtering
+
+Evaluate tenant, permission, category, availability, and other business
+predicates in your own record or metadata store first. Pass the matching
+VecNet vector IDs to VecNet as an allowlist or reusable exact candidate set,
+then hydrate returned IDs through your own store and run final authorization
+and freshness checks before showing results.
 
 For one-off filtering, pass an allowlist of external vector IDs plus a
 caller-owned workspace sized for the current physical index rows.
@@ -275,6 +395,24 @@ Candidate sets are bound to the creating index instance and its current
 after a `Checkpoint` that publishes a compact generation. Failed or no-op
 mutation results and `Checkpoint` results with `NoChanges` do not advance
 `Generation` by themselves.
+
+## Application Keys And VecNet IDs
+
+Core VecNet APIs use opaque caller-assigned `ulong` vector IDs. They are not
+database primary keys, document IDs, tenant IDs, graph ordinals, or row
+positions. If the application uses `string`, `Guid`, database primary keys,
+compound tenant/document keys, chunk IDs, or embedding-slot IDs, keep durable
+maps in application storage, for example:
+
+- `RecordKey -> VecNetId(s)` for vectors that represent a record or chunks of
+  a record.
+- `VecNetId -> (RecordKey, ChunkKey, EmbeddingSlot)` for hydrating search
+  results.
+
+VecNet durable directories persist vector retrieval state only: vector IDs,
+vectors, and graph assets where applicable. They do not persist application
+records, payloads, authorization policy, rich metadata, or caller-owned key
+maps.
 
 ## Counts And Deleted IDs
 
@@ -344,7 +482,7 @@ executing path, where external ID breaks the tie.
 VecNet is being built toward a broader embedded indexing engine with additional
 index strategies, richer filtering and update workflows, package polish,
 consumer documentation, and integration tooling. Those capabilities will be
-documented when they are admitted to the public preview surface.
+documented when they are admitted to the public surface.
 
 ## Repository
 

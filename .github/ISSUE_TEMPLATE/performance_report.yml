@@ -1,0 +1,103 @@
+name: Performance report
+description: Share informal VecNet measurement context for repository triage.
+title: "[Performance]: "
+labels:
+  - performance
+  - triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Submitted measurements are informal issue context only. They are not official VecNet benchmark results, public performance claims, baselines, regression gates or supported limits.
+        Share only redacted, minimal context. Do not include secrets, private data, production embeddings, proprietary datasets, hostnames, tokens, connection strings or confidential environment details.
+  - type: input
+    id: package-version
+    attributes:
+      label: VecNet package version
+      description: Package version used by the measurement.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: dotnet-target
+    attributes:
+      label: .NET target and runtime
+      description: Target framework and runtime version used by the measurement.
+      placeholder: "net10.0, dotnet --version output"
+    validations:
+      required: true
+  - type: input
+    id: os-architecture
+    attributes:
+      label: OS and architecture
+      description: Provide only non-confidential OS and CPU architecture context.
+      placeholder: "OS name/version and architecture"
+    validations:
+      required: false
+  - type: dropdown
+    id: surface
+    attributes:
+      label: VecNet surface
+      description: Select the surface involved in the measurement.
+      options:
+        - ExactFlatIndex
+        - HnswIndex
+        - HnswMutableIndex
+        - VecNet.Integration.VectorData
+        - Package install or restore
+        - Other or unsure
+    validations:
+      required: true
+  - type: dropdown
+    id: metric
+    attributes:
+      label: Metric
+      description: Select the metric involved, if any.
+      options:
+        - VectorMetric.SquaredEuclidean
+        - VectorMetric.InnerProduct
+        - VectorMetric.Cosine
+        - Not applicable or unsure
+    validations:
+      required: true
+  - type: input
+    id: operation
+    attributes:
+      label: Operation measured
+      description: Operation or workflow involved in the measurement.
+      placeholder: "Search, Add, Save, OpenReadOnly, TryDelete, Checkpoint, restore, build"
+    validations:
+      required: true
+  - type: textarea
+    id: workload-shape
+    attributes:
+      label: Redacted workload shape
+      description: Describe the synthetic or redacted workload shape without proprietary data.
+      placeholder: "Dimension, vector count, query count, top-k, metric, index options and operation sequence, using non-confidential values."
+    validations:
+      required: true
+  - type: textarea
+    id: measurement-summary
+    attributes:
+      label: Informal measurement summary
+      description: Provide minimal measurement context and the command or method used, if it is safe to share.
+      placeholder: "Paste only non-confidential numbers, commands and observations needed for triage."
+    validations:
+      required: true
+  - type: textarea
+    id: minimal-reproduction
+    attributes:
+      label: Minimal synthetic reproduction, if available
+      description: Provide a small synthetic reproducer when possible.
+      placeholder: "Optional minimal code using synthetic vectors and redacted names."
+    validations:
+      required: false
+  - type: checkboxes
+    id: public-context-confirmation
+    attributes:
+      label: Public issue confirmation
+      options:
+        - label: I understand submitted measurements are informal issue context only, not official VecNet benchmark results, public performance claims, baselines, regression gates or supported limits.
+          required: true
+        - label: I have removed secrets, private data, production embeddings, proprietary datasets and confidential environment details.
+          required: true

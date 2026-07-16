@@ -1,0 +1,71 @@
+name: Documentation issue
+description: Report unclear, missing or incorrect public VecNet documentation.
+title: "[Docs]: "
+labels:
+  - documentation
+  - triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for public documentation issues. Share only the minimum context needed to find and clarify the documentation.
+        Do not include secrets, private data, production embeddings, proprietary datasets or confidential environment details.
+  - type: input
+    id: location
+    attributes:
+      label: Documentation location
+      description: Link or name the page, section, XML comment or example.
+      placeholder: "README section, XML API member, package README, or example"
+    validations:
+      required: true
+  - type: textarea
+    id: issue
+    attributes:
+      label: What is unclear or incorrect?
+      description: Describe the documentation issue.
+    validations:
+      required: true
+  - type: textarea
+    id: expected-clarification
+    attributes:
+      label: Expected clarification
+      description: Describe the clarification, correction or example you expected.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: VecNet surface
+      description: Select the surface closest to the documentation issue.
+      options:
+        - ExactFlatIndex
+        - HnswIndex
+        - HnswMutableIndex
+        - VecNet.Integration.VectorData
+        - Package install or restore
+        - Repository documentation
+        - Other or unsure
+    validations:
+      required: true
+  - type: input
+    id: package-version
+    attributes:
+      label: VecNet package version, if relevant
+      description: Package version involved in the documentation issue.
+      placeholder: "1.0.0"
+    validations:
+      required: false
+  - type: textarea
+    id: small-example
+    attributes:
+      label: Small synthetic example, if helpful
+      description: Include only minimal redacted code or synthetic vectors if they help explain the documentation gap.
+    validations:
+      required: false
+  - type: checkboxes
+    id: redaction-confirmation
+    attributes:
+      label: Public issue confirmation
+      options:
+        - label: I have removed secrets, private data, production embeddings, proprietary datasets and confidential environment details.
+          required: true

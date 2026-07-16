@@ -5,7 +5,7 @@ namespace VecNet;
 /// <summary>
 /// Result returned by a status-reporting exact vector mutation operation.
 /// </summary>
-/// <param name="Status">The broad preview mutation status.</param>
+/// <param name="Status">The broad mutation status.</param>
 /// <param name="Generation">The current opaque instance-local generation stamp.</param>
 /// <param name="LiveVectorCount">The current live visible vector count.</param>
 /// <param name="DeltaVectorCount">The current live in-memory delta vector count.</param>

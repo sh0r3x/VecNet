@@ -1,0 +1,67 @@
+name: Question or support discussion
+description: Ask a public best-effort VecNet usage question.
+title: "[Question]: "
+labels:
+  - question
+  - triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        GitHub issues are public best-effort discussion for repository triage and do not imply a formal support SLA.
+        Share only redacted, minimal context. Do not include secrets, private data, production embeddings, proprietary datasets, hostnames, tokens, connection strings or confidential environment details.
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Ask the VecNet usage or repository question.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: VecNet surface
+      description: Select the surface closest to the question.
+      options:
+        - ExactFlatIndex
+        - HnswIndex
+        - HnswMutableIndex
+        - VecNet.Integration.VectorData
+        - Package install or restore
+        - Documentation
+        - Other or unsure
+    validations:
+      required: true
+  - type: input
+    id: package-version
+    attributes:
+      label: VecNet package version, if relevant
+      description: Package version involved in the question.
+      placeholder: "1.0.0"
+    validations:
+      required: false
+  - type: input
+    id: dotnet-target
+    attributes:
+      label: .NET target and runtime, if relevant
+      description: Target framework and runtime version involved in the question.
+      placeholder: "net10.0, dotnet --version output"
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Redacted context
+      description: Provide only the minimum non-confidential context needed for discussion.
+      placeholder: "Optional minimal code, synthetic vectors, index type, metric and operation."
+    validations:
+      required: false
+  - type: checkboxes
+    id: public-context-confirmation
+    attributes:
+      label: Public issue confirmation
+      options:
+        - label: I understand GitHub issues are public best-effort discussion and do not imply a formal support SLA.
+          required: true
+        - label: I have removed secrets, private data, production embeddings, proprietary datasets and confidential environment details.
+          required: true

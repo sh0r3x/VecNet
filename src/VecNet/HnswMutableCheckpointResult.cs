@@ -1,9 +1,9 @@
 namespace VecNet;
 
 /// <summary>
-/// Preview result returned by <see cref="HnswMutableIndex.Checkpoint"/>.
+/// Result returned by <see cref="HnswMutableIndex.Checkpoint"/>.
 /// </summary>
-/// <param name="Status">The preview checkpoint status.</param>
+/// <param name="Status">The checkpoint status.</param>
 /// <param name="Generation">The current opaque instance-local generation stamp.</param>
 /// <param name="RebuiltBaseVectorCount">The vector count in the rebuilt immutable HNSW base.</param>
 /// <param name="LiveVectorCount">The current live visible vector count.</param>
@@ -19,7 +19,7 @@ namespace VecNet;
 /// <param name="FoldedBaseTombstoneCount">The base tombstones folded into the rebuilt base.</param>
 /// <param name="FoldedDeltaTombstoneCount">The delta tombstones folded into the rebuilt base.</param>
 /// <remarks>
-/// These counts describe the preview mutable HNSW checkpoint contract. They are not public
+/// These counts describe the mutable HNSW checkpoint contract. They are not public
 /// performance, memory, allocation, capacity, storage-size, or stable file-format claims.
 /// </remarks>
 public readonly record struct HnswMutableCheckpointResult(

@@ -39,7 +39,7 @@ try {
     if ($id -ne "VecNet") {
         throw "Unexpected package ID: $id"
     }
-    if ($version -ne "0.1.0-preview.4") {
+    if ($version -ne "1.0.0") {
         throw "Unexpected package version: $version"
     }
     if ($null -eq $license -or $license.type -ne "expression" -or $license.InnerText -ne "MIT") {

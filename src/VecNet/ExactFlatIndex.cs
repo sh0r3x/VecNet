@@ -258,7 +258,7 @@ public sealed partial class ExactFlatIndex
     /// The vector values to copy into index storage. Cosine vectors are normalized during insertion.
     /// </param>
     /// <returns>
-    /// A mutation result describing the broad preview mutation status and current live/count
+    /// A mutation result describing the broad mutation status and current live/count
     /// inspection values. The status values are not a complete stable exception taxonomy.
     /// </returns>
     public VectorMutationResult TryAdd(ulong id, ReadOnlySpan<float> vector)
@@ -285,7 +285,7 @@ public sealed partial class ExactFlatIndex
     /// </summary>
     /// <param name="id">The opaque external vector identifier to delete.</param>
     /// <returns>
-    /// A mutation result describing the broad preview mutation status and current live/count
+    /// A mutation result describing the broad mutation status and current live/count
     /// inspection values. The status values are not a complete stable exception taxonomy.
     /// </returns>
     public VectorMutationResult TryDelete(ulong id)

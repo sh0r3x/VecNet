@@ -1,7 +1,7 @@
 namespace VecNet;
 
 /// <summary>
-/// Broad preview status returned by an exact-flat checkpoint operation.
+/// Broad status returned by an exact-flat checkpoint operation.
 /// </summary>
 /// <remarks>
 /// These values describe current exact-flat checkpoint outcomes and are not a complete stable

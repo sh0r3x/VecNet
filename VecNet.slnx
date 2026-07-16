@@ -4,10 +4,12 @@
     <Project Path="benchmarks/VecNet.Benchmarks/VecNet.Benchmarks.csproj" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/VecNet.Integration.VectorData/VecNet.Integration.VectorData.csproj" />
     <Project Path="src/VecNet/VecNet.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/VecNet.BenchmarkRunner.Tests/VecNet.BenchmarkRunner.Tests.csproj" />
+    <Project Path="tests/VecNet.Integration.VectorData.Tests/VecNet.Integration.VectorData.Tests.csproj" />
     <Project Path="tests/VecNet.Tests/VecNet.Tests.csproj" />
   </Folder>
 </Solution>

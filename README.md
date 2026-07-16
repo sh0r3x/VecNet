@@ -11,12 +11,12 @@ application record store. It returns vector IDs and distances; the calling
 application owns record hydration, final permission checks, grouping,
 deduplication, freshness checks, reranking, and presentation.
 
-The currently published packages are `0.1.0-preview.4` prerelease packages.
-This README describes the admitted `1.0` readiness surface for the current
-line: exact flat indexing, canonical distance semantics, durable exact-flat
-save/open, exact allowlist filtering, reusable exact candidate sets, exact
-count inspection, exact mutation/checkpoint workflows, squared-L2 HNSW
-surfaces, and the separate optional exact-flat VectorData adapter.
+The package set is aligned for version `1.0.0`. This README describes the
+admitted `1.0` surface for the current line: exact flat indexing, canonical
+distance semantics, durable exact-flat save/open, exact allowlist filtering,
+reusable exact candidate sets, exact count inspection, exact mutation/
+checkpoint workflows, squared-L2 HNSW surfaces, and the separate optional
+exact-flat VectorData adapter.
 
 ## Current Support
 
@@ -81,8 +81,8 @@ surfaces, and the separate optional exact-flat VectorData adapter.
   are exact in-memory rows, deletes are tombstones, checkpoint/rebuild writes a
   new immutable HNSW snapshot after validation, and mutable overlay state is
   not durably reopened.
-- HNSW durable files are a current round-trip format and have no cross-version
-  compatibility promise in the prerelease packages.
+- HNSW durable files are a current round-trip format and do not carry a
+  cross-version compatibility promise.
 - The optional VectorData adapter does not support HNSW VectorData indexes,
   durable VectorData collection open/reopen, durable record or key-map
   storage, embedding generation, hybrid search, multiple vector properties,
@@ -101,10 +101,10 @@ surfaces, and the separate optional exact-flat VectorData adapter.
 Use VecNet from a `.NET 10` project. The core package intentionally has no
 runtime package dependencies and no dependency on `Microsoft.Extensions.VectorData`.
 
-Add the current published prerelease package:
+Add the core package:
 
 ```bash
-dotnet add package VecNet --version 0.1.0-preview.4
+dotnet add package VecNet --version 1.0.0
 ```
 
 For `Microsoft.Extensions.VectorData` applications, add the separate optional
@@ -112,12 +112,12 @@ adapter package in addition to the core package. The adapter is a separate
 package because VectorData is not the core engine abstraction:
 
 ```bash
-dotnet add package VecNet.Integration.VectorData --version 0.1.0-preview.4
+dotnet add package VecNet.Integration.VectorData --version 1.0.0
 ```
 
-The package-smoke evidence for the prerelease line is functional package
-consumer evidence. It is not a public performance, platform support,
-NativeAOT, trimming, or universal deployment claim.
+The package-smoke evidence is functional package-consumer evidence. It is not
+a public performance, platform support, NativeAOT, trimming, or universal
+deployment claim.
 
 ## Choosing An Index
 

@@ -8,8 +8,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="VecNet" Version="0.1.0-preview.4" />
-    <PackageReference Include="VecNet.Integration.VectorData" Version="0.1.0-preview.4" />
+    <PackageReference Include="VecNet" Version="1.0.0" />
+    <PackageReference Include="VecNet.Integration.VectorData" Version="1.0.0" />
   </ItemGroup>
 
 </Project>

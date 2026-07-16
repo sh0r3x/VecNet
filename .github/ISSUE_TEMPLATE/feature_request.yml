@@ -1,0 +1,78 @@
+name: Feature request
+description: Suggest a bounded VecNet capability or API change for triage.
+title: "[Feature]: "
+labels:
+  - enhancement
+  - triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form to describe a capability request. Filing a request helps triage; it does not imply acceptance, scheduling or support commitment.
+        Share only redacted, minimal context. Do not include secrets, private data, production embeddings, proprietary datasets or confidential environment details.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: Describe the application need in general terms without confidential data.
+      placeholder: "What are you trying to do with VecNet?"
+    validations:
+      required: true
+  - type: textarea
+    id: requested-behavior
+    attributes:
+      label: Requested behavior
+      description: Describe the API, documentation or repository behavior you would like to see.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: VecNet surface
+      description: Select the surface closest to the request.
+      options:
+        - ExactFlatIndex
+        - HnswIndex
+        - HnswMutableIndex
+        - VecNet.Integration.VectorData
+        - Durable storage
+        - Filtering
+        - Packaging
+        - Documentation
+        - Other or unsure
+    validations:
+      required: true
+  - type: dropdown
+    id: metric
+    attributes:
+      label: Metric, if relevant
+      description: Select the metric involved, if any.
+      options:
+        - VectorMetric.SquaredEuclidean
+        - VectorMetric.InnerProduct
+        - VectorMetric.Cosine
+        - Not applicable or unsure
+    validations:
+      required: true
+  - type: textarea
+    id: minimal-example
+    attributes:
+      label: Small synthetic example
+      description: If helpful, include a small synthetic example that shows the requested workflow.
+      placeholder: "Optional minimal code or pseudocode using synthetic vectors and redacted names."
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Current workaround or alternatives
+      description: Describe any current workaround, if one exists.
+    validations:
+      required: false
+  - type: checkboxes
+    id: redaction-confirmation
+    attributes:
+      label: Public issue confirmation
+      options:
+        - label: I have removed secrets, private data, production embeddings, proprietary datasets and confidential environment details.
+          required: true

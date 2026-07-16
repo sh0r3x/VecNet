@@ -1,0 +1,109 @@
+name: Bug report
+description: Report a reproducible VecNet defect for repository triage.
+title: "[Bug]: "
+labels:
+  - bug
+  - triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for reproducible VecNet behavior that looks incorrect.
+        Share only redacted, minimal details. Do not include secrets, private data, production embeddings, proprietary datasets, hostnames, tokens, connection strings or confidential environment details.
+  - type: input
+    id: package-version
+    attributes:
+      label: VecNet package version
+      description: Package version used by the reproducer.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: dotnet-target
+    attributes:
+      label: .NET target and runtime
+      description: Target framework and runtime version used by the reproducer.
+      placeholder: "net10.0, dotnet --version output"
+    validations:
+      required: true
+  - type: input
+    id: os-architecture
+    attributes:
+      label: OS and architecture, if relevant
+      description: Provide only non-confidential OS and CPU architecture context when it affects the issue.
+      placeholder: "OS name/version and architecture"
+    validations:
+      required: false
+  - type: dropdown
+    id: surface
+    attributes:
+      label: VecNet surface
+      description: Select the surface closest to the issue.
+      options:
+        - ExactFlatIndex
+        - HnswIndex
+        - HnswMutableIndex
+        - VecNet.Integration.VectorData
+        - Package install or restore
+        - Other or unsure
+    validations:
+      required: true
+  - type: dropdown
+    id: metric
+    attributes:
+      label: Metric
+      description: Select the metric involved, if any.
+      options:
+        - VectorMetric.SquaredEuclidean
+        - VectorMetric.InnerProduct
+        - VectorMetric.Cosine
+        - Not applicable or unsure
+    validations:
+      required: true
+  - type: input
+    id: operation
+    attributes:
+      label: Operation
+      description: Operation involved in the issue.
+      placeholder: "Add, Search, Save, OpenReadOnly, TryDelete, Checkpoint, restore, build"
+    validations:
+      required: true
+  - type: textarea
+    id: minimal-reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Provide a small synthetic example or redacted snippet that reproduces the behavior.
+      placeholder: |
+        Include minimal code, small synthetic vectors and the smallest setup needed to reproduce.
+        Do not include production embeddings, proprietary datasets or confidential data.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: Describe the behavior you expected from the minimal reproduction.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Describe what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: exception-text
+    attributes:
+      label: Exception text or diagnostic output
+      description: Paste only relevant redacted exception text, stack frames or command output.
+      render: text
+    validations:
+      required: false
+  - type: checkboxes
+    id: redaction-confirmation
+    attributes:
+      label: Public issue confirmation
+      options:
+        - label: I have removed secrets, private data, production embeddings, proprietary datasets and confidential environment details.
+          required: true

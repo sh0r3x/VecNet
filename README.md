@@ -1,22 +1,68 @@
 # VecNet
 
-VecNet is an embedded vector indexing library for .NET applications. It is for
-applications that keep records, metadata, authorization, embedding generation,
-and application storage outside the vector engine while using VecNet for dense
-vector retrieval.
+VecNet is an embedded vector indexing library for .NET applications that need
+dense-vector retrieval without adopting a vector database service. It stores
+vectors under caller-owned `ulong` IDs and returns IDs with distances, while
+your application keeps records, metadata, authorization, embedding generation,
+and durable application storage.
 
-VecNet is not a vector database, distributed service, metadata query engine,
-authorization system, embedding model host, full-text index, GPU library, or
-application record store. It returns vector IDs and distances; the calling
-application owns record hydration, final permission checks, grouping,
-deduplication, freshness checks, reranking, and presentation.
+## Install
 
-The package set is aligned for version `1.0.0`. This README describes the
-admitted `1.0` surface for the current line: exact flat indexing, canonical
-distance semantics, durable exact-flat save/open, exact allowlist filtering,
-reusable exact candidate sets, exact count inspection, exact mutation/
-checkpoint workflows, squared-L2 HNSW surfaces, and the separate optional
-exact-flat VectorData adapter.
+Use VecNet from a `.NET 10` project. Add the core package:
+
+```bash
+dotnet add package VecNet --version 1.0.0
+```
+
+For `Microsoft.Extensions.VectorData` applications, add the separate optional
+exact-flat adapter package in addition to the core package:
+
+```bash
+dotnet add package VecNet.Integration.VectorData --version 1.0.0
+```
+
+The core `VecNet` package intentionally has no runtime package dependencies
+and no dependency on `Microsoft.Extensions.VectorData`.
+
+## Which Surface Should I Start With?
+
+| Need | Start with | Boundary |
+| --- | --- | --- |
+| Exhaustive search for squared L2, inner product, or cosine | `ExactFlatIndex` | Scans live rows and ranks by canonical distance. |
+| Save/open an exact snapshot | `ExactFlatIndex.Save` and `ExactFlatIndex.OpenReadOnly` | Opens as immutable read-only exact search. |
+| Exact search over changing data in one process | `ExactFlatIndex.TryAdd`, `TryDelete`, and `Checkpoint` | Deletes are tombstones until checkpoint compaction; deleted IDs remain reserved. |
+| Approximate in-memory graph search | `HnswIndex` | Squared-L2 only; build ingestion is not upsert or graph mutation. |
+| Update-oriented HNSW workflow | `HnswMutableIndex` | Immutable HNSW base plus exact delta/tombstones; checkpoint rebuilds a new immutable HNSW base. |
+| VectorData integration | `VecNet.Integration.VectorData` | Separate optional exact-flat in-memory adapter, not HNSW or durable VectorData storage. |
+
+## Small Exact-Flat Example
+
+```csharp
+using VecNet;
+
+var index = new ExactFlatIndex(dimension: 3, VectorMetric.SquaredEuclidean);
+
+index.Add(1001, [1.0f, 0.0f, 0.0f]);
+index.Add(1002, [0.0f, 1.0f, 0.0f]);
+index.Add(1003, [0.0f, 0.0f, 1.0f]);
+
+Span<SearchResult> results = stackalloc SearchResult[2];
+int written = index.Search([0.9f, 0.1f, 0.0f], results);
+
+for (int i = 0; i < written; i++)
+{
+    Console.WriteLine($"{results[i].Id}: {results[i].Distance}");
+}
+```
+
+## Where Next?
+
+- Durable exact-flat save/open: [Persistence](#persistence).
+- HNSW squared-L2 search and persistence: [HNSW](#hnsw).
+- Filtering with caller-owned IDs: [Filtering](#filtering).
+- Mutation and checkpoint workflows: [Updates And Checkpoints](#updates-and-checkpoints).
+- VectorData applications: [Optional VectorData Adapter](#optional-vectordata-adapter).
+- Support and no-claim boundaries: [Limitations And Unsupported Claims](#limitations-and-unsupported-claims).
 
 ## Supported 1.0.0 Feature List
 
@@ -53,9 +99,14 @@ exact-flat VectorData adapter.
   records, VectorData CRUD/search, and expression filters evaluated in memory
   and converted to VecNet allowlists.
 
-## Unsupported 1.0.0 Features And Claims
+## Limitations And Unsupported Claims
 
+- VecNet is not a vector database, distributed service, metadata query engine,
+  authorization system, embedding model host, full-text index, GPU library, or
+  application record store.
 - VecNet stores vector IDs and vectors, not application records or payloads.
+  The calling application owns record hydration, final permission checks,
+  grouping, deduplication, freshness checks, reranking, and presentation.
 - Application metadata filtering, authorization, transactions, backups, and
   record hydration remain the responsibility of the host application.
 - HNSW support is squared-L2-only and approximate. Cosine HNSW and
@@ -91,46 +142,14 @@ exact-flat VectorData adapter.
 - Compressed indexes, SSD-scale indexes, richer core key mapping, broader
   integration adapters, and release-grade operational tooling are planned
   work, not supported public package capabilities in the current package line.
+- The package-smoke evidence is functional package-consumer evidence. It is
+  not a public performance, platform support, NativeAOT, trimming, or
+  universal deployment claim.
 - `1.0.0` is the stable API compatibility line for the admitted public API
   surfaces described here. This README does not make public HNSW recall,
   latency, throughput, allocation, memory, capacity, storage-size, comparison,
   stable file-format, production-readiness, platform support, NativeAOT, or
   trimming claims.
-
-## Install And Package Posture
-
-Use VecNet from a `.NET 10` project. The core package intentionally has no
-runtime package dependencies and no dependency on `Microsoft.Extensions.VectorData`.
-
-Add the core package:
-
-```bash
-dotnet add package VecNet --version 1.0.0
-```
-
-For `Microsoft.Extensions.VectorData` applications, add the separate optional
-adapter package in addition to the core package. The adapter is a separate
-package because VectorData is not the core engine abstraction:
-
-```bash
-dotnet add package VecNet.Integration.VectorData --version 1.0.0
-```
-
-The package-smoke evidence is functional package-consumer evidence. It is not
-a public performance, platform support, NativeAOT, trimming, or universal
-deployment claim.
-
-## Choosing An Index
-
-| Need | Use | Boundary |
-| --- | --- | --- |
-| Exhaustive results for squared L2, inner product, or cosine | `ExactFlatIndex` | Scans live rows and ranks by canonical distance. |
-| Durable exact snapshot | `ExactFlatIndex.Save` and `ExactFlatIndex.OpenReadOnly` | Opens as immutable read-only exact search. |
-| Exact changing data in one process | `ExactFlatIndex.TryAdd`, `TryDelete`, and `Checkpoint` | Deletes are tombstones until checkpoint compaction; deleted IDs remain reserved. |
-| Approximate in-memory graph search | `HnswIndex` | Squared-L2 only; build ingestion is not upsert or graph mutation. |
-| Durable read-only HNSW generation | `HnswIndex.Save` and `HnswIndex.OpenReadOnly` | Searchable read-only generation; opened indexes reject `Add`. |
-| Update-oriented HNSW workflow | `HnswMutableIndex` | Immutable HNSW base plus exact delta/tombstones; checkpoint rebuilds a new immutable HNSW base. |
-| VectorData integration | `VecNet.Integration.VectorData` | Separate optional exact-flat in-memory adapter, not HNSW or durable VectorData storage. |
 
 ## Metric Selection
 
@@ -169,26 +188,6 @@ core `VecNet` package. It does not provide HNSW VectorData collections,
 durable VectorData collection open/reopen, durable records or key maps,
 embedding generation, hybrid search, multiple vector properties, or public
 performance, platform, NativeAOT, or trimming claims.
-
-## Basic Usage
-
-```csharp
-using VecNet;
-
-var index = new ExactFlatIndex(dimension: 3, VectorMetric.SquaredEuclidean);
-
-index.Add(1001, [1.0f, 0.0f, 0.0f]);
-index.Add(1002, [0.0f, 1.0f, 0.0f]);
-index.Add(1003, [0.0f, 0.0f, 1.0f]);
-
-Span<SearchResult> results = stackalloc SearchResult[2];
-int written = index.Search([0.9f, 0.1f, 0.0f], results);
-
-for (int i = 0; i < written; i++)
-{
-    Console.WriteLine($"{results[i].Id}: {results[i].Distance}");
-}
-```
 
 ## Persistence
 

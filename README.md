@@ -11,14 +11,14 @@ and durable application storage.
 Use VecNet from a `.NET 10` project. Add the core package:
 
 ```bash
-dotnet add package VecNet --version 1.0.0
+dotnet add package VecNet --version 1.0.1
 ```
 
 For `Microsoft.Extensions.VectorData` applications, add the separate optional
 exact-flat adapter package in addition to the core package:
 
 ```bash
-dotnet add package VecNet.Integration.VectorData --version 1.0.0
+dotnet add package VecNet.Integration.VectorData --version 1.0.1
 ```
 
 The core `VecNet` package intentionally has no runtime package dependencies
@@ -103,7 +103,7 @@ for (int i = 0; i < written; i++)
   projectable class record shape; unsupported projection shapes throw a clear
   `NotSupportedException`.
 
-## Supported 1.0.0 Feature List
+## Supported 1.0.1 Feature List
 
 - Target framework: `net10.0`.
 - The core `VecNet` package is dependency-free and ships managed `lib/net10.0`

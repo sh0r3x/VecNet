@@ -5,6 +5,12 @@ namespace VecNet;
 /// <summary>
 /// An in-memory exhaustive index using canonical distance calculation.
 /// </summary>
+/// <remarks>
+/// VecNet owns vector retrieval state and returns external IDs with distances. This index does
+/// not expose vector read-back or vector enumeration APIs; applications should retain their
+/// source vectors and records when they need rebuild, export, display, reranking, or non-index
+/// storage.
+/// </remarks>
 public sealed partial class ExactFlatIndex
 {
     private const int InitialCapacity = 4;

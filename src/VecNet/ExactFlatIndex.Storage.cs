@@ -12,8 +12,10 @@ public sealed partial class ExactFlatIndex
     /// </summary>
     /// <remarks>
     /// Checkpoint writes the current live view only, validates the newly written output, and then
-    /// publishes the compact view in this index instance. It does not replace an active directory,
-    /// coordinate with other processes, provide crash recovery for caller-managed replacement, or
+    /// publishes the compact view in this index instance. Use it after committed mutations when
+    /// the application wants compaction/publication and continued use of the current instance. It
+    /// does not replace an active directory, coordinate with other processes, provide crash
+    /// recovery for caller-managed replacement, edit an existing durable directory in place, or
     /// make the opened directory writable.
     /// </remarks>
     /// <param name="directoryPath">
@@ -64,9 +66,12 @@ public sealed partial class ExactFlatIndex
     /// Saves this exact flat index to a new or empty durable exact-flat directory.
     /// </summary>
     /// <remarks>
-    /// Save writes the current live view only. It requires a new or empty target location and does
-    /// not replace an active index directory, coordinate with other processes, or provide
-    /// caller-level crash recovery for directory swaps.
+    /// Save is the first persistence operation for a live exact-flat view. It writes the current
+    /// live view only. It requires a new or empty target location and does not replace an active
+    /// index directory, coordinate with other processes, provide caller-level crash recovery for
+    /// directory swaps, or edit an existing durable directory in place. Use
+    /// <see cref="Checkpoint(string)"/> after committed mutations when compaction and publication
+    /// are required.
     /// </remarks>
     /// <param name="directoryPath">
     /// The target directory path. It must not be null or whitespace, must not name an existing file,

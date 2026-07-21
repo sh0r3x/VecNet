@@ -64,6 +64,45 @@ for (int i = 0; i < written; i++)
 - VectorData applications: [Optional VectorData Adapter](#optional-vectordata-adapter).
 - Support and no-claim boundaries: [Limitations And Unsupported Claims](#limitations-and-unsupported-claims).
 
+## Things To Know
+
+- Prefer the self-sizing workspace helpers when a workspace belongs to one
+  index: `ExactFlatIndex.CreateSearchFilterWorkspace()` for exact allowlists
+  and `HnswIndex.CreateSearchWorkspace()` for immutable HNSW search. If you
+  construct workspaces manually, exact allowlist workspaces are sized from
+  `PhysicalVectorCount`/`VectorCount`, not `LiveVectorCount`; immutable HNSW
+  workspaces are sized from `Count` and `Options.EfSearch`.
+- Count names are intentionally explicit where possible. On `ExactFlatIndex`,
+  `VectorCount` is a compatibility name for physical stored rows and matches
+  `PhysicalVectorCount`. On mutation result records, `VectorCount` is a
+  compatibility alias for live/searchable count. Prefer
+  `PhysicalVectorCount`, `LiveVectorCount`, `TombstoneCount`, and
+  `DeletedReservedIdCount` when the distinction matters.
+- Use `Save` for the first persisted live view in a new or empty directory.
+  Use `Checkpoint` after committed mutations when you want compaction and
+  publication into a new or empty directory. Neither operation edits an
+  existing durable index directory in place.
+- Deleting an ID reserves that external ID for the lifetime of the current
+  index state, including after checkpoint compaction. Deleted IDs cannot be
+  reused later as replacement IDs.
+- VecNet returns vector IDs and distances. It does not expose vector
+  read-back or vector enumeration APIs. Keep your source vectors and
+  application records if you need rebuild, export, display, reranking, or
+  non-index storage.
+- To grow a saved HNSW index, use the
+  [HNSW Saved-Index Growth Recipe](#hnsw-saved-index-growth-recipe): open the
+  saved index read-only, wrap it in `HnswMutableIndex`, apply `TryAdd` and
+  `TryDelete`, `Checkpoint` to a new or empty directory, then reopen the new
+  durable HNSW output.
+- HNSW durable files are the current round-trip format for `Save`,
+  `OpenReadOnly`, and mutable checkpoint output. They are not a cross-version
+  or long-term stable file-format promise.
+- The optional VectorData adapter follows `IncludeVectors`: null/default
+  options and `IncludeVectors = false` omit vectors, while
+  `IncludeVectors = true` includes vectors. Omitting vectors may require a
+  projectable class record shape; unsupported projection shapes throw a clear
+  `NotSupportedException`.
+
 ## Supported 1.0.0 Feature List
 
 - Target framework: `net10.0`.
@@ -183,6 +222,13 @@ get, search, `Skip`, `ScoreThreshold`, and in-memory expression filters, and
 projects scores for Euclidean squared distance, Euclidean distance, cosine
 distance, cosine similarity, and dot-product similarity.
 
+Retrieval options follow VectorData `IncludeVectors` behavior. Null/default
+options and explicit `IncludeVectors = false` omit vectors from returned
+records. Explicit `IncludeVectors = true` includes vectors. When vectors are
+omitted, VecNet projects shallow record copies for supported class record
+shapes; if a record shape cannot be projected and vector omission is required,
+the adapter throws `NotSupportedException`.
+
 The adapter is not a durable record store and does not add dependencies to the
 core `VecNet` package. It does not provide HNSW VectorData collections,
 durable VectorData collection open/reopen, durable records or key maps,
@@ -235,7 +281,7 @@ index.Add(1001, [1.0f, 0.0f, 0.0f]);
 index.Add(1002, [0.0f, 1.0f, 0.0f]);
 index.Add(1003, [0.0f, 0.0f, 1.0f]);
 
-var workspace = new HnswSearchWorkspace(index.Count, index.Options.EfSearch);
+var workspace = index.CreateSearchWorkspace();
 Span<SearchResult> results = stackalloc SearchResult[2];
 
 int written = index.Search([0.9f, 0.1f, 0.0f], results, workspace);
@@ -267,7 +313,7 @@ index.Save(path);
 
 HnswIndex opened = HnswIndex.OpenReadOnly(path);
 
-var openedWorkspace = new HnswSearchWorkspace(opened.Count, opened.Options.EfSearch);
+var openedWorkspace = opened.CreateSearchWorkspace();
 int openedWritten = opened.Search([0.9f, 0.1f, 0.0f], results, openedWorkspace);
 ```
 
@@ -347,6 +393,31 @@ base around the expected live row count after folding delta rows and
 tombstones. Mutable HNSW workspaces are tied to the wrapper generation and
 must be recreated after any generation-changing mutation or checkpoint.
 
+### HNSW Saved-Index Growth Recipe
+
+Saved HNSW directories open as immutable read-only graph generations. To add
+or delete IDs after saving, create a new durable generation instead of editing
+the saved directory in place:
+
+1. Open the saved HNSW directory with `HnswIndex.OpenReadOnly`.
+2. Create `new HnswMutableIndex(opened)`.
+3. Apply changes with `TryAdd` and `TryDelete`.
+4. Call `Checkpoint` with a new or empty output directory.
+5. Reopen the checkpoint output with `HnswIndex.OpenReadOnly`.
+
+```csharp
+HnswIndex openedBase = HnswIndex.OpenReadOnly("vecnet-hnsw");
+var mutable = new HnswMutableIndex(openedBase);
+
+mutable.TryAdd(1004, [0.25f, 0.25f, 0.5f]);
+mutable.TryDelete(1001);
+
+HnswMutableCheckpointResult checkpoint =
+    mutable.Checkpoint("vecnet-hnsw-next");
+
+HnswIndex nextBase = HnswIndex.OpenReadOnly("vecnet-hnsw-next");
+```
+
 ## Filtering
 
 Evaluate tenant, permission, category, availability, and other business
@@ -367,7 +438,7 @@ index.Add(20, [0.0f, 1.0f]);
 index.Add(30, [1.0f, 1.0f]);
 
 ulong[] allowedIds = [10, 30];
-var workspace = new ExactFlatSearchFilterWorkspace(index.PhysicalVectorCount);
+var workspace = index.CreateSearchFilterWorkspace();
 Span<SearchResult> results = stackalloc SearchResult[2];
 
 int written = index.Search(

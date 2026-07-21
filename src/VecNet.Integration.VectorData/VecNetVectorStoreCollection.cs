@@ -8,6 +8,12 @@ namespace VecNet.Integration.VectorData;
 /// <summary>
 /// Represents an in-memory exact-flat VecNet collection exposed through Microsoft.Extensions.VectorData.
 /// </summary>
+/// <remarks>
+/// Retrieval honors VectorData <c>IncludeVectors</c> options. Null/default options and explicit
+/// <c>IncludeVectors = false</c> omit vector values from returned records; explicit
+/// <c>IncludeVectors = true</c> includes vector values. When vector omission requires projecting a
+/// record shape the adapter does not support, the operation throws <see cref="NotSupportedException"/>.
+/// </remarks>
 /// <typeparam name="TKey">The VectorData record key type.</typeparam>
 /// <typeparam name="TRecord">The VectorData record type.</typeparam>
 public sealed class VecNetVectorStoreCollection<TKey, TRecord> : VectorStoreCollection<TKey, TRecord>

@@ -6,6 +6,11 @@ namespace VecNet.Integration.VectorData;
 /// <summary>
 /// Provides in-memory exact-flat VecNet collections through the Microsoft.Extensions.VectorData abstraction.
 /// </summary>
+/// <remarks>
+/// Collections created by this store are in-memory exact-flat VecNet collections. The adapter is
+/// not HNSW storage, durable VectorData storage, embedding generation, hybrid search, or an
+/// application record store.
+/// </remarks>
 public sealed class VecNetVectorStore : VectorStore
 {
     private readonly object _gate = new();

@@ -15,6 +15,10 @@ namespace VecNet;
 /// durable graph-aware filtering metadata, public ordinal filters, full filter-aware graph
 /// traversal, update/delete, replacement, repair, direct graph mutation, and stable file-format
 /// compatibility are not supported by this API.
+/// VecNet returns external IDs with distances and does not expose vector read-back or vector
+/// enumeration APIs; retain source vectors outside the index when rebuild or export is required.
+/// HNSW durable files are the current round-trip format for this package line, not a
+/// cross-version stable file-format promise.
 /// </remarks>
 public sealed partial class HnswIndex
 {
@@ -210,10 +214,10 @@ public sealed partial class HnswIndex
     /// Saves this HNSW index to a new or empty durable HNSW directory.
     /// </summary>
     /// <remarks>
-    /// Save writes HNSW round-trip files. It requires a new or empty target location
+    /// Save writes the current HNSW round-trip files. It requires a new or empty target location
     /// and does not replace an active index directory, coordinate with other processes, provide
-    /// caller-level crash recovery for directory swaps, or establish a stable file-format
-    /// compatibility promise.
+    /// caller-level crash recovery for directory swaps, edit an existing durable directory in
+    /// place, or establish a cross-version stable file-format compatibility promise.
     /// </remarks>
     /// <param name="directoryPath">
     /// The target directory path. It must not be null or whitespace, must not name an existing file,
@@ -231,7 +235,10 @@ public sealed partial class HnswIndex
     /// Open validates the manifest and binary files using broad failure categories such as
     /// invalid data, missing files, unsupported format, or I/O errors. It does not establish a
     /// stable complete exception taxonomy, does not open the index for mutation, and does not make
-    /// a stable file-format compatibility promise.
+    /// a cross-version stable file-format compatibility promise. To grow a saved HNSW index, open
+    /// it read-only, wrap it in <see cref="HnswMutableIndex"/>, apply
+    /// <see cref="HnswMutableIndex.TryAdd"/> or <see cref="HnswMutableIndex.TryDelete"/>, checkpoint
+    /// to a new or empty directory, and reopen the checkpoint output.
     /// </remarks>
     /// <param name="directoryPath">
     /// The HNSW index directory path. It must not be null or whitespace and must name an existing

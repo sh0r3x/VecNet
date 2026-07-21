@@ -49,6 +49,14 @@ jobs:
         run: |
           $packageDir = Join-Path $env:RUNNER_TEMP "vecnet-package"
           New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
+          [xml] $project = Get-Content -LiteralPath "src/VecNet/VecNet.csproj" -Raw
+          $expectedVersion = $project.Project.PropertyGroup |
+            ForEach-Object { $_.Version } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Select-Object -First 1
+          if ([string]::IsNullOrWhiteSpace($expectedVersion)) {
+            throw "Could not read VecNet package version from src/VecNet/VecNet.csproj"
+          }
           dotnet pack src/VecNet/VecNet.csproj --configuration Release --output $packageDir
           if ($LASTEXITCODE -ne 0) {
             throw "dotnet pack failed with exit code $LASTEXITCODE"
@@ -58,11 +66,15 @@ jobs:
             throw "VecNet package was not produced."
           }
           "VECNET_PACKAGE=$($package.FullName)" >> $env:GITHUB_ENV
+          "VECNET_PACKAGE_VERSION=$expectedVersion" >> $env:GITHUB_ENV
           "Packed $($package.FullName)"
 
       - name: Inspect produced package
         shell: pwsh
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File ./eng/package-smoke/Vec159Arm64Probe/Inspect-VecNetPackage.ps1 -PackagePath "$env:VECNET_PACKAGE"
+        run: >
+          pwsh -NoProfile -ExecutionPolicy Bypass -File ./eng/package-smoke/Vec159Arm64Probe/Inspect-VecNetPackage.ps1
+          -PackagePath "$env:VECNET_PACKAGE"
+          -ExpectedVersion "$env:VECNET_PACKAGE_VERSION"
 
       - name: Run Arm64 package smoke probe
         shell: pwsh
@@ -72,4 +84,5 @@ jobs:
           -Rid "${{ matrix.rid }}"
           -PlatformName "${{ matrix.platform }}"
           -RunnerLabel "${{ matrix.runner }}"
+          -PackageVersion "$env:VECNET_PACKAGE_VERSION"
           -RequireArm64

@@ -1,6 +1,9 @@
 param(
     [Parameter(Mandatory = $true)]
-    [string] $PackagePath
+    [string] $PackagePath,
+
+    [Parameter(Mandatory = $true)]
+    [string] $ExpectedVersion
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,8 +42,8 @@ try {
     if ($id -ne "VecNet") {
         throw "Unexpected package ID: $id"
     }
-    if ($version -ne "1.0.0") {
-        throw "Unexpected package version: $version"
+    if ($version -ne $ExpectedVersion) {
+        throw "Unexpected package version: $version; expected $ExpectedVersion"
     }
     if ($null -eq $license -or $license.type -ne "expression" -or $license.InnerText -ne "MIT") {
         throw "Expected MIT license expression was not found."

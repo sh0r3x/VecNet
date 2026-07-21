@@ -11,6 +11,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $RunnerLabel,
 
+    [Parameter(Mandatory = $true)]
+    [string] $PackageVersion,
+
     [switch] $RequireArm64
 )
 
@@ -29,6 +32,16 @@ $statuses = [ordered]@{}
 
 New-Item -ItemType Directory -Force -Path $probeRoot, $consumerRoot, $packagesRoot, $resultsRoot | Out-Null
 Copy-Item -Path (Join-Path $consumerSource "*") -Destination $consumerRoot -Recurse -Force
+$consumerProjectPath = Join-Path $consumerRoot "Vec159Arm64Consumer.csproj"
+[xml] $consumerProject = Get-Content -LiteralPath $consumerProjectPath -Raw
+$vecNetReference = $consumerProject.Project.ItemGroup.PackageReference |
+    Where-Object { $_.Include -eq "VecNet" } |
+    Select-Object -First 1
+if ($null -eq $vecNetReference) {
+    throw "Vec159Arm64Consumer.csproj does not contain a VecNet PackageReference."
+}
+$vecNetReference.Version = $PackageVersion
+$consumerProject.Save($consumerProjectPath)
 
 @"
 <?xml version="1.0" encoding="utf-8"?>
@@ -145,7 +158,7 @@ function Assert-PackageReferenceRestore {
     }
 }
 
-$projectPath = Join-Path $consumerRoot "Vec159Arm64Consumer.csproj"
+$projectPath = $consumerProjectPath
 $arm64Flag = if ($RequireArm64) { @("--require-arm64") } else { @() }
 
 Invoke-ProbeStep -Name "$PlatformName JIT package smoke" -Body {

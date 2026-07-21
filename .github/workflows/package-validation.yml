@@ -1,0 +1,41 @@
+name: Package Validation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-validation:
+    name: Build, test, and validate packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install .NET SDK from global.json
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore solution and package baselines
+        run: dotnet restore VecNet.slnx
+
+      - name: Build solution
+        run: dotnet build VecNet.slnx -c Release --no-restore
+
+      - name: Test solution
+        run: dotnet test VecNet.slnx -c Release --no-build --no-restore
+
+      - name: Pack and validate VecNet
+        run: dotnet pack src/VecNet/VecNet.csproj -c Release --no-build --no-restore
+
+      - name: Pack and validate VecNet.Integration.VectorData
+        run: dotnet pack src/VecNet.Integration.VectorData/VecNet.Integration.VectorData.csproj -c Release --no-build --no-restore

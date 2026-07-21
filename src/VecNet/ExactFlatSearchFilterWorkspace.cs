@@ -5,7 +5,9 @@ namespace VecNet;
 /// </summary>
 /// <remarks>
 /// A workspace stores transient row marks for one exact-flat search at a time. The caller owns
-/// its lifetime and must provide separate workspace instances for concurrent searches.
+/// its lifetime and must provide separate workspace instances for concurrent searches. Prefer
+/// <see cref="ExactFlatIndex.CreateSearchFilterWorkspace"/> when the workspace is tied to a
+/// specific index instance.
 /// </remarks>
 public sealed class ExactFlatSearchFilterWorkspace
 {
@@ -17,7 +19,7 @@ public sealed class ExactFlatSearchFilterWorkspace
     /// <param name="maxVectorCount">
     /// The maximum physical stored-row count this workspace can support. Use
     /// <see cref="ExactFlatIndex.PhysicalVectorCount"/> or <see cref="ExactFlatIndex.VectorCount"/>
-    /// for the index being searched.
+    /// for the index being searched, not <see cref="ExactFlatIndex.LiveVectorCount"/>.
     /// </param>
     public ExactFlatSearchFilterWorkspace(int maxVectorCount)
     {

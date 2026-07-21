@@ -5,15 +5,15 @@ namespace VecNet;
 /// </summary>
 /// <param name="Status">The checkpoint status.</param>
 /// <param name="Generation">The current opaque instance-local generation stamp.</param>
-/// <param name="RebuiltBaseVectorCount">The vector count in the rebuilt immutable HNSW base.</param>
-/// <param name="LiveVectorCount">The current live visible vector count.</param>
-/// <param name="BasePhysicalVectorCount">The physical vector count in the immutable HNSW base.</param>
-/// <param name="BaseLiveVectorCount">The live vector count in the immutable HNSW base after tombstones.</param>
-/// <param name="DeltaPhysicalVectorCount">The physical in-memory exact delta row count before the checkpoint result was created.</param>
-/// <param name="DeltaLiveVectorCount">The live in-memory exact delta row count before the checkpoint result was created.</param>
-/// <param name="BaseTombstoneCount">The number of base-row tombstones before the checkpoint result was created.</param>
-/// <param name="DeltaTombstoneCount">The number of delta-row tombstones before the checkpoint result was created.</param>
-/// <param name="TombstoneCount">The total tombstone count before the checkpoint result was created.</param>
+/// <param name="RebuiltBaseVectorCount">The physical/live vector count in the rebuilt immutable HNSW base.</param>
+/// <param name="LiveVectorCount">The current searchable live visible vector count after this result was produced.</param>
+/// <param name="BasePhysicalVectorCount">The physical vector count in the immutable HNSW base after this result was produced.</param>
+/// <param name="BaseLiveVectorCount">The searchable live vector count in the immutable HNSW base after tombstones.</param>
+/// <param name="DeltaPhysicalVectorCount">The physical in-memory exact delta row count after this result was produced.</param>
+/// <param name="DeltaLiveVectorCount">The searchable live in-memory exact delta row count after this result was produced.</param>
+/// <param name="BaseTombstoneCount">The number of base-row tombstones after this result was produced.</param>
+/// <param name="DeltaTombstoneCount">The number of delta-row tombstones after this result was produced.</param>
+/// <param name="TombstoneCount">The total deleted-row tombstone count hidden from search after this result was produced.</param>
 /// <param name="DeletedReservedIdCount">The count of deleted external IDs reserved by this mutable instance.</param>
 /// <param name="FoldedDeltaVectorCount">The live exact delta rows folded into the rebuilt base.</param>
 /// <param name="FoldedBaseTombstoneCount">The base tombstones folded into the rebuilt base.</param>

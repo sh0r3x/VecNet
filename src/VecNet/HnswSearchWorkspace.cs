@@ -7,7 +7,9 @@ namespace VecNet;
 /// A workspace stores transient visited-set and candidate/result queue state for one search at a
 /// time. The caller owns its lifetime and must provide separate workspace instances for
 /// overlapping searches. Size workspaces from the current HNSW index count and configured
-/// <see cref="HnswIndexOptions.EfSearch"/>; recreate them when the searched generation changes.
+/// <see cref="HnswIndexOptions.EfSearch"/>; prefer
+/// <see cref="HnswIndex.CreateSearchWorkspace"/> when the workspace is tied to a specific
+/// immutable index instance. Recreate the workspace when the searched generation changes.
 /// </remarks>
 public sealed class HnswSearchWorkspace
 {
@@ -18,7 +20,7 @@ public sealed class HnswSearchWorkspace
     /// Initializes a reusable HNSW search workspace.
     /// </summary>
     /// <param name="maxElements">
-    /// The maximum HNSW index <see cref="HnswIndex.Count"/> this workspace can support.
+    /// The maximum immutable HNSW index <see cref="HnswIndex.Count"/> this workspace can support.
     /// </param>
     /// <param name="maxEf">
     /// The maximum search candidate width this workspace can support. Use at least

@@ -7,9 +7,9 @@ namespace VecNet;
 /// </summary>
 /// <param name="Status">The broad mutation status.</param>
 /// <param name="Generation">The current opaque instance-local generation stamp.</param>
-/// <param name="LiveVectorCount">The current live visible vector count.</param>
-/// <param name="DeltaVectorCount">The current live in-memory delta vector count.</param>
-/// <param name="TombstoneCount">The current tombstone count.</param>
+/// <param name="LiveVectorCount">The current searchable live visible vector count.</param>
+/// <param name="DeltaVectorCount">The current searchable live in-memory delta vector count.</param>
+/// <param name="TombstoneCount">The current deleted-row tombstone count hidden from search.</param>
 public readonly record struct VectorMutationResult(
     VectorMutationStatus Status,
     long Generation,
@@ -18,7 +18,7 @@ public readonly record struct VectorMutationResult(
     int TombstoneCount)
 {
     /// <summary>
-    /// Gets the current live visible vector count.
+    /// Gets the current searchable live visible vector count.
     /// </summary>
     /// <remarks>
     /// Compatibility alias for <see cref="LiveVectorCount"/>. This value does not have the same
@@ -28,7 +28,7 @@ public readonly record struct VectorMutationResult(
     public int VectorCount => LiveVectorCount;
 
     /// <summary>
-    /// Gets the current live in-memory delta vector count.
+    /// Gets the current searchable live in-memory delta vector count.
     /// </summary>
     /// <remarks>
     /// Compatibility alias for <see cref="DeltaVectorCount"/>.

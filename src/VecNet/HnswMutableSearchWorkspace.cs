@@ -47,6 +47,10 @@ public sealed class HnswMutableSearchWorkspace
     /// <summary>
     /// Gets the maximum immutable HNSW base count supported by this workspace.
     /// </summary>
+    /// <remarks>
+    /// This is sized from <see cref="HnswMutableIndex.BasePhysicalVectorCount"/>, including base
+    /// rows hidden by tombstones.
+    /// </remarks>
     public int MaxBaseElements { get; }
 
     /// <summary>
@@ -62,6 +66,9 @@ public sealed class HnswMutableSearchWorkspace
     /// <summary>
     /// Gets the maximum exact-delta candidate count supported by this workspace.
     /// </summary>
+    /// <remarks>
+    /// This is the maximum result buffer length accepted by searches using this workspace.
+    /// </remarks>
     public int MaxDeltaCandidates { get; }
 
     /// <summary>

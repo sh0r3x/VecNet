@@ -46,11 +46,18 @@ public sealed class HnswMutableIndex
     /// <summary>
     /// Gets the current live visible vector count.
     /// </summary>
+    /// <remarks>
+    /// Compatibility count name for <see cref="LiveVectorCount"/>. This excludes base and delta
+    /// rows hidden by tombstones.
+    /// </remarks>
     public int Count => _inner.LiveVectorCount;
 
     /// <summary>
     /// Gets the current physical vector count in the immutable HNSW base.
     /// </summary>
+    /// <remarks>
+    /// This includes base rows hidden by tombstones and is used for base-workspace sizing.
+    /// </remarks>
     public int BasePhysicalVectorCount => _inner.BasePhysicalVectorCount;
 
     /// <summary>
@@ -61,6 +68,10 @@ public sealed class HnswMutableIndex
     /// <summary>
     /// Gets the current physical in-memory exact delta row count.
     /// </summary>
+    /// <remarks>
+    /// This includes exact delta rows hidden by tombstones and is used for delta-filter workspace
+    /// sizing.
+    /// </remarks>
     public int DeltaPhysicalVectorCount => _inner.DeltaPhysicalVectorCount;
 
     /// <summary>
@@ -71,26 +82,42 @@ public sealed class HnswMutableIndex
     /// <summary>
     /// Gets the current live visible vector count.
     /// </summary>
+    /// <remarks>
+    /// This excludes base and delta rows hidden by tombstones.
+    /// </remarks>
     public int LiveVectorCount => _inner.LiveVectorCount;
 
     /// <summary>
     /// Gets the current base-row tombstone count.
     /// </summary>
+    /// <remarks>
+    /// Base tombstones hide rows from the immutable HNSW base without mutating the graph in place.
+    /// </remarks>
     public int BaseTombstoneCount => _inner.BaseTombstoneCount;
 
     /// <summary>
     /// Gets the current delta-row tombstone count.
     /// </summary>
+    /// <remarks>
+    /// Delta tombstones hide rows from the exact in-memory delta.
+    /// </remarks>
     public int DeltaTombstoneCount => _inner.DeltaTombstoneCount;
 
     /// <summary>
     /// Gets the current total tombstone count.
     /// </summary>
+    /// <remarks>
+    /// This is the sum of base-row and delta-row tombstones.
+    /// </remarks>
     public int TombstoneCount => _inner.TombstoneCount;
 
     /// <summary>
     /// Gets the count of deleted external IDs reserved by this mutable instance.
     /// </summary>
+    /// <remarks>
+    /// Deleted external IDs remain unavailable for reuse in this mutable instance, including after
+    /// checkpoint publication.
+    /// </remarks>
     public int DeletedReservedIdCount => _inner.DeletedReservedIdCount;
 
     /// <summary>

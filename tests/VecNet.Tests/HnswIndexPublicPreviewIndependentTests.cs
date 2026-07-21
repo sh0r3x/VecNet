@@ -136,6 +136,7 @@ public sealed class HnswIndexPublicPreviewIndependentTests
             "P:VecNet.HnswIndex.Options",
             "M:VecNet.HnswIndex.EnsureCapacity(System.Int32)",
             "M:VecNet.HnswIndex.Add(System.UInt64,System.ReadOnlySpan{System.Single})",
+            "M:VecNet.HnswIndex.CreateSearchWorkspace",
             "M:VecNet.HnswIndex.Search(System.ReadOnlySpan{System.Single},System.Span{VecNet.SearchResult},VecNet.HnswSearchWorkspace)",
             "M:VecNet.HnswIndex.Search(System.ReadOnlySpan{System.Single},System.ReadOnlySpan{System.UInt64},System.Span{VecNet.SearchResult},VecNet.HnswSearchWorkspace)",
             "M:VecNet.HnswIndex.Save(System.String)",

@@ -196,6 +196,7 @@ public sealed class ExactFlatIndexCandidateSetIndependentTests
                 "Add",
                 "Checkpoint",
                 "CreateCandidateSet",
+                "CreateSearchFilterWorkspace",
                 "EnsureCapacity",
                 "OpenReadOnly",
                 "Save",

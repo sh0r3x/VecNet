@@ -180,6 +180,7 @@ public sealed class ExactFlatIndexRetainedIdMapIndependentTests
                 "Add",
                 "Checkpoint",
                 "CreateCandidateSet",
+                "CreateSearchFilterWorkspace",
                 "EnsureCapacity",
                 "OpenReadOnly",
                 "Save",

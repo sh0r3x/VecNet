@@ -108,8 +108,9 @@ public sealed partial class ExactFlatIndex
     /// Gets the physical stored-row count used to size exact-flat row workspaces.
     /// </summary>
     /// <remarks>
-    /// This count includes live visible rows and rows hidden by tombstones. Use
-    /// <see cref="LiveVectorCount"/> when caller-visible search cardinality is required.
+    /// Compatibility alias for <see cref="PhysicalVectorCount"/>. This count includes live
+    /// visible rows and rows hidden by tombstones. Use <see cref="LiveVectorCount"/> when
+    /// caller-visible search cardinality is required.
     /// </remarks>
     public int VectorCount => PhysicalVectorCount;
 
@@ -127,11 +128,18 @@ public sealed partial class ExactFlatIndex
     /// <summary>
     /// Gets the current number of live visible vectors returned by search.
     /// </summary>
+    /// <remarks>
+    /// This count excludes rows hidden by tombstones. Do not use this value to size
+    /// <see cref="ExactFlatSearchFilterWorkspace"/> instances for raw allowlist search.
+    /// </remarks>
     public int LiveVectorCount => _count - _tombstoneCount;
 
     /// <summary>
     /// Gets the current live base vector count.
     /// </summary>
+    /// <remarks>
+    /// This count excludes base rows hidden by tombstones.
+    /// </remarks>
     public int BaseVectorCount
     {
         get
@@ -153,6 +161,9 @@ public sealed partial class ExactFlatIndex
     /// <summary>
     /// Gets the current live in-memory delta vector count.
     /// </summary>
+    /// <remarks>
+    /// This count excludes delta rows hidden by tombstones.
+    /// </remarks>
     public int DeltaVectorCount
     {
         get
@@ -178,11 +189,18 @@ public sealed partial class ExactFlatIndex
     /// <summary>
     /// Gets the current visibility tombstone count.
     /// </summary>
+    /// <remarks>
+    /// Tombstones are deleted physical rows hidden from search until checkpoint compaction.
+    /// </remarks>
     public int TombstoneCount => _tombstoneCount;
 
     /// <summary>
     /// Gets the current deleted or otherwise reserved external identifier count.
     /// </summary>
+    /// <remarks>
+    /// Deleted external IDs remain reserved and unavailable for reuse for the lifetime of the
+    /// current index state, including after checkpoint compaction.
+    /// </remarks>
     public int DeletedReservedIdCount => _deletedReservedIds.Count;
 
     /// <summary>
@@ -422,6 +440,23 @@ public sealed partial class ExactFlatIndex
 
         return new ExactFlatCandidateSet(this, _generation, rowOrdinals);
     }
+
+    /// <summary>
+    /// Creates a raw allowlist search workspace sized for this exact-flat index.
+    /// </summary>
+    /// <returns>
+    /// A caller-owned workspace whose capacity is at least the current
+    /// <see cref="PhysicalVectorCount"/>.
+    /// </returns>
+    /// <remarks>
+    /// Raw allowlist search workspaces must be sized from physical stored rows, including rows
+    /// hidden by tombstones. This helper avoids accidentally sizing from <see cref="LiveVectorCount"/>.
+    /// Recreate the workspace after this index grows beyond the workspace's
+    /// <see cref="ExactFlatSearchFilterWorkspace.MaxVectorCount"/>. Do not share one workspace
+    /// between overlapping searches.
+    /// </remarks>
+    public ExactFlatSearchFilterWorkspace CreateSearchFilterWorkspace() =>
+        new(PhysicalVectorCount);
 
     /// <summary>
     /// Searches only vectors present in a reusable exact-flat candidate set.

@@ -143,9 +143,14 @@ public sealed partial class HnswIndex
     public VectorMetric Metric { get; }
 
     /// <summary>
-    /// Gets the number of vectors ingested into this HNSW index.
+    /// Gets the physical/live vector count in this immutable HNSW index.
     /// </summary>
-    /// <remarks>This count is useful for sizing caller-owned <see cref="HnswSearchWorkspace"/> instances.</remarks>
+    /// <remarks>
+    /// Immutable HNSW has no tombstone overlay, so this value is both the stored row count and
+    /// the searchable vector count. It is useful for sizing caller-owned
+    /// <see cref="HnswSearchWorkspace"/> instances; <see cref="CreateSearchWorkspace"/> performs
+    /// that sizing for the current index shape.
+    /// </remarks>
     public int Count => _count;
 
     /// <summary>
@@ -337,6 +342,22 @@ public sealed partial class HnswIndex
         _count++;
         _idToOrdinal.Add(id, ordinal);
     }
+
+    /// <summary>
+    /// Creates an HNSW search workspace sized for this index and its configured search width.
+    /// </summary>
+    /// <returns>
+    /// A caller-owned workspace whose <see cref="HnswSearchWorkspace.MaxElements"/> is at least
+    /// the current <see cref="Count"/> and whose <see cref="HnswSearchWorkspace.MaxEf"/> is at
+    /// least <see cref="HnswIndexOptions.EfSearch"/>.
+    /// </returns>
+    /// <remarks>
+    /// Recreate the workspace after this index grows beyond the workspace's recorded capacities or
+    /// when using a different index with larger count or <see cref="HnswIndexOptions.EfSearch"/>.
+    /// Do not share one workspace between overlapping searches.
+    /// </remarks>
+    public HnswSearchWorkspace CreateSearchWorkspace() =>
+        new(Count, Options.EfSearch);
 
     /// <summary>
     /// Searches this HNSW index and writes approximate nearest results in ascending distance order.

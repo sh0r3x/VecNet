@@ -39,6 +39,7 @@ public static class FashionMnistExternalExactBenchmarkScenario
                 : "failed";
 
         RepositoryInfo repository = RepositoryInfo.Create();
+        string[] sanitizedCommandArguments = SanitizeCommandArguments(commandArguments);
         return new ExternalBenchmarkReport(
             SchemaName,
             SchemaVersion,
@@ -65,8 +66,8 @@ public static class FashionMnistExternalExactBenchmarkScenario
                     "Not eligible for public performance, scale, baseline, regression-gate, resident-memory, ANN or concurrency claims."
                 ]),
             repository,
-            new RunnerInfo("VecNet.BenchmarkRunner", "0.1", commandArguments.ToArray()),
-            new CommandInfo(FashionMnistExternalExactBenchmarkOptions.ScenarioName, commandArguments.ToArray()),
+            new RunnerInfo("VecNet.BenchmarkRunner", "0.1", sanitizedCommandArguments),
+            new CommandInfo(FashionMnistExternalExactBenchmarkOptions.ScenarioName, sanitizedCommandArguments),
             new EnvironmentInfo(
                 RuntimeInformation.OSDescription,
                 RuntimeInformation.ProcessArchitecture.ToString(),
@@ -621,6 +622,38 @@ public static class FashionMnistExternalExactBenchmarkScenario
     }
 
     private static double? FiniteOrNull(double value) => double.IsFinite(value) ? value : null;
+
+    private static string[] SanitizeCommandArguments(IReadOnlyList<string> commandArguments)
+    {
+        var sanitized = new string[commandArguments.Count];
+        for (int i = 0; i < commandArguments.Count; i++)
+        {
+            string argument = commandArguments[i];
+            sanitized[i] = argument;
+
+            if (IsSensitivePathOption(argument))
+            {
+                if (i + 1 < commandArguments.Count)
+                {
+                    sanitized[++i] = "<redacted-local-path>";
+                }
+
+                continue;
+            }
+
+            int equalsIndex = argument.IndexOf('=');
+            if (equalsIndex > 0 && IsSensitivePathOption(argument[..equalsIndex]))
+            {
+                sanitized[i] = argument[..(equalsIndex + 1)] + "<redacted-local-path>";
+            }
+        }
+
+        return sanitized;
+    }
+
+    private static bool IsSensitivePathOption(string argument) =>
+        string.Equals(argument, "--cache-root", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(argument, "--output", StringComparison.OrdinalIgnoreCase);
 
     private static string CreateReportId(string? commit, FashionMnistExternalExactBenchmarkOptions options)
     {

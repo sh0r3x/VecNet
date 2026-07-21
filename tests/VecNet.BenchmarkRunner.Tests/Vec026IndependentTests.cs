@@ -33,6 +33,8 @@ public sealed class Vec026IndependentTests
         Assert.DoesNotContain(fullCacheRoot, json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(outputPath, json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(Path.GetFullPath(outputPath), json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("<redacted-local-path>", report.Runner.Arguments);
+        Assert.Contains("<redacted-local-path>", report.Command.Arguments);
         Assert.Equal("manifests/fashion-mnist-784-euclidean/dataset-manifest.json", report.Dataset.AdmissionManifest.RelativePath);
         Assert.Equal(FileChecksum.ComputeSha256(admission.ManifestPath), report.Dataset.AdmissionManifest.Sha256);
         Assert.All(report.Dataset.ConvertedMatrices, matrix => Assert.False(Path.IsPathRooted(matrix.RelativePath)));

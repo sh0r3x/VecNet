@@ -71,19 +71,22 @@ internal sealed class VecNetVectorStoreCollectionState<TKey, TRecord> : IVecNetC
         }
     }
 
-    public TRecord? Get(TKey key)
+    public TRecord? Get(TKey key, bool includeVectors)
     {
         object normalizedKey = NormalizeKey(key);
         lock (_gate)
         {
             EnsureExists();
             return _entriesByKey.TryGetValue(normalizedKey, out VecNetVectorDataEntry<TRecord>? entry)
-                ? entry.Record
+                ? _model.ProjectRecord(entry.Record, includeVectors)
                 : null;
         }
     }
 
-    public IReadOnlyList<TRecord> Get(IEnumerable<TKey> keys, CancellationToken cancellationToken)
+    public IReadOnlyList<TRecord> Get(
+        IEnumerable<TKey> keys,
+        bool includeVectors,
+        CancellationToken cancellationToken)
     {
         var records = new List<TRecord>();
         lock (_gate)
@@ -95,7 +98,7 @@ internal sealed class VecNetVectorStoreCollectionState<TKey, TRecord> : IVecNetC
                 object normalizedKey = NormalizeKey(key);
                 if (_entriesByKey.TryGetValue(normalizedKey, out VecNetVectorDataEntry<TRecord>? entry))
                 {
-                    records.Add(entry.Record);
+                    records.Add(_model.ProjectRecord(entry.Record, includeVectors));
                 }
             }
         }
@@ -106,6 +109,7 @@ internal sealed class VecNetVectorStoreCollectionState<TKey, TRecord> : IVecNetC
     public IReadOnlyList<TRecord> Get(
         Expression<Func<TRecord, bool>> filter,
         int top,
+        bool includeVectors,
         FilteredRecordRetrievalOptions<TRecord>? options,
         CancellationToken cancellationToken)
     {
@@ -145,7 +149,7 @@ internal sealed class VecNetVectorStoreCollectionState<TKey, TRecord> : IVecNetC
                     break;
                 }
 
-                records.Add(entry.Record);
+                records.Add(_model.ProjectRecord(entry.Record, includeVectors));
             }
         }
 
@@ -261,7 +265,13 @@ internal sealed class VecNetVectorStoreCollectionState<TKey, TRecord> : IVecNetC
                 written = _index.Search(query.Span, allowedIds, coreResults, workspace);
             }
 
-            return ProjectResults(coreResults.AsSpan(0, written), skip, top, scoreThreshold, cancellationToken);
+            return ProjectResults(
+                coreResults.AsSpan(0, written),
+                skip,
+                top,
+                options?.IncludeVectors == true,
+                scoreThreshold,
+                cancellationToken);
         }
     }
 
@@ -363,6 +373,7 @@ internal sealed class VecNetVectorStoreCollectionState<TKey, TRecord> : IVecNetC
         ReadOnlySpan<SearchResult> coreResults,
         int skip,
         int top,
+        bool includeVectors,
         double? scoreThreshold,
         CancellationToken cancellationToken)
     {
@@ -399,7 +410,7 @@ internal sealed class VecNetVectorStoreCollectionState<TKey, TRecord> : IVecNetC
                 };
             }
 
-            results.Add(new VectorSearchResult<TRecord>(entry.Record, score));
+            results.Add(new VectorSearchResult<TRecord>(_model.ProjectRecord(entry.Record, includeVectors), score));
         }
 
         return results;

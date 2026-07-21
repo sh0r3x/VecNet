@@ -54,7 +54,7 @@ public sealed class VecNetVectorStoreCollection<TKey, TRecord> : VectorStoreColl
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(_state.Get(key));
+        return Task.FromResult(_state.Get(key, IncludeVectors(options)));
     }
 
     /// <inheritdoc />
@@ -64,7 +64,7 @@ public sealed class VecNetVectorStoreCollection<TKey, TRecord> : VectorStoreColl
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(keys);
-        IReadOnlyList<TRecord> records = _state.Get(keys, cancellationToken);
+        IReadOnlyList<TRecord> records = _state.Get(keys, IncludeVectors(options), cancellationToken);
         foreach (TRecord record in records)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -80,7 +80,7 @@ public sealed class VecNetVectorStoreCollection<TKey, TRecord> : VectorStoreColl
         FilteredRecordRetrievalOptions<TRecord>? options = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        IReadOnlyList<TRecord> records = _state.Get(filter, top, options, cancellationToken);
+        IReadOnlyList<TRecord> records = _state.Get(filter, top, IncludeVectors(options), options, cancellationToken);
         foreach (TRecord record in records)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -143,4 +143,9 @@ public sealed class VecNetVectorStoreCollection<TKey, TRecord> : VectorStoreColl
         ArgumentNullException.ThrowIfNull(serviceType);
         return serviceKey is null && serviceType.IsInstanceOfType(this) ? this : null;
     }
+
+    private static bool IncludeVectors(RecordRetrievalOptions? options) => options?.IncludeVectors == true;
+
+    private static bool IncludeVectors(FilteredRecordRetrievalOptions<TRecord>? options) =>
+        options?.IncludeVectors == true;
 }

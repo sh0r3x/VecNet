@@ -97,6 +97,227 @@ public sealed class VecNetVectorStoreCollectionTests
     }
 
     [Fact]
+    public async Task SingleAndBatchGetHonorIncludeVectorsForReadOnlyMemoryRecords()
+    {
+        VectorStoreCollection<string, TestRecord> collection = CreateCollection();
+        await collection.EnsureCollectionExistsAsync();
+        await collection.UpsertAsync(CreateRecord("a", [1, 2], "red"));
+        await collection.UpsertAsync(CreateRecord("b", [3, 4], "blue"));
+
+        TestRecord? nullOptions = await collection.GetAsync("a");
+        TestRecord? defaultOptions = await collection.GetAsync("a", new RecordRetrievalOptions());
+        TestRecord? falseOptions = await collection.GetAsync(
+            "a",
+            new RecordRetrievalOptions { IncludeVectors = false });
+        TestRecord? trueOptions = await collection.GetAsync(
+            "a",
+            new RecordRetrievalOptions { IncludeVectors = true });
+
+        Assert.NotNull(nullOptions);
+        Assert.NotNull(defaultOptions);
+        Assert.NotNull(falseOptions);
+        Assert.NotNull(trueOptions);
+        Assert.True(nullOptions.Vector.IsEmpty);
+        Assert.True(defaultOptions.Vector.IsEmpty);
+        Assert.True(falseOptions.Vector.IsEmpty);
+        Assert.Equal([1f, 2f], trueOptions.Vector.ToArray());
+
+        List<TestRecord> nullBatch = await ToListAsync(collection.GetAsync(["a", "b"]));
+        List<TestRecord> defaultBatch = await ToListAsync(
+            collection.GetAsync(["a", "b"], new RecordRetrievalOptions()));
+        List<TestRecord> omittedBatch = await ToListAsync(
+            collection.GetAsync(["a", "b"], new RecordRetrievalOptions { IncludeVectors = false }));
+        List<TestRecord> includedBatch = await ToListAsync(
+            collection.GetAsync(["a", "b"], new RecordRetrievalOptions { IncludeVectors = true }));
+
+        Assert.All(nullBatch, record => Assert.True(record.Vector.IsEmpty));
+        Assert.All(defaultBatch, record => Assert.True(record.Vector.IsEmpty));
+        Assert.All(omittedBatch, record => Assert.True(record.Vector.IsEmpty));
+        Assert.Equal([1f, 2f], includedBatch[0].Vector.ToArray());
+        Assert.Equal([3f, 4f], includedBatch[1].Vector.ToArray());
+    }
+
+    [Fact]
+    public async Task FilteredGetHonorsIncludeVectorsForReadOnlyMemoryRecords()
+    {
+        VectorStoreCollection<string, TestRecord> collection = CreateCollection();
+        await collection.EnsureCollectionExistsAsync();
+        await collection.UpsertAsync(CreateRecord("a", [1, 2], "red"));
+        await collection.UpsertAsync(CreateRecord("b", [3, 4], "blue"));
+
+        List<TestRecord> nullOptions = await ToListAsync(collection.GetAsync(record => record.Tag == "red", top: 1));
+        List<TestRecord> defaultOptions = await ToListAsync(
+            collection.GetAsync(record => record.Tag == "red", top: 1, new FilteredRecordRetrievalOptions<TestRecord>()));
+        List<TestRecord> falseOptions = await ToListAsync(
+            collection.GetAsync(
+                record => record.Tag == "red",
+                top: 1,
+                new FilteredRecordRetrievalOptions<TestRecord> { IncludeVectors = false }));
+        List<TestRecord> trueOptions = await ToListAsync(
+            collection.GetAsync(
+                record => record.Tag == "red",
+                top: 1,
+                new FilteredRecordRetrievalOptions<TestRecord> { IncludeVectors = true }));
+
+        Assert.True(Assert.Single(nullOptions).Vector.IsEmpty);
+        Assert.True(Assert.Single(defaultOptions).Vector.IsEmpty);
+        Assert.True(Assert.Single(falseOptions).Vector.IsEmpty);
+        Assert.Equal([1f, 2f], Assert.Single(trueOptions).Vector.ToArray());
+    }
+
+    [Fact]
+    public async Task SearchHonorsIncludeVectorsForReadOnlyMemoryRecords()
+    {
+        VectorStoreCollection<string, TestRecord> collection = CreateCollection();
+        await collection.EnsureCollectionExistsAsync();
+        await collection.UpsertAsync(CreateRecord("a", [1, 0], "red"));
+        await collection.UpsertAsync(CreateRecord("b", [2, 0], "blue"));
+
+        List<VectorSearchResult<TestRecord>> nullOptions = await Search(collection, [0, 0], top: 1);
+        List<VectorSearchResult<TestRecord>> defaultOptions = await Search(
+            collection,
+            [0, 0],
+            top: 1,
+            new VectorSearchOptions<TestRecord>());
+        List<VectorSearchResult<TestRecord>> falseOptions = await Search(
+            collection,
+            [0, 0],
+            top: 1,
+            new VectorSearchOptions<TestRecord> { IncludeVectors = false });
+        List<VectorSearchResult<TestRecord>> trueOptions = await Search(
+            collection,
+            [0, 0],
+            top: 1,
+            new VectorSearchOptions<TestRecord> { IncludeVectors = true });
+
+        Assert.True(Assert.Single(nullOptions).Record.Vector.IsEmpty);
+        Assert.True(Assert.Single(defaultOptions).Record.Vector.IsEmpty);
+        Assert.True(Assert.Single(falseOptions).Record.Vector.IsEmpty);
+        Assert.Equal([1f, 0f], Assert.Single(trueOptions).Record.Vector.ToArray());
+    }
+
+    [Fact]
+    public async Task GetAndSearchHonorIncludeVectorsForFloatArrayRecords()
+    {
+        var store = new VecNetVectorStore();
+        VectorStoreCollection<string, AttributeRecord> collection =
+            store.GetCollection<string, AttributeRecord>("attributes");
+        await collection.EnsureCollectionExistsAsync();
+        await collection.UpsertAsync(new AttributeRecord { Id = "a", Vector = [1, 0], Tag = "red" });
+        await collection.UpsertAsync(new AttributeRecord { Id = "b", Vector = [2, 0], Tag = "blue" });
+
+        AttributeRecord? nullOptionsGet = await collection.GetAsync("a");
+        AttributeRecord? defaultOptionsGet = await collection.GetAsync("a", new RecordRetrievalOptions());
+        AttributeRecord? omittedGet = await collection.GetAsync(
+            "a",
+            new RecordRetrievalOptions { IncludeVectors = false });
+        AttributeRecord? includedGet = await collection.GetAsync(
+            "a",
+            new RecordRetrievalOptions { IncludeVectors = true });
+        List<AttributeRecord> nullOptionsBatch = await ToListAsync(collection.GetAsync(["a", "b"]));
+        List<AttributeRecord> defaultOptionsBatch = await ToListAsync(
+            collection.GetAsync(["a", "b"], new RecordRetrievalOptions()));
+        List<AttributeRecord> omittedBatch = await ToListAsync(
+            collection.GetAsync(["a", "b"], new RecordRetrievalOptions { IncludeVectors = false }));
+        List<AttributeRecord> includedBatch = await ToListAsync(
+            collection.GetAsync(["a", "b"], new RecordRetrievalOptions { IncludeVectors = true }));
+        List<AttributeRecord> nullOptionsFiltered = await ToListAsync(
+            collection.GetAsync(record => record.Tag == "red", top: 1));
+        List<AttributeRecord> defaultOptionsFiltered = await ToListAsync(
+            collection.GetAsync(
+                record => record.Tag == "red",
+                top: 1,
+                new FilteredRecordRetrievalOptions<AttributeRecord>()));
+        List<AttributeRecord> omittedFiltered = await ToListAsync(
+            collection.GetAsync(
+                record => record.Tag == "red",
+                top: 1,
+                new FilteredRecordRetrievalOptions<AttributeRecord> { IncludeVectors = false }));
+        List<AttributeRecord> includedFiltered = await ToListAsync(
+            collection.GetAsync(
+                record => record.Tag == "red",
+                top: 1,
+                new FilteredRecordRetrievalOptions<AttributeRecord> { IncludeVectors = true }));
+        List<VectorSearchResult<AttributeRecord>> nullOptionsSearch = await ToListAsync(
+            collection.SearchAsync(new float[] { 0, 0 }, top: 1));
+        List<VectorSearchResult<AttributeRecord>> defaultOptionsSearch = await ToListAsync(
+            collection.SearchAsync(
+                new float[] { 0, 0 },
+                top: 1,
+                new VectorSearchOptions<AttributeRecord>()));
+        List<VectorSearchResult<AttributeRecord>> omittedSearch = await ToListAsync(
+            collection.SearchAsync(
+                new float[] { 0, 0 },
+                top: 1,
+                new VectorSearchOptions<AttributeRecord> { IncludeVectors = false }));
+        List<VectorSearchResult<AttributeRecord>> includedSearch = await ToListAsync(
+            collection.SearchAsync(
+                new float[] { 0, 0 },
+                top: 1,
+                new VectorSearchOptions<AttributeRecord> { IncludeVectors = true }));
+
+        Assert.NotNull(nullOptionsGet);
+        Assert.NotNull(defaultOptionsGet);
+        Assert.NotNull(omittedGet);
+        Assert.NotNull(includedGet);
+        Assert.Null(nullOptionsGet.Vector);
+        Assert.Null(defaultOptionsGet.Vector);
+        Assert.Null(omittedGet.Vector);
+        Assert.Equal([1f, 0f], includedGet.Vector);
+        Assert.All(nullOptionsBatch, record => Assert.Null(record.Vector));
+        Assert.All(defaultOptionsBatch, record => Assert.Null(record.Vector));
+        Assert.All(omittedBatch, record => Assert.Null(record.Vector));
+        Assert.Equal([1f, 0f], includedBatch[0].Vector);
+        Assert.Equal([2f, 0f], includedBatch[1].Vector);
+        Assert.Null(Assert.Single(nullOptionsFiltered).Vector);
+        Assert.Null(Assert.Single(defaultOptionsFiltered).Vector);
+        Assert.Null(Assert.Single(omittedFiltered).Vector);
+        Assert.Equal([1f, 0f], Assert.Single(includedFiltered).Vector);
+        Assert.Null(Assert.Single(nullOptionsSearch).Record.Vector);
+        Assert.Null(Assert.Single(defaultOptionsSearch).Record.Vector);
+        Assert.Null(Assert.Single(omittedSearch).Record.Vector);
+        Assert.Equal([1f, 0f], Assert.Single(includedSearch).Record.Vector);
+    }
+
+    [Fact]
+    public async Task UnsupportedProjectionShapesFailOnlyWhenVectorsAreOmitted()
+    {
+        var store = new VecNetVectorStore();
+        VectorStoreCollection<string, ConstructorOnlyRecord> collection =
+            store.GetCollection<string, ConstructorOnlyRecord>("constructor-only");
+        await collection.EnsureCollectionExistsAsync();
+        await collection.UpsertAsync(new ConstructorOnlyRecord("a", [1, 0], "red"));
+
+        ConstructorOnlyRecord? includedGet = await collection.GetAsync(
+            "a",
+            new RecordRetrievalOptions { IncludeVectors = true });
+        List<VectorSearchResult<ConstructorOnlyRecord>> includedSearch = await ToListAsync(
+            collection.SearchAsync(
+                new float[] { 0, 0 },
+                top: 1,
+                new VectorSearchOptions<ConstructorOnlyRecord> { IncludeVectors = true }));
+
+        Assert.NotNull(includedGet);
+        Assert.Equal([1f, 0f], includedGet.Vector);
+        Assert.Equal([1f, 0f], Assert.Single(includedSearch).Record.Vector);
+
+        NotSupportedException defaultGet = await Assert.ThrowsAsync<NotSupportedException>(() =>
+            collection.GetAsync("a"));
+        NotSupportedException omittedGet = await Assert.ThrowsAsync<NotSupportedException>(() =>
+            collection.GetAsync("a", new RecordRetrievalOptions { IncludeVectors = false }));
+        NotSupportedException omittedSearch = await Assert.ThrowsAsync<NotSupportedException>(async () =>
+            await ToListAsync(
+                collection.SearchAsync(
+                    new float[] { 0, 0 },
+                    top: 1,
+                    new VectorSearchOptions<ConstructorOnlyRecord> { IncludeVectors = false })));
+
+        Assert.Contains("cannot omit vectors", defaultGet.Message, StringComparison.Ordinal);
+        Assert.Contains("cannot omit vectors", omittedGet.Message, StringComparison.Ordinal);
+        Assert.Contains("cannot omit vectors", omittedSearch.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task SearchSupportsTopSkipUnderfillThresholdAndFilterAllowlist()
     {
         VectorStoreCollection<string, TestRecord> collection = CreateCollection();
@@ -375,6 +596,19 @@ public sealed class VecNetVectorStoreCollectionTests
 
         [VectorStoreData]
         public string Tag { get; init; } = string.Empty;
+    }
+
+    private sealed class ConstructorOnlyRecord(string id, float[] vector, string tag)
+    {
+        [VectorStoreKey]
+        public string Id { get; } = id;
+
+        [VectorStoreVector(2, IndexKind = Microsoft.Extensions.VectorData.IndexKind.Flat,
+            DistanceFunction = Microsoft.Extensions.VectorData.DistanceFunction.EuclideanSquaredDistance)]
+        public float[] Vector { get; } = vector;
+
+        [VectorStoreData]
+        public string Tag { get; } = tag;
     }
 
     private sealed class MultiVectorRecord

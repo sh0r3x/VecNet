@@ -22,6 +22,15 @@ internal sealed class VecNetVectorDataModel<TRecord>
         IsSimilarityScore =
             distanceFunction == Microsoft.Extensions.VectorData.DistanceFunction.CosineSimilarity ||
             distanceFunction == Microsoft.Extensions.VectorData.DistanceFunction.DotProductSimilarity;
+        ProjectionConstructor = typeof(TRecord).GetConstructor(
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            binder: null,
+            Type.EmptyTypes,
+            modifiers: null);
+        ProjectionProperties = typeof(TRecord)
+            .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+            .Where(property => property.GetIndexParameters().Length == 0 && property.GetMethod is not null)
+            .ToArray();
     }
 
     public PropertyInfo KeyProperty { get; }
@@ -35,6 +44,10 @@ internal sealed class VecNetVectorDataModel<TRecord>
     public VectorMetric Metric { get; }
 
     public bool IsSimilarityScore { get; }
+
+    private ConstructorInfo? ProjectionConstructor { get; }
+
+    private PropertyInfo[] ProjectionProperties { get; }
 
     public static VecNetVectorDataModel<TRecord> Create(VectorStoreCollectionDefinition? definition)
     {
@@ -120,6 +133,35 @@ internal sealed class VecNetVectorDataModel<TRecord>
         return IsSimilarityScore
             ? score >= scoreThreshold.Value
             : score <= scoreThreshold.Value;
+    }
+
+    public TRecord ProjectRecord(TRecord record, bool includeVectors)
+    {
+        if (includeVectors)
+        {
+            return record;
+        }
+
+        if (ProjectionConstructor is null)
+        {
+            throw new NotSupportedException(
+                $"VecNet VectorData cannot omit vectors for record type '{typeof(TRecord)}' because it does not have a parameterless constructor.");
+        }
+
+        var projected = (TRecord)ProjectionConstructor.Invoke(null);
+        foreach (PropertyInfo property in ProjectionProperties)
+        {
+            if (property.SetMethod is null || !property.SetMethod.IsPublic)
+            {
+                throw new NotSupportedException(
+                    $"VecNet VectorData cannot omit vectors for record type '{typeof(TRecord)}' because public property '{property.Name}' is not publicly settable.");
+            }
+
+            object? value = property == VectorProperty ? GetDefaultValue(property.PropertyType) : property.GetValue(record);
+            property.SetValue(projected, value);
+        }
+
+        return projected;
     }
 
     private static VecNetVectorDataModel<TRecord> CreateFromDefinition(VectorStoreCollectionDefinition definition)
@@ -338,4 +380,6 @@ internal sealed class VecNetVectorDataModel<TRecord>
         throw new NotSupportedException(
             "VecNet VectorData supports VectorSearchOptions.VectorProperty only when it selects the configured vector property.");
     }
+
+    private static object? GetDefaultValue(Type type) => type.IsValueType ? Activator.CreateInstance(type) : null;
 }

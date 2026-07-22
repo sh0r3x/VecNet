@@ -67,12 +67,18 @@ for (int i = 0; i < written; i++)
 
 ## Benchmarks
 
-VecNet has a bounded exact-flat generated-data benchmark summary for
-`ExactFlatIndex` squared-L2 search in
-[docs/benchmarks/exact-flat.md](docs/benchmarks/exact-flat.md). Read the
-methodology and limits before using the numbers; they are not capacity,
-platform-wide, HNSW, adapter, competitor, public-dataset, NativeAOT/trimming,
-or regression-threshold claims.
+VecNet has bounded benchmark summaries:
+
+- `ExactFlatIndex` squared-L2 generated-data search:
+  [docs/benchmarks/exact-flat.md](docs/benchmarks/exact-flat.md).
+- `HnswIndex` squared-L2 recall versus latency over generated data and
+  Fashion-MNIST:
+  [docs/benchmarks/hnsw-squared-l2.md](docs/benchmarks/hnsw-squared-l2.md).
+
+Read each methodology and limit section before using the numbers. The
+summaries are narrow search measurements, not capacity, package-wide,
+platform-wide, adapter, competitor, NativeAOT/trimming, regression-threshold,
+or semantic-relevance claims.
 
 ## Things To Know
 
@@ -194,11 +200,11 @@ or regression-threshold claims.
 - The package-smoke evidence is functional package-consumer evidence. It is
   not a public performance, platform support, NativeAOT, trimming, or
   universal deployment claim.
-- `1.0.0` is the stable API compatibility line for the admitted public API
-  surfaces described here. This README does not make public HNSW recall,
-  latency, throughput, allocation, memory, capacity, storage-size, comparison,
-  stable file-format, production-readiness, platform support, NativeAOT, or
-  trimming claims.
+- `1.0.0` is the stable API compatibility line for the supported public API
+  surfaces described here. Except for the dedicated benchmark documents linked
+  above, this README does not make public HNSW recall, latency, throughput,
+  allocation, memory, capacity, storage-size, comparison, stable file-format,
+  production-readiness, platform support, NativeAOT, or trimming claims.
 
 ## Metric Selection
 
@@ -562,7 +568,7 @@ executing path, where external ID breaks the tie.
 VecNet is being built toward a broader embedded indexing engine with additional
 index strategies, richer filtering and update workflows, package polish,
 consumer documentation, and integration tooling. Those capabilities will be
-documented when they are admitted to the public surface.
+documented when they become supported public features.
 
 ## Repository
 

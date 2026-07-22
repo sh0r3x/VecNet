@@ -61,8 +61,18 @@ for (int i = 0; i < written; i++)
 - HNSW squared-L2 search and persistence: [HNSW](#hnsw).
 - Filtering with caller-owned IDs: [Filtering](#filtering).
 - Mutation and checkpoint workflows: [Updates And Checkpoints](#updates-and-checkpoints).
+- Conservative exact-flat benchmark summary: [Benchmarks](#benchmarks).
 - VectorData applications: [Optional VectorData Adapter](#optional-vectordata-adapter).
 - Support and no-claim boundaries: [Limitations And Unsupported Claims](#limitations-and-unsupported-claims).
+
+## Benchmarks
+
+VecNet has a bounded exact-flat generated-data benchmark summary for
+`ExactFlatIndex` squared-L2 search in
+[docs/benchmarks/exact-flat.md](docs/benchmarks/exact-flat.md). Read the
+methodology and limits before using the numbers; they are not capacity,
+platform-wide, HNSW, adapter, competitor, public-dataset, NativeAOT/trimming,
+or regression-threshold claims.
 
 ## Things To Know
 

@@ -15,6 +15,9 @@ internal sealed class VecNetVectorStoreCollectionState<TKey, TRecord> : IVecNetC
     where TKey : notnull
     where TRecord : class
 {
+    private const string UnsupportedOrderBySelectorMessage =
+        "VecNet VectorData supports FilteredRecordRetrievalOptions.OrderBy only when each selector selects a sortable record property.";
+
     private readonly object _gate = new();
     private readonly VecNetVectorDataModel<TRecord> _model;
     private ExactFlatIndex _index;
@@ -126,7 +129,7 @@ internal sealed class VecNetVectorStoreCollectionState<TKey, TRecord> : IVecNetC
         }
 
         var predicate = CompileFilter(filter);
-        var records = new List<TRecord>(top);
+        var records = new List<TRecord>();
         lock (_gate)
         {
             EnsureExists();
@@ -138,22 +141,17 @@ internal sealed class VecNetVectorStoreCollectionState<TKey, TRecord> : IVecNetC
                     continue;
                 }
 
-                if (skip > 0)
-                {
-                    skip--;
-                    continue;
-                }
-
-                if (records.Count == top)
-                {
-                    break;
-                }
-
-                records.Add(_model.ProjectRecord(entry.Record, includeVectors));
+                records.Add(entry.Record);
             }
         }
 
-        return records;
+        ApplyOrderBy(records, options);
+
+        return records
+            .Skip(skip)
+            .Take(top)
+            .Select(record => _model.ProjectRecord(record, includeVectors))
+            .ToArray();
     }
 
     public void Delete(TKey key)
@@ -290,6 +288,112 @@ internal sealed class VecNetVectorStoreCollectionState<TKey, TRecord> : IVecNetC
             };
         }
     }
+
+    private static void ApplyOrderBy(List<TRecord> records, FilteredRecordRetrievalOptions<TRecord>? options)
+    {
+        OrderBySorter[] sorters = CreateOrderBySorters(options);
+        if (sorters.Length == 0 || records.Count <= 1)
+        {
+            return;
+        }
+
+        records.Sort((left, right) =>
+        {
+            foreach (OrderBySorter sorter in sorters)
+            {
+                int comparison = CompareOrderByValues(sorter.Selector(left), sorter.Selector(right));
+                if (comparison != 0)
+                {
+                    return sorter.Ascending ? comparison : -comparison;
+                }
+            }
+
+            return 0;
+        });
+    }
+
+    private static OrderBySorter[] CreateOrderBySorters(FilteredRecordRetrievalOptions<TRecord>? options)
+    {
+        if (options?.OrderBy is null)
+        {
+            return [];
+        }
+
+        FilteredRecordRetrievalOptions<TRecord>.OrderByDefinition? definition =
+            options.OrderBy(new FilteredRecordRetrievalOptions<TRecord>.OrderByDefinition());
+        if (definition is null)
+        {
+            throw new NotSupportedException("VecNet VectorData OrderBy callbacks must return an OrderByDefinition.");
+        }
+
+        if (definition.Values.Count == 0)
+        {
+            return [];
+        }
+
+        return definition.Values
+            .Select(sort => new OrderBySorter(CompileOrderBySelector(sort.PropertySelector), sort.Ascending))
+            .ToArray();
+    }
+
+    private static Func<TRecord, object?> CompileOrderBySelector(Expression<Func<TRecord, object?>> selector)
+    {
+        var selectedProperty = VecNetVectorDataModel<TRecord>.GetSelectedProperty(
+            selector,
+            UnsupportedOrderBySelectorMessage);
+        ValidateOrderByProperty(selectedProperty);
+
+        try
+        {
+            return selector.Compile();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            throw new VectorStoreException($"The VectorData OrderBy expression for '{selectedProperty.Name}' could not be compiled.", ex)
+            {
+                VectorStoreSystemName = VecNetVectorDataConstants.SystemName,
+                OperationName = "OrderBy"
+            };
+        }
+    }
+
+    private static void ValidateOrderByProperty(System.Reflection.PropertyInfo property)
+    {
+        Type valueType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        if (!typeof(IComparable).IsAssignableFrom(valueType))
+        {
+            throw new NotSupportedException(
+                $"VecNet VectorData OrderBy selector '{property.Name}' targets property type '{property.PropertyType}', which is not supported. OrderBy properties must implement IComparable.");
+        }
+    }
+
+    private static int CompareOrderByValues(object? left, object? right)
+    {
+        if (ReferenceEquals(left, right))
+        {
+            return 0;
+        }
+
+        if (left is null)
+        {
+            return -1;
+        }
+
+        if (right is null)
+        {
+            return 1;
+        }
+
+        if (left is IComparable comparable)
+        {
+            return comparable.CompareTo(right);
+        }
+
+        throw new NotSupportedException(
+            $"VecNet VectorData OrderBy values must implement IComparable. Property value type '{left.GetType()}' does not.");
+    }
+
+    private sealed record OrderBySorter(Func<TRecord, object?> Selector, bool Ascending);
 
     private void UpsertCore(object key, TRecord record, ReadOnlyMemory<float> vector)
     {

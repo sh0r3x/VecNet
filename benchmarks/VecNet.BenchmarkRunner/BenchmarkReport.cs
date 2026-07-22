@@ -179,6 +179,26 @@ public sealed record MetricsInfo(
     int DistanceMismatchCount,
     int MissingResultCount);
 
+public sealed record ExactGeneratedPublicEvidenceValidationInfo(
+    string PolicyName,
+    string PolicyVersion,
+    string Status,
+    bool Acceptable,
+    string Classification,
+    double RecallAtK,
+    double OrderedAgreement,
+    double AcceptedRecallFloor,
+    string DistanceToleranceStatus,
+    int DistanceMismatchCount,
+    int MissingResultCount,
+    int DuplicateResultCount,
+    int WrongIdAwayFromNearTieCount,
+    int BoundaryNearTieMismatchCount,
+    int OrderMismatchCount,
+    string NearTieTolerancePolicy,
+    string Explanation,
+    string[] Diagnostics);
+
 public sealed record BaselineInfo(
     string? BaselineReportId,
     string Suitability,
@@ -204,4 +224,5 @@ public sealed record ValidationInfo(
     bool TruthGenerated,
     bool PublicClaimEligible,
     bool BaselineCandidateEligible,
-    bool ReportIsPrivateRaw);
+    bool ReportIsPrivateRaw,
+    ExactGeneratedPublicEvidenceValidationInfo? ExactGeneratedPublicEvidence = null);

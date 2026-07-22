@@ -19,7 +19,8 @@ public sealed record PublicBenchmarkSummary(
     PublicBenchmarkMeasurementCategories Measurements,
     PublicBenchmarkPrivacyStatus Privacy,
     string[] Limitations,
-    PublicBenchmarkReviewStatus Review);
+    PublicBenchmarkReviewStatus Review,
+    ExactGeneratedPublicEvidenceValidationInfo? EvidenceValidation = null);
 
 public sealed record PublicBenchmarkClaimScope(
     string ProductSurface,
@@ -206,6 +207,7 @@ public static class PublicBenchmarkSummaryGate
         ValidateMeasurements(summary.Measurements, errors);
         ValidatePrivacy(summary.Privacy, errors);
         ValidateReview(summary.Review, errors);
+        ValidateEvidenceValidation(summary, errors);
         ValidateRedaction(summary, errors);
 
         return new PublicBenchmarkSummaryValidationResult(errors.Count == 0, errors.ToArray());
@@ -386,6 +388,64 @@ public static class PublicBenchmarkSummaryGate
         RequireNonWhiteSpace(errors, "review.reviewer", review.Reviewer);
         RequireNonWhiteSpace(errors, "review.reviewedAtUtc", review.ReviewedAtUtc);
         RequireNonWhiteSpace(errors, "review.notes", review.Notes);
+    }
+
+    private static void ValidateEvidenceValidation(PublicBenchmarkSummary summary, List<string> errors)
+    {
+        bool isExactGeneratedSummary =
+            ContainsOrdinalIgnoreCase(summary.Scope?.Scenario ?? "", GeneratedExactSearchOptions.ScenarioName) ||
+            (summary.Commands?.Any(command => string.Equals(command.Name, GeneratedExactSearchOptions.ScenarioName, StringComparison.Ordinal)) ?? false);
+
+        if (!isExactGeneratedSummary)
+        {
+            return;
+        }
+
+        ExactGeneratedPublicEvidenceValidationInfo? validation = summary.EvidenceValidation;
+        if (validation is null)
+        {
+            errors.Add("evidenceValidation must be present for exact-generated public summaries");
+            return;
+        }
+
+        RequireEqual(errors, "evidenceValidation.policyName", ExactGeneratedPublicEvidencePolicy.PolicyName, validation.PolicyName);
+        RequireEqual(errors, "evidenceValidation.policyVersion", ExactGeneratedPublicEvidencePolicy.PolicyVersion, validation.PolicyVersion);
+        Require(errors, validation.Acceptable, "evidenceValidation.acceptable must be true");
+        Require(
+            errors,
+            validation.Status == "passed-strict" ||
+                validation.Status == "accepted-near-tie-order-only",
+            "evidenceValidation.status must be passed-strict or accepted-near-tie-order-only");
+        RequireNonWhiteSpace(errors, "evidenceValidation.classification", validation.Classification);
+        Require(
+            errors,
+            validation.AcceptedRecallFloor == ExactGeneratedPublicEvidencePolicy.AcceptedRecallFloor,
+            "evidenceValidation.acceptedRecallFloor must match the exact-generated public evidence policy");
+        Require(
+            errors,
+            validation.RecallAtK >= ExactGeneratedPublicEvidencePolicy.AcceptedRecallFloor,
+            "evidenceValidation.recallAtK must satisfy the accepted recall floor");
+        RequireEqual(errors, "evidenceValidation.distanceToleranceStatus", "passed", validation.DistanceToleranceStatus);
+        Require(errors, validation.DistanceMismatchCount == 0, "evidenceValidation.distanceMismatchCount must be zero");
+        Require(errors, validation.MissingResultCount == 0, "evidenceValidation.missingResultCount must be zero");
+        Require(errors, validation.DuplicateResultCount == 0, "evidenceValidation.duplicateResultCount must be zero");
+        Require(errors, validation.WrongIdAwayFromNearTieCount == 0, "evidenceValidation.wrongIdAwayFromNearTieCount must be zero");
+        RequireNonWhiteSpace(errors, "evidenceValidation.nearTieTolerancePolicy", validation.NearTieTolerancePolicy);
+        RequireNonWhiteSpace(errors, "evidenceValidation.explanation", validation.Explanation);
+        Require(errors, validation.Diagnostics is { Length: > 0 }, "evidenceValidation.diagnostics must be present");
+
+        if (validation.Status == "passed-strict")
+        {
+            Require(errors, validation.RecallAtK == 1, "evidenceValidation strict status requires recallAtK of 1.0");
+            Require(errors, validation.OrderedAgreement == 1, "evidenceValidation strict status requires orderedAgreement of 1.0");
+        }
+        else
+        {
+            Require(
+                errors,
+                validation.OrderMismatchCount > 0 || validation.BoundaryNearTieMismatchCount > 0,
+                "evidenceValidation near-tie status requires order or boundary near-tie mismatches");
+        }
     }
 
     private static void ValidateRedaction(PublicBenchmarkSummary summary, List<string> errors)

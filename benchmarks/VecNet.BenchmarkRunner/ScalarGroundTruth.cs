@@ -101,6 +101,16 @@ public static class ScalarGroundTruth
             _ => throw new ArgumentOutOfRangeException(nameof(metric), "Metric is not supported.")
         };
 
+    internal static float CalculateDistance(
+        ReadOnlySpan<float> query,
+        ReadOnlySpan<float> vector,
+        VectorMetric metric)
+    {
+        double queryMagnitude = metric == VectorMetric.Cosine ? CalculateMagnitude(query) : 0;
+        double vectorMagnitude = metric == VectorMetric.Cosine ? CalculateMagnitude(vector) : 0;
+        return CalculateDistance(query, vector, metric, queryMagnitude, vectorMagnitude);
+    }
+
     private static float SquaredEuclidean(ReadOnlySpan<float> query, ReadOnlySpan<float> vector)
     {
         double sum = 0;

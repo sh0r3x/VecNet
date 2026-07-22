@@ -162,6 +162,101 @@ public sealed class Vec206PublicBenchmarkSummaryTests
     }
 
     [Fact]
+    public void Validate_ExactGeneratedSummaryRequiresAcceptedEvidenceValidation()
+    {
+        PublicBenchmarkSummary missingEvidenceValidation = CreateValidSummary() with
+        {
+            EvidenceValidation = null
+        };
+        PublicBenchmarkSummary missingResultsClaimedAcceptable = CreateValidSummary() with
+        {
+            EvidenceValidation = CreateAcceptedEvidenceValidation() with
+            {
+                Status = "accepted-near-tie-order-only",
+                Classification = "deterministic-near-tie-order-only",
+                OrderedAgreement = 0.999,
+                OrderMismatchCount = 1,
+                MissingResultCount = 1
+            }
+        };
+        PublicBenchmarkSummary wrongIdAwayFromNearTieClaimedAcceptable = CreateValidSummary() with
+        {
+            EvidenceValidation = CreateAcceptedEvidenceValidation() with
+            {
+                Status = "accepted-near-tie-order-only",
+                Classification = "deterministic-near-tie-order-only",
+                OrderedAgreement = 0.999,
+                OrderMismatchCount = 1,
+                WrongIdAwayFromNearTieCount = 1
+            }
+        };
+
+        AssertInvalidContains(missingEvidenceValidation, "evidenceValidation");
+        AssertInvalidContains(missingResultsClaimedAcceptable, "missingResultCount");
+        AssertInvalidContains(wrongIdAwayFromNearTieClaimedAcceptable, "wrongIdAwayFromNearTieCount");
+    }
+
+    [Fact]
+    public void Validate_ExactGeneratedSummaryRejectsForgedInvalidEvidenceValidation()
+    {
+        PublicBenchmarkSummary duplicateResultsClaimedAcceptable = CreateValidSummary() with
+        {
+            EvidenceValidation = CreateAcceptedEvidenceValidation() with
+            {
+                Status = "accepted-near-tie-order-only",
+                Classification = "deterministic-near-tie-order-only",
+                OrderedAgreement = 0.999,
+                DuplicateResultCount = 1,
+                OrderMismatchCount = 1
+            }
+        };
+        PublicBenchmarkSummary recallBelowFloorClaimedAcceptable = CreateValidSummary() with
+        {
+            EvidenceValidation = CreateAcceptedEvidenceValidation() with
+            {
+                Status = "accepted-near-tie-order-only",
+                Classification = "deterministic-near-tie-order-only",
+                RecallAtK = ExactGeneratedPublicEvidencePolicy.AcceptedRecallFloor - 0.001,
+                AcceptedRecallFloor = ExactGeneratedPublicEvidencePolicy.AcceptedRecallFloor - 0.001,
+                OrderedAgreement = 0.999,
+                BoundaryNearTieMismatchCount = 2
+            }
+        };
+        PublicBenchmarkSummary distanceMismatchClaimedAcceptable = CreateValidSummary() with
+        {
+            EvidenceValidation = CreateAcceptedEvidenceValidation() with
+            {
+                Status = "accepted-near-tie-order-only",
+                Classification = "deterministic-near-tie-order-only",
+                OrderedAgreement = 0.999,
+                DistanceToleranceStatus = "failed",
+                DistanceMismatchCount = 1,
+                OrderMismatchCount = 1
+            }
+        };
+
+        AssertInvalidContains(duplicateResultsClaimedAcceptable, "duplicateResultCount");
+        AssertInvalidContains(recallBelowFloorClaimedAcceptable, "acceptedRecallFloor");
+        AssertInvalidContains(recallBelowFloorClaimedAcceptable, "accepted recall floor");
+        AssertInvalidContains(distanceMismatchClaimedAcceptable, "distanceToleranceStatus");
+        AssertInvalidContains(distanceMismatchClaimedAcceptable, "distanceMismatchCount");
+    }
+
+    [Fact]
+    public void Validate_EvidenceValidationDiagnosticsRemainRedactionChecked()
+    {
+        PublicBenchmarkSummary summary = CreateValidSummary() with
+        {
+            EvidenceValidation = CreateAcceptedEvidenceValidation() with
+            {
+                Diagnostics = [@"private raw report C:\Users\owner\raw.json was accepted"]
+            }
+        };
+
+        AssertInvalidContains(summary, "local path");
+    }
+
+    [Fact]
     public void Serialize_InvalidSummaryIsRejectedBeforeWritingPublicJson()
     {
         PublicBenchmarkSummary summary = CreateValidSummary() with
@@ -270,7 +365,8 @@ public sealed class Vec206PublicBenchmarkSummaryTests
                 "reviewed",
                 "Review Agent",
                 "2026-07-21T00:00:00Z",
-                "Schema-shape test fixture only; not public benchmark evidence."));
+                "Schema-shape test fixture only; not public benchmark evidence."),
+            EvidenceValidation: CreateAcceptedEvidenceValidation());
 
     private static PublicBenchmarkMeasurementCategory Category(
         string status,
@@ -278,4 +374,25 @@ public sealed class Vec206PublicBenchmarkSummaryTests
         string semantics,
         string[] values) =>
         new(status, unit, semantics, values, []);
+
+    private static ExactGeneratedPublicEvidenceValidationInfo CreateAcceptedEvidenceValidation() =>
+        new(
+            ExactGeneratedPublicEvidencePolicy.PolicyName,
+            ExactGeneratedPublicEvidencePolicy.PolicyVersion,
+            "passed-strict",
+            Acceptable: true,
+            "strict-perfect-order",
+            RecallAtK: 1.0,
+            OrderedAgreement: 1.0,
+            ExactGeneratedPublicEvidencePolicy.AcceptedRecallFloor,
+            DistanceToleranceStatus: "passed",
+            DistanceMismatchCount: 0,
+            MissingResultCount: 0,
+            DuplicateResultCount: 0,
+            WrongIdAwayFromNearTieCount: 0,
+            BoundaryNearTieMismatchCount: 0,
+            OrderMismatchCount: 0,
+            ExactGeneratedPublicEvidencePolicy.NearTieTolerancePolicy,
+            "Strict exact-generated validation passed with perfect recall, ordering and distance agreement.",
+            ["strictRecallAtK=1", "strictOrderedAgreement=1"]);
 }

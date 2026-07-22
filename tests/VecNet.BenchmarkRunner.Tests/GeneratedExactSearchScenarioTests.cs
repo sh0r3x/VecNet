@@ -97,6 +97,10 @@ public sealed class GeneratedExactSearchScenarioTests
         Assert.False(report.Validation.PublicClaimEligible);
         Assert.False(report.Validation.BaselineCandidateEligible);
         Assert.True(report.Validation.ReportIsPrivateRaw);
+        Assert.NotNull(report.Validation.ExactGeneratedPublicEvidence);
+        Assert.True(report.Validation.ExactGeneratedPublicEvidence.Acceptable);
+        Assert.Equal("passed-strict", report.Validation.ExactGeneratedPublicEvidence.Status);
+        Assert.Equal(report.Metrics.OrderedAgreement, report.Validation.ExactGeneratedPublicEvidence.OrderedAgreement);
     }
 
     [Fact]

@@ -26,6 +26,15 @@ public static class GeneratedExactSearchScenario
             options.TopK,
             options.Dimension,
             options.Metric);
+        ExactGeneratedPublicEvidenceValidationInfo publicEvidenceValidation =
+            ExactGeneratedPublicEvidencePolicy.Evaluate(
+                truth,
+                measurement.Results,
+                dataset,
+                options.Metric,
+                options.TopK,
+                options.Dimension,
+                comparison);
 
         RepositoryInfo repository = RepositoryInfo.Create();
 
@@ -152,10 +161,12 @@ public static class GeneratedExactSearchScenario
                 true,
                 false,
                 false,
-                true),
+                true,
+                publicEvidenceValidation),
             Notes:
             [
                 "Private generated-data smoke evidence only; not a public benchmark claim.",
+                "For exact-generated public evidence, validation.exactGeneratedPublicEvidence records the VEC-215 strict/near-tie policy; orderedAgreement remains a reported diagnostic metric and private baseline eligibility still requires perfect ordering.",
                 "Latency samples are per measured query around public ExactFlatIndex.Search(query, results); setup, index build, scalar-reference truth, warmup, result capture/comparison and report writing are excluded.",
                 "Latency p50/p95/p99 use nearest-rank per-run samples, with top-level and aggregate fields reported as means across per-run percentiles rather than BenchmarkDotNet statistics.",
                 "Run-to-run noise metadata uses simple mean, sample standard deviation, coefficient of variation where available, and min/max spread across measured runs; it is not BenchmarkDotNet statistics, a threshold policy or a regression decision.",

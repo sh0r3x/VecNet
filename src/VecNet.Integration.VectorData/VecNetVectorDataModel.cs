@@ -364,7 +364,16 @@ internal sealed class VecNetVectorDataModel<TRecord>
         }
     }
 
-    private static string GetSelectedPropertyName(Expression<Func<TRecord, object?>> selector)
+    internal static string GetSelectedPropertyName(Expression<Func<TRecord, object?>> selector)
+    {
+        return GetSelectedProperty(
+            selector,
+            "VecNet VectorData supports VectorSearchOptions.VectorProperty only when it selects the configured vector property.").Name;
+    }
+
+    internal static PropertyInfo GetSelectedProperty(
+        Expression<Func<TRecord, object?>> selector,
+        string unsupportedSelectorMessage)
     {
         Expression expression = selector.Body;
         if (expression is UnaryExpression { NodeType: ExpressionType.Convert } unary)
@@ -374,11 +383,10 @@ internal sealed class VecNetVectorDataModel<TRecord>
 
         if (expression is MemberExpression { Member: PropertyInfo property })
         {
-            return property.Name;
+            return property;
         }
 
-        throw new NotSupportedException(
-            "VecNet VectorData supports VectorSearchOptions.VectorProperty only when it selects the configured vector property.");
+        throw new NotSupportedException(unsupportedSelectorMessage);
     }
 
     private static object? GetDefaultValue(Type type) => type.IsValueType ? Activator.CreateInstance(type) : null;

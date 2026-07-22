@@ -72,18 +72,21 @@ public static class ResultComparer
             missingResults);
     }
 
-    private static bool DistanceMatches(float expected, float actual, int dimension, VectorMetric metric)
+    internal static bool DistanceMatches(float expected, float actual, int dimension, VectorMetric metric)
     {
         if (!float.IsFinite(actual) || float.IsNaN(expected))
         {
             return false;
         }
 
-        float tolerance = metric == VectorMetric.SquaredEuclidean
-            ? CalculateD026Tolerance(dimension, expected)
-            : 1e-5f * MathF.Max(1f, MathF.Abs(expected));
+        float tolerance = CalculateDistanceTolerance(dimension, metric, expected);
         return MathF.Abs(expected - actual) <= tolerance;
     }
+
+    internal static float CalculateDistanceTolerance(int dimension, VectorMetric metric, float scalarReference) =>
+        metric == VectorMetric.SquaredEuclidean
+            ? CalculateD026Tolerance(dimension, scalarReference)
+            : 1e-5f * MathF.Max(1f, MathF.Abs(scalarReference));
 
     private static float CalculateD026Tolerance(int dimension, float scalarReference)
     {

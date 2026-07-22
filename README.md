@@ -11,14 +11,14 @@ and durable application storage.
 Use VecNet from a `.NET 10` project. Add the core package:
 
 ```bash
-dotnet add package VecNet --version 1.0.1
+dotnet add package VecNet --version 1.1.0
 ```
 
 For `Microsoft.Extensions.VectorData` applications, add the separate optional
 exact-flat adapter package in addition to the core package:
 
 ```bash
-dotnet add package VecNet.Integration.VectorData --version 1.0.1
+dotnet add package VecNet.Integration.VectorData --version 1.1.0
 ```
 
 The core `VecNet` package intentionally has no runtime package dependencies
@@ -61,8 +61,24 @@ for (int i = 0; i < written; i++)
 - HNSW squared-L2 search and persistence: [HNSW](#hnsw).
 - Filtering with caller-owned IDs: [Filtering](#filtering).
 - Mutation and checkpoint workflows: [Updates And Checkpoints](#updates-and-checkpoints).
+- Conservative exact-flat benchmark summary: [Benchmarks](#benchmarks).
 - VectorData applications: [Optional VectorData Adapter](#optional-vectordata-adapter).
 - Support and no-claim boundaries: [Limitations And Unsupported Claims](#limitations-and-unsupported-claims).
+
+## Benchmarks
+
+VecNet has bounded benchmark summaries:
+
+- `ExactFlatIndex` squared-L2 generated-data search:
+  [docs/benchmarks/exact-flat.md](docs/benchmarks/exact-flat.md).
+- `HnswIndex` squared-L2 recall versus latency over generated data and
+  Fashion-MNIST:
+  [docs/benchmarks/hnsw-squared-l2.md](docs/benchmarks/hnsw-squared-l2.md).
+
+Read each methodology and limit section before using the numbers. The
+summaries are narrow search measurements, not capacity, package-wide,
+platform-wide, adapter, competitor, NativeAOT/trimming, regression-threshold,
+or semantic-relevance claims.
 
 ## Things To Know
 
@@ -103,7 +119,7 @@ for (int i = 0; i < written; i++)
   projectable class record shape; unsupported projection shapes throw a clear
   `NotSupportedException`.
 
-## Supported 1.0.1 Feature List
+## Supported 1.1.0 Feature List
 
 - Target framework: `net10.0`.
 - The core `VecNet` package is dependency-free and ships managed `lib/net10.0`
@@ -184,11 +200,11 @@ for (int i = 0; i < written; i++)
 - The package-smoke evidence is functional package-consumer evidence. It is
   not a public performance, platform support, NativeAOT, trimming, or
   universal deployment claim.
-- `1.0.0` is the stable API compatibility line for the admitted public API
-  surfaces described here. This README does not make public HNSW recall,
-  latency, throughput, allocation, memory, capacity, storage-size, comparison,
-  stable file-format, production-readiness, platform support, NativeAOT, or
-  trimming claims.
+- `1.0.0` is the stable API compatibility line for the supported public API
+  surfaces described here. Except for the dedicated benchmark documents linked
+  above, this README does not make public HNSW recall, latency, throughput,
+  allocation, memory, capacity, storage-size, comparison, stable file-format,
+  production-readiness, platform support, NativeAOT, or trimming claims.
 
 ## Metric Selection
 
@@ -552,7 +568,7 @@ executing path, where external ID breaks the tie.
 VecNet is being built toward a broader embedded indexing engine with additional
 index strategies, richer filtering and update workflows, package polish,
 consumer documentation, and integration tooling. Those capabilities will be
-documented when they are admitted to the public surface.
+documented when they become supported public features.
 
 ## Repository
 

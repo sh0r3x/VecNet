@@ -147,7 +147,26 @@ public sealed class VecNetVectorStoreCollection<TKey, TRecord> : VectorStoreColl
     public override object? GetService(Type serviceType, object? serviceKey = null)
     {
         ArgumentNullException.ThrowIfNull(serviceType);
-        return serviceKey is null && serviceType.IsInstanceOfType(this) ? this : null;
+        if (serviceKey is not null)
+        {
+            return null;
+        }
+
+        if (serviceType.IsInstanceOfType(this))
+        {
+            return this;
+        }
+
+        if (serviceType == typeof(VectorStoreCollectionMetadata))
+        {
+            return new VectorStoreCollectionMetadata
+            {
+                VectorStoreSystemName = VecNetVectorDataConstants.SystemName,
+                CollectionName = Name
+            };
+        }
+
+        return null;
     }
 
     private static bool IncludeVectors(RecordRetrievalOptions? options) => options?.IncludeVectors == true;

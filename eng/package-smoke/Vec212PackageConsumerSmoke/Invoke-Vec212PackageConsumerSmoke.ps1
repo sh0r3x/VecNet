@@ -70,10 +70,10 @@ function Assert-PackageReferenceRestore {
     $assets = Get-Content -LiteralPath $assetsPath -Raw | ConvertFrom-Json
     foreach ($requiredPackageId in @("VecNet", "VecNet.Integration.VectorData")) {
         $library = $assets.libraries.PSObject.Properties |
-            Where-Object { $_.Name -eq "$requiredPackageId/1.0.1" } |
+            Where-Object { $_.Name -eq "$requiredPackageId/1.1.0" } |
             Select-Object -First 1
         if ($null -eq $library -or $library.Value.type -ne "package") {
-            throw "$requiredPackageId 1.0.1 was not resolved as a NuGet package."
+            throw "$requiredPackageId 1.1.0 was not resolved as a NuGet package."
         }
     }
 

@@ -7,7 +7,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$expectedVersion = "1.0.1"
+$expectedVersion = "1.1.0"
 
 function Expand-Package {
     param(

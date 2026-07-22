@@ -61,7 +61,7 @@ for (int i = 0; i < written; i++)
 - HNSW squared-L2 search and persistence: [HNSW](#hnsw).
 - Filtering with caller-owned IDs: [Filtering](#filtering).
 - Mutation and checkpoint workflows: [Updates And Checkpoints](#updates-and-checkpoints).
-- Conservative exact-flat benchmark summary: [Benchmarks](#benchmarks).
+- Benchmark summaries: [Benchmarks](#benchmarks).
 - VectorData applications: [Optional VectorData Adapter](#optional-vectordata-adapter).
 - Support and no-claim boundaries: [Limitations And Unsupported Claims](#limitations-and-unsupported-claims).
 

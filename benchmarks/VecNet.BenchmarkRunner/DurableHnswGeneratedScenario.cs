@@ -22,8 +22,8 @@ public static class DurableHnswGeneratedScenario
         ValidateOptions(options);
 
         GeneratedDataset dataset = GeneratedDatasetFactory.Create(ToGeneratedOptions(options));
-        ValidateFinite(dataset);
-        TruthSet truth = ScalarGroundTruth.Generate(dataset, VectorMetric.SquaredEuclidean, options.TopK);
+        ValidateDataset(dataset, options.Metric);
+        TruthSet truth = ScalarGroundTruth.Generate(dataset, options.Metric, options.TopK);
 
         string snapshotRoot = Path.GetFullPath(options.SnapshotDirectory);
         Directory.CreateDirectory(snapshotRoot);
@@ -90,15 +90,15 @@ public static class DurableHnswGeneratedScenario
             finalSourceResults,
             options.TopK,
             options.Dimension,
-            VectorMetric.SquaredEuclidean);
+            options.Metric);
         ResultComparison openedComparison = ResultComparer.Compare(
             truth,
             finalOpenedResults,
             options.TopK,
             options.Dimension,
-            VectorMetric.SquaredEuclidean);
-        HnswReturnedResultIntegrityInfo sourceIntegrity = HnswGeneratedScenario.ValidateReturnedResults(dataset, finalSourceResults, options.TopK);
-        HnswReturnedResultIntegrityInfo openedIntegrity = HnswGeneratedScenario.ValidateReturnedResults(dataset, finalOpenedResults, options.TopK);
+            options.Metric);
+        HnswReturnedResultIntegrityInfo sourceIntegrity = HnswGeneratedScenario.ValidateReturnedResults(dataset, options.Metric, finalSourceResults, options.TopK);
+        HnswReturnedResultIntegrityInfo openedIntegrity = HnswGeneratedScenario.ValidateReturnedResults(dataset, options.Metric, finalOpenedResults, options.TopK);
         DurableHnswParityInfo parity = CompareSavedOpenedParity(finalSourceResults, finalOpenedResults);
         DurableHnswReadOnlyMutationInfo readOnlyMutation = ValidateOpenedReadOnlyMutation(finalOpenedIndex);
         DurableHnswSnapshotOutputInfo snapshotOutput = InspectSnapshotOutput(finalSnapshotDirectory, options.VectorCount);
@@ -146,7 +146,7 @@ public static class DurableHnswGeneratedScenario
                 "generated-no-external-source",
                 GeneratedDataset.Distribution,
                 dataset.SeedText,
-                VectorMetric.SquaredEuclidean.ToString(),
+                options.Metric.ToString(),
                 options.Dimension,
                 options.VectorCount,
                 options.QueryCount),
@@ -163,12 +163,12 @@ public static class DurableHnswGeneratedScenario
             new IndexInfo(
                 "DurableInternalHnswEvaluation",
                 nameof(HnswIndex),
-                VectorMetric.SquaredEuclidean.ToString(),
+                options.Metric.ToString(),
                 options.Dimension,
                 options.VectorCount,
                 "internal/evaluation-only HnswIndex; build, Save, OpenReadOnly and opened Search are timed as separate private smoke operations; no public HNSW API/profile admission, matrix, baseline, comparison, regression or public claim"),
             new DurableHnswWorkloadInfo(
-                VectorMetric.SquaredEuclidean.ToString(),
+                options.Metric.ToString(),
                 options.Dimension,
                 options.VectorCount,
                 options.QueryCount,
@@ -191,7 +191,7 @@ public static class DurableHnswGeneratedScenario
                 options.EfSearch,
                 FormatHex(options.HnswSeed),
                 "generated vector row order, external ids 0..vectorCount-1",
-                "SquaredEuclidean only"),
+                $"{options.Metric} private generated durable HNSW metric; InnerProduct unsupported"),
             new DurableHnswOperationsInfo(
                 new DurableHnswOperationInfo(
                     "build",
@@ -301,7 +301,7 @@ public static class DurableHnswGeneratedScenario
 
     private static GeneratedExactSearchOptions ToGeneratedOptions(DurableHnswGeneratedOptions options) =>
         new(
-            VectorMetric.SquaredEuclidean,
+            options.Metric,
             options.Dimension,
             options.VectorCount,
             options.QueryCount,
@@ -317,7 +317,7 @@ public static class DurableHnswGeneratedScenario
         var hnswOptions = new HnswIndexOptions(options.M, options.EfConstruction, options.EfSearch, options.HnswSeed);
         long allocationStart = GC.GetAllocatedBytesForCurrentThread();
         long start = Stopwatch.GetTimestamp();
-        var index = new HnswIndex(options.Dimension, VectorMetric.SquaredEuclidean, hnswOptions);
+        var index = new HnswIndex(options.Dimension, options.Metric, hnswOptions);
         for (int row = 0; row < dataset.VectorCount; row++)
         {
             index.Add((ulong)row, dataset.GetVector(row));
@@ -552,7 +552,7 @@ public static class DurableHnswGeneratedScenario
             integrity.DistanceMismatchCount,
             integrity,
             "set recall@k = returned IDs intersect exact top-k IDs divided by min(k, vectorCount), summed across measured queries",
-            "Every returned durable-HNSW result is checked for finite distance, no duplicate ID within its query, generated-index ID membership and squared-L2 distance matching recomputation for that returned ID/query within the accepted D-026 tolerance; exact top-k recall/order are recorded but not required.");
+            $"Every returned durable-HNSW result is checked for finite distance, no duplicate ID within its query, generated-index ID membership and {options.Metric} distance matching recomputation for that returned ID/query within the accepted runner tolerance; exact top-k recall/order are recorded but not required.");
 
     private static DurableHnswOperationMeasurementInfo CreateOperationMeasurement(
         string name,
@@ -803,9 +803,9 @@ public static class DurableHnswGeneratedScenario
 
     private static void ValidateOptions(DurableHnswGeneratedOptions options)
     {
-        if (options.Metric != VectorMetric.SquaredEuclidean)
+        if (!IsSupportedMetric(options.Metric))
         {
-            throw new ArgumentException("hnsw-generated-durable supports only SquaredEuclidean.", nameof(options));
+            throw new ArgumentException("hnsw-generated-durable supports SquaredEuclidean and Cosine only.", nameof(options));
         }
 
         if (options.TopK > options.VectorCount)
@@ -854,7 +854,10 @@ public static class DurableHnswGeneratedScenario
         }
     }
 
-    private static void ValidateFinite(GeneratedDataset dataset)
+    private static bool IsSupportedMetric(VectorMetric metric) =>
+        metric is VectorMetric.SquaredEuclidean or VectorMetric.Cosine;
+
+    private static void ValidateDataset(GeneratedDataset dataset, VectorMetric metric)
     {
         foreach (float value in dataset.Vectors)
         {
@@ -871,6 +874,31 @@ public static class DurableHnswGeneratedScenario
                 throw new InvalidOperationException("Generated query data must be finite.");
             }
         }
+
+        if (metric == VectorMetric.Cosine)
+        {
+            ValidateNonZeroRows(dataset.Vectors, dataset.VectorCount, dataset.Dimension, "vector");
+            ValidateNonZeroRows(dataset.Queries, dataset.QueryCount, dataset.Dimension, "query");
+        }
+    }
+
+    private static void ValidateNonZeroRows(float[] values, int rowCount, int dimension, string rowKind)
+    {
+        for (int row = 0; row < rowCount; row++)
+        {
+            double magnitudeSquared = 0;
+            int offset = checked(row * dimension);
+            for (int i = 0; i < dimension; i++)
+            {
+                float value = values[offset + i];
+                magnitudeSquared += (double)value * value;
+            }
+
+            if (magnitudeSquared == 0)
+            {
+                throw new InvalidOperationException($"Generated cosine {rowKind} data must not contain zero rows.");
+            }
+        }
     }
 
     private static MeasurementStatusInfo NotMeasured(string unit, string reason) =>
@@ -881,7 +909,7 @@ public static class DurableHnswGeneratedScenario
         string commitPart = string.IsNullOrWhiteSpace(commit) ? "unknown" : commit[..Math.Min(12, commit.Length)];
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"{DurableHnswGeneratedOptions.ScenarioName}-{commitPart}-{options.Dimension}d-{options.VectorCount}v-{options.QueryCount}q-{options.TopK}k-{options.Runs}r-{options.WarmupQueries}w-m{options.M}-efc{options.EfConstruction}-efs{options.EfSearch}-{options.Seed:X8}-{options.HnswSeed:X16}");
+            $"{DurableHnswGeneratedOptions.ScenarioName}-{commitPart}-{options.Metric}-{options.Dimension}d-{options.VectorCount}v-{options.QueryCount}q-{options.TopK}k-{options.Runs}r-{options.WarmupQueries}w-m{options.M}-efc{options.EfConstruction}-efs{options.EfSearch}-{options.Seed:X8}-{options.HnswSeed:X16}");
     }
 
     private static double StopwatchTicksToMilliseconds(long ticks) =>

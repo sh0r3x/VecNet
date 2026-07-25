@@ -24,9 +24,9 @@ internal sealed class HnswBasePlusExactDeltaIndex
     internal HnswBasePlusExactDeltaIndex(HnswIndex baseIndex, bool isReadOnly = false)
     {
         ArgumentNullException.ThrowIfNull(baseIndex);
-        if (baseIndex.Metric != VectorMetric.SquaredEuclidean)
+        if (baseIndex.Metric == VectorMetric.InnerProduct)
         {
-            throw new NotSupportedException("HNSW base-plus-exact-delta search currently supports only squared Euclidean distance.");
+            throw new NotSupportedException("HNSW base-plus-exact-delta search does not support inner product distance.");
         }
 
         _baseIndex = baseIndex;
@@ -75,15 +75,14 @@ internal sealed class HnswBasePlusExactDeltaIndex
             return CreateMutationResult(VectorMutationStatus.ReadOnly);
         }
 
-        ValidateVector(vector, nameof(vector));
+        double magnitude = ValidateVector(vector, nameof(vector));
         if (IsKnownOrReserved(id))
         {
             return CreateMutationResult(VectorMutationStatus.DuplicateId);
         }
 
         EnsureDeltaCapacity(checked(_deltaPhysicalVectorCount + 1));
-        int offset = _deltaPhysicalVectorCount * Dimension;
-        vector.CopyTo(_deltaVectors.AsSpan(offset, Dimension));
+        StoreDeltaVector(vector, magnitude, _deltaPhysicalVectorCount);
         _deltaIds[_deltaPhysicalVectorCount] = id;
         _deltaIdToOrdinal.Add(id, _deltaPhysicalVectorCount);
         _deltaPhysicalVectorCount++;
@@ -205,7 +204,7 @@ internal sealed class HnswBasePlusExactDeltaIndex
     {
         ArgumentNullException.ThrowIfNull(workspace);
         ValidateBaseUnchanged();
-        ValidateVector(query, nameof(query));
+        double queryMagnitude = ValidateVector(query, nameof(query));
         ValidateWorkspace(results.Length, workspace);
         workspace.ObservedGeneration = _generation;
 
@@ -220,7 +219,7 @@ internal sealed class HnswBasePlusExactDeltaIndex
         }
 
         int baseCandidateCount = SearchBaseCandidates(query, workspace);
-        int deltaCandidateCount = SearchDeltaCandidates(query, results.Length, workspace);
+        int deltaCandidateCount = SearchDeltaCandidates(query, queryMagnitude, results.Length, workspace);
         return MergeCandidates(
             workspace.BaseCandidates.AsSpan(0, baseCandidateCount),
             workspace.DeltaCandidates.AsSpan(0, deltaCandidateCount),
@@ -235,7 +234,7 @@ internal sealed class HnswBasePlusExactDeltaIndex
     {
         ArgumentNullException.ThrowIfNull(workspace);
         ValidateBaseUnchanged();
-        ValidateVector(query, nameof(query));
+        double queryMagnitude = ValidateVector(query, nameof(query));
         ValidateFilteredWorkspace(results.Length, workspace);
         workspace.ObservedGeneration = _generation;
 
@@ -264,11 +263,11 @@ internal sealed class HnswBasePlusExactDeltaIndex
 
         if (allowedCount <= Options.EfSearch)
         {
-            return SearchAllowedExact(query, results, workspace, baseFilterMark, deltaFilterMark);
+            return SearchAllowedExact(query, queryMagnitude, results, workspace, baseFilterMark, deltaFilterMark);
         }
 
         int baseCandidateCount = SearchBaseAllowedCandidates(query, workspace, baseFilterMark);
-        int deltaCandidateCount = SearchDeltaAllowedCandidates(query, results.Length, workspace, deltaFilterMark);
+        int deltaCandidateCount = SearchDeltaAllowedCandidates(query, queryMagnitude, results.Length, workspace, deltaFilterMark);
         return MergeCandidates(
             workspace.BaseCandidates.AsSpan(0, baseCandidateCount),
             workspace.DeltaCandidates.AsSpan(0, deltaCandidateCount),
@@ -303,6 +302,7 @@ internal sealed class HnswBasePlusExactDeltaIndex
 
     private int SearchDeltaCandidates(
         ReadOnlySpan<float> query,
+        double queryMagnitude,
         int requestedResultCount,
         HnswBasePlusExactDeltaSearchWorkspace workspace)
     {
@@ -321,7 +321,7 @@ internal sealed class HnswBasePlusExactDeltaIndex
                 continue;
             }
 
-            var candidate = new SearchResult(id, SquaredEuclideanDistance(query, ordinal));
+            var candidate = new SearchResult(id, DistanceToDelta(query, queryMagnitude, ordinal));
             written = InsertCandidate(deltaCandidates, written, candidate);
         }
 
@@ -382,6 +382,7 @@ internal sealed class HnswBasePlusExactDeltaIndex
 
     private int SearchAllowedExact(
         ReadOnlySpan<float> query,
+        double queryMagnitude,
         Span<SearchResult> results,
         HnswBasePlusExactDeltaSearchWorkspace workspace,
         int baseFilterMark,
@@ -402,7 +403,7 @@ internal sealed class HnswBasePlusExactDeltaIndex
                 continue;
             }
 
-            var candidate = new SearchResult(id, _baseIndex.CalculateSquaredEuclideanDistance(query, ordinal));
+            var candidate = new SearchResult(id, _baseIndex.CalculateDistance(query, queryMagnitude, ordinal));
             written = InsertCandidate(results, written, candidate);
         }
 
@@ -419,7 +420,7 @@ internal sealed class HnswBasePlusExactDeltaIndex
                 continue;
             }
 
-            var candidate = new SearchResult(id, SquaredEuclideanDistance(query, ordinal));
+            var candidate = new SearchResult(id, DistanceToDelta(query, queryMagnitude, ordinal));
             written = InsertCandidate(results, written, candidate);
         }
 
@@ -463,6 +464,7 @@ internal sealed class HnswBasePlusExactDeltaIndex
 
     private int SearchDeltaAllowedCandidates(
         ReadOnlySpan<float> query,
+        double queryMagnitude,
         int requestedResultCount,
         HnswBasePlusExactDeltaSearchWorkspace workspace,
         int deltaFilterMark)
@@ -487,7 +489,7 @@ internal sealed class HnswBasePlusExactDeltaIndex
                 continue;
             }
 
-            var candidate = new SearchResult(id, SquaredEuclideanDistance(query, ordinal));
+            var candidate = new SearchResult(id, DistanceToDelta(query, queryMagnitude, ordinal));
             written = InsertCandidate(deltaCandidates, written, candidate);
         }
 
@@ -573,20 +575,49 @@ internal sealed class HnswBasePlusExactDeltaIndex
         }
     }
 
-    private void ValidateVector(ReadOnlySpan<float> vector, string parameterName)
+    private double ValidateVector(ReadOnlySpan<float> vector, string parameterName)
     {
         if (vector.Length != Dimension)
         {
             throw new ArgumentException($"Vector dimension must be {Dimension}.", parameterName);
         }
 
+        double squaredMagnitude = 0;
         foreach (float component in vector)
         {
             if (!float.IsFinite(component))
             {
                 throw new ArgumentException("Vector components must be finite.", parameterName);
             }
+
+            if (Metric == VectorMetric.Cosine)
+            {
+                squaredMagnitude += (double)component * component;
+            }
         }
+
+        if (Metric == VectorMetric.Cosine && squaredMagnitude == 0)
+        {
+            throw new ArgumentException("Cosine distance does not accept a zero vector.", parameterName);
+        }
+
+        return Metric == VectorMetric.Cosine ? Math.Sqrt(squaredMagnitude) : 0;
+    }
+
+    private void StoreDeltaVector(ReadOnlySpan<float> vector, double magnitude, int ordinal)
+    {
+        int offset = ordinal * Dimension;
+        if (Metric == VectorMetric.Cosine)
+        {
+            for (int i = 0; i < Dimension; i++)
+            {
+                _deltaVectors[offset + i] = (float)(vector[i] / magnitude);
+            }
+
+            return;
+        }
+
+        vector.CopyTo(_deltaVectors.AsSpan(offset, Dimension));
     }
 
     private bool IsKnownOrReserved(ulong id) =>
@@ -623,18 +654,26 @@ internal sealed class HnswBasePlusExactDeltaIndex
         ReadOnlySpan<ulong> baseIds = _baseIndex.InternalIds;
         for (int sourceOrdinal = 0; sourceOrdinal < _basePhysicalVectorCount; sourceOrdinal++)
         {
-            if (!_baseTombstoneIds.Contains(baseIds[sourceOrdinal]))
+            if (_baseTombstoneIds.Contains(baseIds[sourceOrdinal]))
             {
-                liveCount++;
+                continue;
             }
+
+            ValidateStoredVectorForCheckpoint(
+                _baseIndex.InternalVectors.Slice(sourceOrdinal * Dimension, Dimension));
+            liveCount++;
         }
 
         for (int sourceOrdinal = 0; sourceOrdinal < _deltaPhysicalVectorCount; sourceOrdinal++)
         {
-            if (!_deltaTombstoneIds.Contains(_deltaIds[sourceOrdinal]))
+            if (_deltaTombstoneIds.Contains(_deltaIds[sourceOrdinal]))
             {
-                liveCount++;
+                continue;
             }
+
+            ValidateStoredVectorForCheckpoint(
+                _deltaVectors.AsSpan(sourceOrdinal * Dimension, Dimension));
+            liveCount++;
         }
 
         if (liveCount != LiveVectorCount)
@@ -643,6 +682,31 @@ internal sealed class HnswBasePlusExactDeltaIndex
         }
 
         return liveCount;
+    }
+
+    private void ValidateStoredVectorForCheckpoint(ReadOnlySpan<float> vector)
+    {
+        double squaredMagnitude = 0;
+        for (int i = 0; i < vector.Length; i++)
+        {
+            float value = vector[i];
+            if (!float.IsFinite(value))
+            {
+                throw new InvalidOperationException("HNSW checkpoint source vector contains a non-finite component.");
+            }
+
+            if (Metric == VectorMetric.Cosine)
+            {
+                squaredMagnitude += (double)value * value;
+            }
+        }
+
+        if (Metric == VectorMetric.Cosine &&
+            (squaredMagnitude == 0 ||
+             Math.Abs(squaredMagnitude - 1) > HnswIndexStorage.CosineStoredRowSquaredLengthTolerance))
+        {
+            throw new InvalidOperationException("HNSW checkpoint cosine source vector is not within the unit-length tolerance.");
+        }
     }
 
     private HnswIndex BuildBaseIndexFromLiveRows(int liveCount)
@@ -813,6 +877,23 @@ internal sealed class HnswBasePlusExactDeltaIndex
         }
 
         return sum;
+    }
+
+    private float DistanceToDelta(ReadOnlySpan<float> query, double queryMagnitude, int deltaOrdinal) =>
+        Metric == VectorMetric.Cosine
+            ? CosineDistance(query, queryMagnitude, deltaOrdinal)
+            : SquaredEuclideanDistance(query, deltaOrdinal);
+
+    private float CosineDistance(ReadOnlySpan<float> query, double queryMagnitude, int deltaOrdinal)
+    {
+        int offset = deltaOrdinal * Dimension;
+        double dotProduct = 0;
+        for (int i = 0; i < Dimension; i++)
+        {
+            dotProduct += _deltaVectors[offset + i] * (query[i] / queryMagnitude);
+        }
+
+        return (float)(1 - dotProduct);
     }
 
     private static int InsertCandidate(Span<SearchResult> results, int written, SearchResult candidate)

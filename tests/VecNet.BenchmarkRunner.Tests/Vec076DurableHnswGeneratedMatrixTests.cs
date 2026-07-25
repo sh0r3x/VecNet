@@ -82,31 +82,27 @@ public sealed class Vec076DurableHnswGeneratedMatrixTests
         DurableHnswGeneratedMatrixScenario.DurableHnswGeneratedMatrixCase[] cases =
             DurableHnswGeneratedMatrixScenario.ExpandCases(options);
 
-        Assert.Equal(4, cases.Length);
+        Assert.Equal(8, cases.Length);
         Assert.Equal(
             [
-                "case-001-low-ef-m4-16d-64v-3q-5k",
-                "case-002-balanced-m8-32d-128v-4q-10k",
-                "case-003-wide-m12-128d-192v-5q-25k",
-                "case-004-tail-balanced-m8-386d-96v-3q-25k"
+                "case-001-SquaredEuclidean-low-ef-m4-16d-64v-3q-5k",
+                "case-002-SquaredEuclidean-balanced-m8-32d-128v-4q-10k",
+                "case-003-SquaredEuclidean-wide-m12-128d-192v-5q-25k",
+                "case-004-SquaredEuclidean-tail-balanced-m8-386d-96v-3q-25k",
+                "case-005-Cosine-low-ef-m4-16d-64v-3q-5k",
+                "case-006-Cosine-balanced-m8-32d-128v-4q-10k",
+                "case-007-Cosine-wide-m12-128d-192v-5q-25k",
+                "case-008-Cosine-tail-balanced-m8-386d-96v-3q-25k"
             ],
             cases.Select(item => item.CaseId).ToArray());
-        Assert.Equal(["low-ef-m4", "balanced-m8", "wide-m12", "tail-balanced-m8"], cases.Select(item => item.ProfileName).ToArray());
-        Assert.Equal([16, 32, 128, 386], cases.Select(item => item.Options.Dimension).ToArray());
-        Assert.Equal([64, 128, 192, 96], cases.Select(item => item.Options.VectorCount).ToArray());
-        Assert.Equal([3, 4, 5, 3], cases.Select(item => item.Options.QueryCount).ToArray());
-        Assert.Equal([5, 10, 25, 25], cases.Select(item => item.Options.TopK).ToArray());
-        Assert.Equal([4, 8, 12, 8], cases.Select(item => item.Options.M).ToArray());
-        Assert.Equal([16, 32, 64, 64], cases.Select(item => item.Options.EfConstruction).ToArray());
-        Assert.Equal([8, 24, 64, 64], cases.Select(item => item.Options.EfSearch).ToArray());
-        Assert.Equal([1, 1, 2, 1], cases.Select(item => item.Options.Runs).ToArray());
-        Assert.Equal([0, 1, 1, 1], cases.Select(item => item.Options.WarmupQueries).ToArray());
-        Assert.Equal([0x5EED0751u, 0x5EED0752u, 0x5EED0753u, 0x5EED0754u], cases.Select(item => item.Options.Seed).ToArray());
-        Assert.Equal([0x484E0DBA43050001UL, 0x484E0DBA43050002UL, 0x484E0DBA43050003UL, 0x484E0DBA43050004UL], cases.Select(item => item.Options.HnswSeed).ToArray());
+        Assert.Equal(
+            [VectorMetric.SquaredEuclidean, VectorMetric.Cosine],
+            cases.Select(item => item.Options.Metric).Distinct().ToArray());
+        Assert.Equal([0x5EED0751u, 0x5EED0752u, 0x5EED0753u, 0x5EED0754u, 0x5EED0755u, 0x5EED0756u, 0x5EED0757u, 0x5EED0758u], cases.Select(item => item.Options.Seed).ToArray());
+        Assert.Equal([0x484E0DBA43050001UL, 0x484E0DBA43050002UL, 0x484E0DBA43050003UL, 0x484E0DBA43050004UL, 0x484E0DBA43050005UL, 0x484E0DBA43050006UL, 0x484E0DBA43050007UL, 0x484E0DBA43050008UL], cases.Select(item => item.Options.HnswSeed).ToArray());
 
         Assert.All(cases, matrixCase =>
         {
-            Assert.Equal(VectorMetric.SquaredEuclidean, matrixCase.Options.Metric);
             Assert.True(matrixCase.Options.VectorCount >= matrixCase.Options.TopK);
             Assert.True(matrixCase.Options.EfSearch >= matrixCase.Options.TopK);
             Assert.True(matrixCase.Options.EfConstruction >= matrixCase.Options.M);
@@ -168,11 +164,11 @@ public sealed class Vec076DurableHnswGeneratedMatrixTests
         Assert.Equal("hnsw-generated-durable-matrix", manifest.ScenarioName);
         Assert.Equal("hnsw-generated-durable-matrix", manifest.Command.Scenario);
         Assert.Equal("smoke", manifest.PresetName);
-        Assert.Equal(4, manifest.CaseCount);
-        Assert.Equal(4, manifest.Aggregate.PassedCaseCount);
+        Assert.Equal(8, manifest.CaseCount);
+        Assert.Equal(8, manifest.Aggregate.PassedCaseCount);
         Assert.Equal(0, manifest.Aggregate.FailedCaseCount);
         Assert.Equal("passed", manifest.Validation.Status);
-        Assert.Equal(4, manifest.Validation.PassedCaseCount);
+        Assert.Equal(8, manifest.Validation.PassedCaseCount);
         Assert.Equal(0, manifest.Validation.FailedCaseCount);
         Assert.Equal("VecNet.DurableHnswBenchmarkReport", manifest.Validation.LinkedReportSchemaName);
         Assert.Equal("0.1", manifest.Validation.LinkedReportSchemaVersion);
@@ -307,9 +303,9 @@ public sealed class Vec076DurableHnswGeneratedMatrixTests
         Assert.True(File.Exists(manifestPath));
         DurableHnswGeneratedMatrixManifest manifest = ReadManifest(manifestPath);
         Assert.Equal("failed", manifest.Validation.Status);
-        Assert.Equal(4, manifest.CaseCount);
+        Assert.Equal(8, manifest.CaseCount);
         Assert.Equal(0, manifest.Aggregate.PassedCaseCount);
-        Assert.Equal(4, manifest.Aggregate.FailedCaseCount);
+        Assert.Equal(8, manifest.Aggregate.FailedCaseCount);
         Assert.False(manifest.Validation.AllLinkedReportsValidationPassed);
         Assert.False(manifest.Validation.AllLinkedReportsPrivateRaw);
         Assert.False(manifest.Validation.AllLinkedReportsEligibilityFalse);

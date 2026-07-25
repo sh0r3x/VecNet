@@ -30,7 +30,6 @@ public sealed class Vec036HnswGeneratedTests
 
     [Theory]
     [InlineData("unexpected")]
-    [InlineData("hnsw-generated", "--metric", "Cosine")]
     [InlineData("hnsw-generated", "--metric", "InnerProduct")]
     [InlineData("hnsw-generated", "--metric", "Unknown")]
     [InlineData("hnsw-generated", "--dimension", "0")]
@@ -54,6 +53,76 @@ public sealed class Vec036HnswGeneratedTests
         ArgumentException exception = Assert.Throws<ArgumentException>(() => CommandLine.ParseHnswGenerated(args));
 
         Assert.NotEmpty(exception.Message);
+    }
+
+    [Fact]
+    public void ParseHnswGenerated_AcceptsCosineAndRejectsInnerProduct()
+    {
+        HnswGeneratedOptions cosine = CommandLine.ParseHnswGenerated(
+            [
+                "hnsw-generated",
+                "--metric", "Cosine",
+                "--dimension", "5",
+                "--vectors", "12",
+                "--queries", "2",
+                "--top-k", "3",
+                "--ef-search", "3"
+            ]);
+
+        Assert.Equal(VectorMetric.Cosine, cosine.Metric);
+
+        ArgumentException rejected = Assert.Throws<ArgumentException>(
+            () => CommandLine.ParseHnswGenerated(
+                [
+                    "hnsw-generated",
+                    "--metric", "InnerProduct",
+                    "--dimension", "5",
+                    "--vectors", "12",
+                    "--queries", "2",
+                    "--top-k", "3",
+                    "--ef-search", "3"
+                ]));
+        Assert.Contains("Cosine", rejected.Message, StringComparison.Ordinal);
+        Assert.Contains("SquaredEuclidean", rejected.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Run_CosineProducesPassingPrivateReportAndMetricFields()
+    {
+        string outputPath = Path.Combine(
+            "VecNet.BenchmarkRunner.Artifacts",
+            "vec232-hnsw-generated-cosine-" + Guid.NewGuid().ToString("N") + ".json");
+        string[] arguments =
+        [
+            "hnsw-generated",
+            "--metric", "Cosine",
+            "--dimension", "7",
+            "--vectors", "32",
+            "--queries", "3",
+            "--top-k", "4",
+            "--runs", "1",
+            "--warmup-queries", "1",
+            "--seed", "0x5EED2320",
+            "--m", "4",
+            "--ef-construction", "16",
+            "--ef-search", "8",
+            "--hnsw-seed", "0x0000000000002320",
+            "--output", outputPath
+        ];
+        HnswGeneratedOptions options = CommandLine.ParseHnswGenerated(arguments);
+
+        HnswBenchmarkReport report = HnswGeneratedScenario.Run(options, arguments);
+        HnswGeneratedScenario.Write(report, outputPath);
+
+        Assert.True(File.Exists(outputPath));
+        Assert.Equal(VectorMetric.Cosine.ToString(), report.Dataset.Metric);
+        Assert.Equal(VectorMetric.Cosine.ToString(), report.Index.Metric);
+        Assert.Equal("passed", report.Validation.Status);
+        Assert.Equal("passed", report.Metrics.DistanceToleranceStatus);
+        Assert.Equal("passed", report.Metrics.ReturnedResultIntegrity.Status);
+        Assert.Equal(0, report.Metrics.ReturnedResultIntegrity.DistanceMismatchCount);
+        Assert.Equal("private-raw", report.PrivacyClass);
+        Assert.False(report.Evidence.PublicClaimEligible);
     }
 
     [Fact]

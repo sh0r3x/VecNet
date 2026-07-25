@@ -65,34 +65,41 @@ public sealed class Vec037HnswGeneratedMatrixIndependentTests
 
         HnswGeneratedMatrixScenario.HnswMatrixCase[] cases = HnswGeneratedMatrixScenario.ExpandCases(options);
 
-        (string Profile, int Dimension, int TopK, int M, int EfConstruction, int EfSearch)[] expected =
+        (VectorMetric Metric, string Profile, int Dimension, int TopK, int M, int EfConstruction, int EfSearch)[] expected =
         [
-            ("low-ef-m4", 16, 1, 4, 16, 10),
-            ("balanced-m8", 16, 1, 8, 32, 24),
-            ("low-ef-m4", 16, 10, 4, 16, 10),
-            ("balanced-m8", 16, 10, 8, 32, 24),
-            ("low-ef-m4", 32, 1, 4, 16, 10),
-            ("balanced-m8", 32, 1, 8, 32, 24),
-            ("low-ef-m4", 32, 10, 4, 16, 10),
-            ("balanced-m8", 32, 10, 8, 32, 24)
+            (VectorMetric.SquaredEuclidean, "low-ef-m4", 16, 1, 4, 16, 10),
+            (VectorMetric.SquaredEuclidean, "balanced-m8", 16, 1, 8, 32, 24),
+            (VectorMetric.SquaredEuclidean, "low-ef-m4", 16, 10, 4, 16, 10),
+            (VectorMetric.SquaredEuclidean, "balanced-m8", 16, 10, 8, 32, 24),
+            (VectorMetric.SquaredEuclidean, "low-ef-m4", 32, 1, 4, 16, 10),
+            (VectorMetric.SquaredEuclidean, "balanced-m8", 32, 1, 8, 32, 24),
+            (VectorMetric.SquaredEuclidean, "low-ef-m4", 32, 10, 4, 16, 10),
+            (VectorMetric.SquaredEuclidean, "balanced-m8", 32, 10, 8, 32, 24),
+            (VectorMetric.Cosine, "low-ef-m4", 16, 1, 4, 16, 10),
+            (VectorMetric.Cosine, "balanced-m8", 16, 1, 8, 32, 24),
+            (VectorMetric.Cosine, "low-ef-m4", 16, 10, 4, 16, 10),
+            (VectorMetric.Cosine, "balanced-m8", 16, 10, 8, 32, 24),
+            (VectorMetric.Cosine, "low-ef-m4", 32, 1, 4, 16, 10),
+            (VectorMetric.Cosine, "balanced-m8", 32, 1, 8, 32, 24),
+            (VectorMetric.Cosine, "low-ef-m4", 32, 10, 4, 16, 10),
+            (VectorMetric.Cosine, "balanced-m8", 32, 10, 8, 32, 24)
         ];
 
         Assert.Equal(expected.Length, cases.Length);
         Assert.Equal(
             expected,
-            cases.Select(item => (item.ProfileName, item.Options.Dimension, item.Options.TopK, item.Options.M, item.Options.EfConstruction, item.Options.EfSearch)).ToArray());
+            cases.Select(item => (item.Options.Metric, item.ProfileName, item.Options.Dimension, item.Options.TopK, item.Options.M, item.Options.EfConstruction, item.Options.EfSearch)).ToArray());
         Assert.Equal(cases.Length, cases.Select(item => item.Options.OutputPath).Distinct(StringComparer.OrdinalIgnoreCase).Count());
         Assert.Equal(0xFFFF_FFFCu, cases[0].Options.Seed);
         Assert.Equal(0xFFFF_FFFFu, cases[3].Options.Seed);
         Assert.Equal(0u, cases[4].Options.Seed);
-        Assert.Equal(3u, cases[^1].Options.Seed);
+        Assert.Equal(11u, cases[^1].Options.Seed);
         Assert.Equal("0x484EACA8FFFC0001", FormatHex(cases[0].Options.HnswSeed));
-        Assert.Equal("0x484EACA8FFFC0008", FormatHex(cases[^1].Options.HnswSeed));
-        Assert.EndsWith("case-01-low-ef-m4-16d-1k.json", cases[0].Options.OutputPath, StringComparison.OrdinalIgnoreCase);
-        Assert.EndsWith("case-08-balanced-m8-32d-10k.json", cases[^1].Options.OutputPath, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("0x484EACA8FFFC0010", FormatHex(cases[^1].Options.HnswSeed));
+        Assert.EndsWith("case-01-SquaredEuclidean-low-ef-m4-16d-1k.json", cases[0].Options.OutputPath, StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith("case-16-Cosine-balanced-m8-32d-10k.json", cases[^1].Options.OutputPath, StringComparison.OrdinalIgnoreCase);
         Assert.All(cases, item =>
         {
-            Assert.Equal(VectorMetric.SquaredEuclidean, item.Options.Metric);
             Assert.True(item.Options.EfSearch >= item.Options.TopK);
             Assert.InRange(item.Options.M, 2, 64);
             Assert.InRange(item.Options.EfConstruction, item.Options.M, 4096);
@@ -113,7 +120,7 @@ public sealed class Vec037HnswGeneratedMatrixIndependentTests
             Seed: 0x5EED3701,
             OutputDirectory: outputDirectory,
             ManifestPath: Path.Combine(outputDirectory, "hnsw-matrix-manifest.json"));
-        string blockedReportPath = Path.Combine(outputDirectory, "case-02-balanced-m8-16d-1k.json");
+        string blockedReportPath = Path.Combine(outputDirectory, "case-02-SquaredEuclidean-balanced-m8-16d-1k.json");
         Directory.CreateDirectory(blockedReportPath);
 
         HnswGeneratedMatrixManifest manifest = HnswGeneratedMatrixScenario.Run(
@@ -121,8 +128,8 @@ public sealed class Vec037HnswGeneratedMatrixIndependentTests
             ["hnsw-generated-matrix", "--output-dir", outputDirectory]);
         HnswGeneratedMatrixScenario.WriteManifest(manifest, options.ManifestPath);
 
-        Assert.Equal(8, manifest.CaseCount);
-        Assert.Equal(7, manifest.Aggregate.PassedCaseCount);
+        Assert.Equal(16, manifest.CaseCount);
+        Assert.Equal(15, manifest.Aggregate.PassedCaseCount);
         Assert.Equal(1, manifest.Aggregate.FailedCaseCount);
 
         HnswGeneratedMatrixCaseManifest failedCase = Assert.Single(manifest.Cases, item => item.Status == "failed");
@@ -146,7 +153,7 @@ public sealed class Vec037HnswGeneratedMatrixIndependentTests
 
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(options.ManifestPath));
         JsonElement root = document.RootElement;
-        Assert.Equal(7, root.GetProperty("aggregate").GetProperty("passedCaseCount").GetInt32());
+        Assert.Equal(15, root.GetProperty("aggregate").GetProperty("passedCaseCount").GetInt32());
         Assert.Equal(1, root.GetProperty("aggregate").GetProperty("failedCaseCount").GetInt32());
         AssertFalseMatrixEligibility(root);
         AssertNoForbiddenScopeFields(root);
@@ -180,7 +187,7 @@ public sealed class Vec037HnswGeneratedMatrixIndependentTests
         HnswGeneratedMatrixManifest manifest = HnswGeneratedMatrixScenario.Run(options, arguments);
         HnswGeneratedMatrixScenario.WriteManifest(manifest, options.ManifestPath);
 
-        Assert.Equal(8, manifest.Aggregate.PassedCaseCount);
+        Assert.Equal(16, manifest.Aggregate.PassedCaseCount);
         foreach (HnswGeneratedMatrixCaseManifest matrixCase in manifest.Cases)
         {
             using JsonDocument reportDocument = JsonDocument.Parse(File.ReadAllText(matrixCase.ReportPath));
@@ -192,7 +199,7 @@ public sealed class Vec037HnswGeneratedMatrixIndependentTests
             Assert.Equal("hnsw-generated", reportRoot.GetProperty("scenarioName").GetString());
             Assert.Equal("hnsw-generated", reportRoot.GetProperty("command").GetProperty("scenario").GetString());
             Assert.Equal("generated-no-external-source", reportRoot.GetProperty("dataset").GetProperty("sourceVerificationStatus").GetString());
-            Assert.Equal("SquaredEuclidean", reportRoot.GetProperty("dataset").GetProperty("metric").GetString());
+            Assert.Equal(matrixCase.Metric, reportRoot.GetProperty("dataset").GetProperty("metric").GetString());
             Assert.Equal(matrixCase.Dimension, reportRoot.GetProperty("dataset").GetProperty("dimension").GetInt32());
             Assert.Equal(matrixCase.VectorCount, reportRoot.GetProperty("dataset").GetProperty("vectorCount").GetInt32());
             Assert.Equal(matrixCase.QueryCount, reportRoot.GetProperty("dataset").GetProperty("queryCount").GetInt32());

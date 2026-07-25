@@ -19,7 +19,7 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
         ValidateOptions(options);
 
         GeneratedDataset dataset = GeneratedDatasetFactory.Create(ToGeneratedOptions(options));
-        ValidateFinite(dataset);
+        ValidateDataset(dataset, options.Metric);
 
         BuildMeasurement build = BuildBaseIndex(options, dataset);
         var composite = new HnswBasePlusExactDeltaIndex(build.Index);
@@ -36,9 +36,9 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
             measurement.Results,
             options.TopK,
             options.Dimension,
-            VectorMetric.SquaredEuclidean);
+            options.Metric);
         HnswBasePlusExactDeltaReturnedResultIntegrityInfo returnedIntegrity =
-            ValidateReturnedResults(dataset, measurement.Results, options.TopK, liveIds);
+            ValidateReturnedResults(dataset, options.Metric, measurement.Results, options.TopK, liveIds);
         HnswBasePlusExactDeltaUnderfillInfo underfill = CreateUnderfill(options, measurement.Results);
         int extraResultCount = CountExtraResults(truth, measurement.Results, options.TopK);
 
@@ -84,14 +84,14 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
                 "generated-no-external-source",
                 GeneratedDataset.Distribution,
                 dataset.SeedText,
-                VectorMetric.SquaredEuclidean.ToString(),
+                options.Metric.ToString(),
                 options.Dimension,
                 options.PhysicalVectorCount,
                 options.QueryCount),
             new TruthInfo(
                 "scalar-reference-generated-live-hnsw-base-plus-exact-delta",
                 truth.Depth,
-                "post-update live base plus live delta minus tombstones, ordered by ascending scalar-reference squared-L2 distance and ascending external ID"),
+                $"post-update live base plus live delta minus tombstones, ordered by ascending scalar-reference {options.Metric} distance and ascending external ID"),
             new ScenarioInfo(
                 HnswBasePlusExactDeltaGeneratedOptions.ScenarioName,
                 options.TopK,
@@ -101,7 +101,7 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
             new IndexInfo(
                 "InternalHnswBasePlusExactDelta",
                 nameof(HnswBasePlusExactDeltaIndex),
-                VectorMetric.SquaredEuclidean.ToString(),
+                options.Metric.ToString(),
                 options.Dimension,
                 counts.LiveVectorCount,
                 "internal HnswBasePlusExactDeltaIndex over immutable HnswIndex base, exact in-memory delta and tombstone overlay; no public mutable HNSW API, persistence, checkpoint/rebuild, filtering, matrix preset or external dataset mode"),
@@ -113,7 +113,7 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
                 options.EfSearch,
                 FormatHex(options.HnswSeed),
                 "generated base vector row order, external base ids 0..baseVectorCount-1; delta ids continue from baseVectorCount",
-                "SquaredEuclidean only"),
+                $"{options.Metric} private generated HNSW base-plus-exact-delta metric; InnerProduct unsupported"),
             new HnswBuildInfo(
                 "measured",
                 build.ElapsedMilliseconds,
@@ -205,7 +205,7 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
                 extraResultCount,
                 returnedIntegrity,
                 "set recall@k = returned live ids intersect exact updated top-k live ids divided by min(k, post-update live vector count), summed across measured queries",
-                "Every returned composite result is checked for finite distance, no duplicate ID within its query, generated live ID membership, no tombstoned ID, and squared-L2 distance matching recomputation for that returned ID/query within the accepted D-026 tolerance. HNSW base search is approximate and recall/order are recorded, not required."),
+                $"Every returned composite result is checked for finite distance, no duplicate ID within its query, generated live ID membership, no tombstoned ID, and {options.Metric} distance matching recomputation for that returned ID/query within the accepted runner tolerance. HNSW base search is approximate and recall/order are recorded, not required."),
             underfill,
             new HnswBasePlusExactDeltaValidationInfo(
                 validationPassed ? "passed" : "failed",
@@ -233,7 +233,7 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
                 "No generated mutable/update HNSW regression-gate policy, threshold, comparison artifact or hard gate is accepted."),
             [
                 "Private generated HNSW base-plus-exact-delta smoke evidence only; not a public benchmark claim.",
-                "Generated finite squared-L2 data only; no external dataset source, license, version or checksum applies.",
+                $"Generated finite {options.Metric} data only; no external dataset source, license, version or checksum applies.",
                 "This report exercises an internal composite type and does not add or imply a public mutable/update HNSW API.",
                 "Durable mutable overlay persistence, checkpoint/rebuild, direct graph mutation, filtering, matrix presets and external datasets are out of scope.",
                 "Latency/QPS/allocation time only internal composite Search calls with caller-owned result buffers and workspace.",
@@ -248,6 +248,7 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
 
     public static HnswBasePlusExactDeltaReturnedResultIntegrityInfo ValidateReturnedResults(
         GeneratedDataset dataset,
+        VectorMetric metric,
         SearchResult[][] actual,
         int topK,
         IReadOnlyCollection<ulong> liveIds)
@@ -300,10 +301,11 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
                     continue;
                 }
 
-                float expectedDistance = SquaredEuclideanDistance(
+                float expectedDistance = ScalarGroundTruth.CalculateDistance(
                     dataset.GetQuery(queryRow),
-                    dataset.GetVector(checked((int)result.Id)));
-                if (!DistanceMatches(expectedDistance, result.Distance, dataset.Dimension))
+                    dataset.GetVector(checked((int)result.Id)),
+                    metric);
+                if (!ResultComparer.DistanceMatches(expectedDistance, result.Distance, dataset.Dimension, metric))
                 {
                     distanceMismatchCount++;
                 }
@@ -328,15 +330,22 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
             unknownIdCount,
             tombstonedIdCount,
             distanceMismatchCount,
-            "For every returned composite result: distance must be finite; IDs must be unique within a query; ID must be one of the post-update live generated IDs; tombstoned IDs must not be returned; and reported distance must match recomputed squared-L2 for that query and returned ID within the accepted D-026 tolerance.",
+            $"For every returned composite result: distance must be finite; IDs must be unique within a query; ID must be one of the post-update live generated IDs; tombstoned IDs must not be returned; and reported distance must match recomputed {metric} distance for that query and returned ID within the accepted runner tolerance.",
             passed
                 ? "All returned composite results are live, not tombstoned, well formed and distance-integrity checked."
                 : "One or more returned composite results failed live-ID, tombstone, well-formedness or distance-integrity checks.");
     }
 
+    public static HnswBasePlusExactDeltaReturnedResultIntegrityInfo ValidateReturnedResults(
+        GeneratedDataset dataset,
+        SearchResult[][] actual,
+        int topK,
+        IReadOnlyCollection<ulong> liveIds) =>
+        ValidateReturnedResults(dataset, VectorMetric.SquaredEuclidean, actual, topK, liveIds);
+
     private static GeneratedExactSearchOptions ToGeneratedOptions(HnswBasePlusExactDeltaGeneratedOptions options) =>
         new(
-            VectorMetric.SquaredEuclidean,
+            options.Metric,
             options.Dimension,
             options.PhysicalVectorCount,
             options.QueryCount,
@@ -352,7 +361,7 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
         var hnswOptions = new HnswIndexOptions(options.M, options.EfConstruction, options.EfSearch, options.HnswSeed);
         long allocationStart = GC.GetAllocatedBytesForCurrentThread();
         long start = Stopwatch.GetTimestamp();
-        var index = new HnswIndex(options.Dimension, VectorMetric.SquaredEuclidean, hnswOptions);
+        var index = new HnswIndex(options.Dimension, options.Metric, hnswOptions);
         for (int row = 0; row < options.BaseVectorCount; row++)
         {
             index.Add((ulong)row, dataset.GetVector(row));
@@ -464,7 +473,9 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
             for (int i = 0; i < liveIds.Length; i++)
             {
                 ulong id = liveIds[i];
-                candidates[i] = new TruthItem(id, SquaredEuclideanDistance(query, dataset.GetVector(checked((int)id))));
+                candidates[i] = new TruthItem(
+                    id,
+                    ScalarGroundTruth.CalculateDistance(query, dataset.GetVector(checked((int)id)), options.Metric));
             }
 
             Array.Sort(candidates, CompareTruthItems);
@@ -701,7 +712,7 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
             "No generated mutable/update HNSW baseline-candidate policy is accepted.",
             "No generated mutable/update HNSW regression-gate policy, threshold, comparison artifact or hard gate is accepted.",
             [
-                "Generated squared-L2 HNSW base-plus-exact-delta smoke evidence only; no external dataset source, license, version or checksum applies.",
+                "Generated HNSW base-plus-exact-delta smoke evidence only; no external dataset source, license, version or checksum applies.",
                 "Immutable HNSW base build, update application, exact updated truth generation, warmup queries, final-run result capture/comparison and report writing are excluded from measured search latency and QPS.",
                 "Latency percentiles are nearest-rank per-run query latency samples aggregated as per-run means, not BenchmarkDotNet statistics.",
                 "Managed allocations are measured for the internal composite Search call boundary only; resident/process memory is explicitly not measured.",
@@ -725,37 +736,11 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
         return distanceComparison != 0 ? distanceComparison : left.Id.CompareTo(right.Id);
     }
 
-    private static float SquaredEuclideanDistance(ReadOnlySpan<float> query, ReadOnlySpan<float> vector)
-    {
-        double sum = 0;
-        for (int i = 0; i < query.Length; i++)
-        {
-            double difference = query[i] - vector[i];
-            sum += difference * difference;
-        }
-
-        return (float)sum;
-    }
-
-    private static bool DistanceMatches(float expected, float actual, int dimension)
-    {
-        if (!float.IsFinite(actual))
-        {
-            return false;
-        }
-
-        double relative =
-            (8.0 * dimension / 16_777_216.0) *
-            Math.Max(1.0, Math.Abs(expected));
-        float tolerance = (float)Math.Max(2e-4, relative);
-        return MathF.Abs(expected - actual) <= tolerance;
-    }
-
     private static void ValidateOptions(HnswBasePlusExactDeltaGeneratedOptions options)
     {
-        if (options.Metric != VectorMetric.SquaredEuclidean)
+        if (!IsSupportedMetric(options.Metric))
         {
-            throw new ArgumentException("generated-hnsw-base-plus-exact-delta supports only SquaredEuclidean.", nameof(options));
+            throw new ArgumentException("generated-hnsw-base-plus-exact-delta supports SquaredEuclidean and Cosine only.", nameof(options));
         }
 
         if (options.InsertedDeltaCount <= 0)
@@ -819,7 +804,10 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
         }
     }
 
-    private static void ValidateFinite(GeneratedDataset dataset)
+    private static bool IsSupportedMetric(VectorMetric metric) =>
+        metric is VectorMetric.SquaredEuclidean or VectorMetric.Cosine;
+
+    private static void ValidateDataset(GeneratedDataset dataset, VectorMetric metric)
     {
         foreach (float value in dataset.Vectors)
         {
@@ -836,6 +824,31 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
                 throw new InvalidOperationException("Generated query data must be finite.");
             }
         }
+
+        if (metric == VectorMetric.Cosine)
+        {
+            ValidateNonZeroRows(dataset.Vectors, dataset.VectorCount, dataset.Dimension, "vector");
+            ValidateNonZeroRows(dataset.Queries, dataset.QueryCount, dataset.Dimension, "query");
+        }
+    }
+
+    private static void ValidateNonZeroRows(float[] values, int rowCount, int dimension, string rowKind)
+    {
+        for (int row = 0; row < rowCount; row++)
+        {
+            double magnitudeSquared = 0;
+            int offset = checked(row * dimension);
+            for (int i = 0; i < dimension; i++)
+            {
+                float value = values[offset + i];
+                magnitudeSquared += (double)value * value;
+            }
+
+            if (magnitudeSquared == 0)
+            {
+                throw new InvalidOperationException($"Generated cosine {rowKind} data must not contain zero rows.");
+            }
+        }
     }
 
     private static string CreateReportId(string? commit, HnswBasePlusExactDeltaGeneratedOptions options)
@@ -843,7 +856,7 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
         string commitPart = string.IsNullOrWhiteSpace(commit) ? "unknown" : commit[..Math.Min(12, commit.Length)];
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"{HnswBasePlusExactDeltaGeneratedOptions.ScenarioName}-{commitPart}-{options.Dimension}d-{options.BaseVectorCount}b-{options.InsertedDeltaCount}i-{options.DeletedBaseCount}bd-{options.DeletedDeltaCount}dd-{options.QueryCount}q-{options.TopK}k-{options.Runs}r-{options.WarmupQueries}w-m{options.M}-efc{options.EfConstruction}-efs{options.EfSearch}-{options.Seed:X8}-{options.HnswSeed:X16}");
+            $"{HnswBasePlusExactDeltaGeneratedOptions.ScenarioName}-{commitPart}-{options.Metric}-{options.Dimension}d-{options.BaseVectorCount}b-{options.InsertedDeltaCount}i-{options.DeletedBaseCount}bd-{options.DeletedDeltaCount}dd-{options.QueryCount}q-{options.TopK}k-{options.Runs}r-{options.WarmupQueries}w-m{options.M}-efc{options.EfConstruction}-efs{options.EfSearch}-{options.Seed:X8}-{options.HnswSeed:X16}");
     }
 
     private static double? FiniteOrNull(double value) => double.IsFinite(value) ? value : null;

@@ -1,7 +1,7 @@
 namespace VecNet;
 
 /// <summary>
-/// Update-oriented approximate HNSW index for squared Euclidean distance.
+/// Update-oriented approximate HNSW index for squared Euclidean and cosine distance.
 /// </summary>
 /// <remarks>
 /// This wrapper searches an immutable HNSW base plus exact in-memory delta rows. Deletes are
@@ -19,7 +19,7 @@ public sealed class HnswMutableIndex
     private readonly HnswBasePlusExactDeltaIndex _inner;
 
     /// <summary>
-    /// Initializes a mutable HNSW wrapper over an existing immutable squared-L2 HNSW base.
+    /// Initializes a mutable HNSW wrapper over an existing immutable HNSW base.
     /// </summary>
     /// <param name="baseIndex">
     /// The immutable HNSW base generation. The base must not be modified after constructing this
@@ -37,7 +37,7 @@ public sealed class HnswMutableIndex
     public int Dimension => _inner.Dimension;
 
     /// <summary>
-    /// Gets the supported metric. Mutable HNSW supports only squared Euclidean distance.
+    /// Gets the supported metric. Mutable HNSW supports squared Euclidean and cosine distance.
     /// </summary>
     public VectorMetric Metric => _inner.Metric;
 
@@ -136,7 +136,7 @@ public sealed class HnswMutableIndex
     /// by prior deletes are reported through <see cref="VectorMutationResult.Status"/>.
     /// </remarks>
     /// <param name="id">The caller-owned external vector identifier.</param>
-    /// <param name="vector">The finite squared-L2 vector values to copy into exact delta storage.</param>
+    /// <param name="vector">The finite vector values to copy into exact delta storage. Cosine vectors are normalized during insertion.</param>
     /// <returns>A status-reporting mutation result.</returns>
     public VectorMutationResult TryAdd(ulong id, ReadOnlySpan<float> vector) => _inner.TryAdd(id, vector);
 
@@ -156,10 +156,10 @@ public sealed class HnswMutableIndex
     /// </summary>
     /// <remarks>
     /// Base candidates are approximate HNSW candidates with tombstones suppressed. Delta rows are
-    /// searched exactly, then base and delta candidates are merged by squared-L2 distance and
+    /// searched exactly, then base and delta candidates are merged by canonical distance and
     /// external-ID ties. The caller owns the result buffer and workspace.
     /// </remarks>
-    /// <param name="query">The finite squared-L2 query vector.</param>
+    /// <param name="query">The finite query vector. Cosine queries are normalized during search.</param>
     /// <param name="results">The caller-owned destination buffer. Its length is the requested result count.</param>
     /// <param name="workspace">The caller-owned mutable HNSW workspace for this generation.</param>
     /// <returns>The number of results written.</returns>
@@ -179,7 +179,7 @@ public sealed class HnswMutableIndex
     /// HNSW base traversal remains unfiltered with emission suppression and may underfill; live
     /// allowed delta rows are still searched exactly.
     /// </remarks>
-    /// <param name="query">The finite squared-L2 query vector.</param>
+    /// <param name="query">The finite query vector. Cosine queries are normalized during search.</param>
     /// <param name="allowedIds">Caller-supplied external identifiers allowed for this search.</param>
     /// <param name="results">The caller-owned destination buffer. Its length is the requested result count.</param>
     /// <param name="workspace">The caller-owned mutable HNSW workspace for this generation.</param>

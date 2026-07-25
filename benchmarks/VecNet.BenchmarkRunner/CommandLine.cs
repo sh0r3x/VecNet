@@ -940,9 +940,9 @@ public static class CommandLine
             throw new ArgumentException("Option --snapshot-directory must not be empty.");
         }
 
-        if (metric != VectorMetric.SquaredEuclidean)
+        if (!IsSupportedGeneratedHnswMetric(metric))
         {
-            throw new ArgumentException("hnsw-generated-durable supports only SquaredEuclidean.");
+            throw new ArgumentException("hnsw-generated-durable supports SquaredEuclidean and Cosine only.");
         }
 
         if (topK > vectorCount)
@@ -1778,9 +1778,9 @@ public static class CommandLine
             throw new ArgumentException("Option --output must not be empty.");
         }
 
-        if (metric != VectorMetric.SquaredEuclidean)
+        if (!IsSupportedGeneratedHnswMetric(metric))
         {
-            throw new ArgumentException("hnsw-generated supports only SquaredEuclidean.");
+            throw new ArgumentException("hnsw-generated supports SquaredEuclidean and Cosine only.");
         }
 
         if (topK > vectorCount)
@@ -1868,9 +1868,9 @@ public static class CommandLine
             throw new ArgumentException("Option --output must not be empty.");
         }
 
-        if (metric != VectorMetric.SquaredEuclidean)
+        if (!IsSupportedGeneratedHnswMetric(metric))
         {
-            throw new ArgumentException("generated-hnsw-base-plus-exact-delta supports only SquaredEuclidean.");
+            throw new ArgumentException("generated-hnsw-base-plus-exact-delta supports SquaredEuclidean and Cosine only.");
         }
 
         if (deletedBaseCount > baseVectorCount)
@@ -3552,6 +3552,9 @@ public static class CommandLine
         string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "output-dir", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "manifest", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedGeneratedHnswMetric(VectorMetric metric) =>
+        metric is VectorMetric.SquaredEuclidean or VectorMetric.Cosine;
 
     private static VectorMetric GetExternalFashionMnistMetric(Dictionary<string, string> values, string name, VectorMetric defaultValue)
     {

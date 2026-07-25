@@ -31,7 +31,6 @@ public sealed class Vec074DurableHnswGeneratedTests
 
     [Theory]
     [InlineData("unexpected")]
-    [InlineData("hnsw-generated-durable", "--metric", "Cosine")]
     [InlineData("hnsw-generated-durable", "--metric", "InnerProduct")]
     [InlineData("hnsw-generated-durable", "--dimension", "0")]
     [InlineData("hnsw-generated-durable", "--vectors", "0")]
@@ -59,6 +58,80 @@ public sealed class Vec074DurableHnswGeneratedTests
         ArgumentException exception = Assert.Throws<ArgumentException>(() => CommandLine.ParseDurableHnswGenerated(args));
 
         Assert.NotEmpty(exception.Message);
+    }
+
+    [Fact]
+    public void ParseDurableHnswGenerated_AcceptsCosineAndRejectsInnerProduct()
+    {
+        DurableHnswGeneratedOptions cosine = CommandLine.ParseDurableHnswGenerated(
+            [
+                "hnsw-generated-durable",
+                "--metric", "Cosine",
+                "--dimension", "6",
+                "--vectors", "16",
+                "--queries", "2",
+                "--top-k", "3",
+                "--ef-search", "3"
+            ]);
+
+        Assert.Equal(VectorMetric.Cosine, cosine.Metric);
+
+        ArgumentException rejected = Assert.Throws<ArgumentException>(
+            () => CommandLine.ParseDurableHnswGenerated(
+                [
+                    "hnsw-generated-durable",
+                    "--metric", "InnerProduct",
+                    "--dimension", "6",
+                    "--vectors", "16",
+                    "--queries", "2",
+                    "--top-k", "3",
+                    "--ef-search", "3"
+                ]));
+        Assert.Contains("Cosine", rejected.Message, StringComparison.Ordinal);
+        Assert.Contains("SquaredEuclidean", rejected.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Run_CosineDurableReportPassesSourceOpenedParityAndPrivateValidation()
+    {
+        string directory = NewArtifactDirectory("cosine");
+        string outputPath = Path.Combine(directory, "durable-hnsw-cosine.json");
+        string snapshotDirectory = Path.Combine(directory, "snapshot");
+        string[] arguments =
+        [
+            "hnsw-generated-durable",
+            "--metric", "Cosine",
+            "--dimension", "6",
+            "--vectors", "24",
+            "--queries", "3",
+            "--top-k", "4",
+            "--runs", "1",
+            "--warmup-queries", "1",
+            "--seed", "0x5EED2321",
+            "--m", "4",
+            "--ef-construction", "16",
+            "--ef-search", "8",
+            "--hnsw-seed", "0x0000000000002321",
+            "--output", outputPath,
+            "--snapshot-directory", snapshotDirectory
+        ];
+        DurableHnswGeneratedOptions options = CommandLine.ParseDurableHnswGenerated(arguments);
+
+        DurableHnswBenchmarkReport report = DurableHnswGeneratedScenario.Run(options, arguments);
+        DurableHnswGeneratedScenario.Write(report, outputPath);
+
+        Assert.True(File.Exists(outputPath));
+        Assert.Equal(VectorMetric.Cosine.ToString(), report.Dataset.Metric);
+        Assert.Equal(VectorMetric.Cosine.ToString(), report.Index.Metric);
+        Assert.Equal(VectorMetric.Cosine.ToString(), report.Workload.Metric);
+        Assert.Equal("passed", report.Validation.Status);
+        Assert.True(report.Validation.SavedOpenedParity.AllResultsMatched);
+        Assert.Equal("passed", report.Metrics.SourceHnsw.ReturnedResultIntegrity.Status);
+        Assert.Equal("passed", report.Metrics.OpenedHnsw.ReturnedResultIntegrity.Status);
+        Assert.Equal(0, report.Metrics.SourceHnsw.DistanceMismatchCount);
+        Assert.Equal(0, report.Metrics.OpenedHnsw.DistanceMismatchCount);
+        Assert.False(report.Evidence.PublicClaimEligible);
+        Assert.False(report.Eligibility.PreviewReadinessEligible);
     }
 
     [Fact]

@@ -1,12 +1,8 @@
 # HNSW Cosine Benchmark
 
-This page publishes a bounded benchmark summary for source-built VecNet
-`HnswIndex` approximate cosine search. It centers recall@k versus latency
-across `efSearch`.
-
-These numbers are for current repository source built at the measured commit
-below. They are not a claim about the already-published `1.1.0` NuGet
-packages, which do not support HNSW cosine.
+This page publishes a bounded benchmark summary for VecNet `HnswIndex`
+approximate cosine search. It centers recall@k versus latency across
+`efSearch`.
 
 ## Methodology
 
@@ -16,7 +12,7 @@ This is a VecNet-only benchmark. It measures immutable and durable
 checkpoint/update workflows. It does not compare VecNet with any other
 package, database, service, or native library.
 
-Measured from source at commit
+Measured at commit
 `2d3ae68db7197f04ce00a174c56a00b82fb24a77` on branch `hnsw-cosine`.
 
 Generated-data cases used uniform generated `float32` vectors and queries
@@ -55,8 +51,7 @@ where those measurements were collected:
 
 Environment: Windows `10.0.26200`, `.NET 10.0.9`, X64, workstation GC
 (`Server GC=False`), `Vector<float>.Count=8`, `6` physical cores, `12`
-logical processors, and `13.86 GiB` RAM. CPU model, host name, owner/account
-names, local paths, cache roots, and raw report identifiers are omitted.
+logical processors, and `13.86 GiB` RAM.
 
 Search latency and QPS measure only
 `HnswIndex.Search(query, results, workspace)` with caller-owned result buffers
@@ -140,11 +135,10 @@ usage and are not a memory-capacity claim.
 
 ## Do Not Generalize These Numbers
 
-These numbers are not a package-wide claim. They cover only source-built
-`HnswIndex` cosine for the listed immutable and durable cases, not the
-published `1.1.0` NuGet packages, exact-flat, filters, mutable HNSW, the
-optional VectorData adapter, application workflows, or the package as a
-whole.
+These numbers are not a package-wide claim. They cover only `HnswIndex`
+cosine for the listed immutable and durable cases, not exact-flat, filters,
+mutable HNSW, the optional VectorData adapter, application workflows, or the
+package as a whole.
 
 These numbers are not a platform-wide claim. They do not claim equivalent
 results on other operating systems, runtimes, architectures, processors, GC

@@ -31,7 +31,7 @@ and no dependency on `Microsoft.Extensions.VectorData`.
 | Exhaustive search for squared L2, inner product, or cosine | `ExactFlatIndex` | Scans live rows and ranks by canonical distance. |
 | Save/open an exact snapshot | `ExactFlatIndex.Save` and `ExactFlatIndex.OpenReadOnly` | Opens as immutable read-only exact search. |
 | Exact search over changing data in one process | `ExactFlatIndex.TryAdd`, `TryDelete`, and `Checkpoint` | Deletes are tombstones until checkpoint compaction; deleted IDs remain reserved. |
-| Approximate in-memory graph search | `HnswIndex` | Squared-L2 only; build ingestion is not upsert or graph mutation. |
+| Approximate in-memory graph search | `HnswIndex` | Published `1.1.0`: squared-L2 only; current source also has source-built HNSW cosine benchmark evidence. Inner product remains unsupported. |
 | Update-oriented HNSW workflow | `HnswMutableIndex` | Immutable HNSW base plus exact delta/tombstones; checkpoint rebuilds a new immutable HNSW base. |
 | VectorData integration | `VecNet.Integration.VectorData` | Separate optional exact-flat in-memory adapter, not HNSW or durable VectorData storage. |
 
@@ -74,6 +74,9 @@ VecNet has bounded benchmark summaries:
 - `HnswIndex` squared-L2 recall versus latency over generated data and
   Fashion-MNIST:
   [docs/benchmarks/hnsw-squared-l2.md](docs/benchmarks/hnsw-squared-l2.md).
+- Source-built `HnswIndex` cosine recall versus latency for current
+  repository source, not the published `1.1.0` NuGet packages:
+  [docs/benchmarks/hnsw-cosine.md](docs/benchmarks/hnsw-cosine.md).
 
 Read each methodology and limit section before using the numbers. The
 summaries are narrow search measurements, not capacity, package-wide,
@@ -164,9 +167,10 @@ or semantic-relevance claims.
   grouping, deduplication, freshness checks, reranking, and presentation.
 - Application metadata filtering, authorization, transactions, backups, and
   record hydration remain the responsibility of the host application.
-- HNSW support is squared-L2-only and approximate. Cosine HNSW and
-  inner-product HNSW are not supported for 1.0; use exact-flat indexes for
-  those metrics.
+- In the published `1.1.0` packages, HNSW support is squared-L2-only and
+  approximate. Current repository source also contains unreleased HNSW cosine
+  work covered by the source-built benchmark linked above. HNSW inner product
+  remains unsupported; use exact-flat indexes for inner-product retrieval.
 - HNSW `Add` is build ingestion for an immutable graph, not upsert,
   replacement, delete, repair, direct graph mutation, or live graph update.
   HNSW indexes opened with `OpenReadOnly` are searchable but reject mutation.
@@ -220,8 +224,11 @@ Use `VectorMetric.Cosine` when angle/direction should rank better. VecNet
 normalizes inserted and query vectors for cosine indexes, rejects zero vectors,
 and reports `1 - dot(normalizedQuery, normalizedStored)`.
 
-HNSW currently supports only squared L2. For cosine or inner-product retrieval,
-use exact flat or the exact-flat VectorData adapter.
+In the published `1.1.0` packages, HNSW supports only squared L2. Current
+repository source includes unreleased HNSW cosine work covered by the
+source-built benchmark linked above. HNSW inner product remains unsupported.
+For released-package cosine or inner-product retrieval, use exact flat or the
+exact-flat VectorData adapter.
 
 ## Optional VectorData Adapter
 
@@ -278,9 +285,14 @@ current live view, so deleted rows are not searchable in the saved output.
 
 ## HNSW
 
-`HnswIndex` is an approximate index for squared L2 only. Use
-`HnswIndexOptions` to choose build/search parameters, and pass a caller-owned
-`HnswSearchWorkspace` to every search.
+In the published `1.1.0` packages, `HnswIndex` is an approximate index for
+squared L2 only. Current repository source also contains source-built
+immutable/durable HNSW cosine work covered by the benchmark page linked above;
+HNSW inner product remains unsupported. The example below uses the
+package-compatible squared-L2 path.
+
+Use `HnswIndexOptions` to choose build/search parameters, and pass a
+caller-owned `HnswSearchWorkspace` to every search.
 
 ```csharp
 using VecNet;

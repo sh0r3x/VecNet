@@ -17,7 +17,11 @@ public static class DurableHnswGeneratedMatrixScenario
         new("low-ef-m4", VectorMetric.SquaredEuclidean, Dimension: 16, VectorCount: 64, QueryCount: 3, TopK: 5, M: 4, EfConstruction: 16, EfSearch: 8, Runs: 1, WarmupQueries: 0),
         new("balanced-m8", VectorMetric.SquaredEuclidean, Dimension: 32, VectorCount: 128, QueryCount: 4, TopK: 10, M: 8, EfConstruction: 32, EfSearch: 24, Runs: 1, WarmupQueries: 1),
         new("wide-m12", VectorMetric.SquaredEuclidean, Dimension: 128, VectorCount: 192, QueryCount: 5, TopK: 25, M: 12, EfConstruction: 64, EfSearch: 64, Runs: 2, WarmupQueries: 1),
-        new("tail-balanced-m8", VectorMetric.SquaredEuclidean, Dimension: 386, VectorCount: 96, QueryCount: 3, TopK: 25, M: 8, EfConstruction: 64, EfSearch: 64, Runs: 1, WarmupQueries: 1)
+        new("tail-balanced-m8", VectorMetric.SquaredEuclidean, Dimension: 386, VectorCount: 96, QueryCount: 3, TopK: 25, M: 8, EfConstruction: 64, EfSearch: 64, Runs: 1, WarmupQueries: 1),
+        new("low-ef-m4", VectorMetric.Cosine, Dimension: 16, VectorCount: 64, QueryCount: 3, TopK: 5, M: 4, EfConstruction: 16, EfSearch: 8, Runs: 1, WarmupQueries: 0),
+        new("balanced-m8", VectorMetric.Cosine, Dimension: 32, VectorCount: 128, QueryCount: 4, TopK: 10, M: 8, EfConstruction: 32, EfSearch: 24, Runs: 1, WarmupQueries: 1),
+        new("wide-m12", VectorMetric.Cosine, Dimension: 128, VectorCount: 192, QueryCount: 5, TopK: 25, M: 12, EfConstruction: 64, EfSearch: 64, Runs: 2, WarmupQueries: 1),
+        new("tail-balanced-m8", VectorMetric.Cosine, Dimension: 386, VectorCount: 96, QueryCount: 3, TopK: 25, M: 8, EfConstruction: 64, EfSearch: 64, Runs: 1, WarmupQueries: 1)
     ];
 
     public static DurableHnswGeneratedMatrixManifest Run(
@@ -125,11 +129,11 @@ public static class DurableHnswGeneratedMatrixScenario
                 "No durable-HNSW comparison schema or compatibility policy is accepted for VEC-076.",
                 "No durable-HNSW threshold, hard gate or regression decision policy is accepted for VEC-076."),
             [
-                "Generated durable-HNSW matrix smoke evidence only; no external datasets, public claims, preview readiness or baseline policy are introduced.",
+                "Generated SquaredEuclidean and Cosine durable-HNSW matrix smoke evidence only; no external datasets, public claims, preview readiness or baseline policy are introduced.",
                 "Each successful case delegates to hnsw-generated-durable and writes a VecNet.DurableHnswBenchmarkReport schema 0.1 linked report.",
                 "The linked VEC-074 report remains the source of truth for build, save, open, opened-search, recall, parity, returned-result integrity, read-only mutation posture and storage-byte file facts.",
                 "The matrix manifest records case identity, command replay, linked report paths, snapshot roots, pass/fail accounting and false eligibility without averaging timings, comparing baselines or defining thresholds.",
-                "No src/VecNet change, public HNSW profile admission, filtering, direct HNSW mutation, additional HNSW metric, compression, VectorData, SSD/DiskANN or production dependency is introduced."
+                "No src/VecNet change, public HNSW profile admission, filtering, direct HNSW mutation, compression, VectorData, SSD/DiskANN or production dependency is introduced."
             ]);
     }
 
@@ -255,7 +259,7 @@ public static class DurableHnswGeneratedMatrixScenario
     private static string CreateCaseId(int caseNumber, DurableHnswMatrixPresetCase presetCase) =>
         string.Create(
             CultureInfo.InvariantCulture,
-            $"case-{caseNumber:D3}-{presetCase.ProfileName}-{presetCase.Dimension}d-{presetCase.VectorCount}v-{presetCase.QueryCount}q-{presetCase.TopK}k");
+            $"case-{caseNumber:D3}-{presetCase.Metric}-{presetCase.ProfileName}-{presetCase.Dimension}d-{presetCase.VectorCount}v-{presetCase.QueryCount}q-{presetCase.TopK}k");
 
     private static DurableHnswMatrixPresetCase[] GetPresetCases(string presetName)
     {

@@ -27,20 +27,34 @@ public sealed record FashionMnistDatasetSpecification(
     FashionMnistRawFileSpec QueryImages,
     FashionMnistRawFileSpec QueryLabels)
 {
+    public const string EuclideanDatasetId = "fashion-mnist-784-euclidean";
+    public const string CosineDatasetId = "fashion-mnist-784-cosine";
+    public const string RawDatasetId = EuclideanDatasetId;
+
     public static FashionMnistDatasetSpecification Official { get; } = CreateOfficial();
 
     public FashionMnistRawFileSpec[] RawFiles => [TrainImages, TrainLabels, QueryImages, QueryLabels];
 
+    public static string GetDatasetId(VectorMetric metric) =>
+        metric switch
+        {
+            VectorMetric.SquaredEuclidean => EuclideanDatasetId,
+            VectorMetric.Cosine => CosineDatasetId,
+            _ => throw new ArgumentException("Fashion-MNIST external runners support only SquaredEuclidean and Cosine.", nameof(metric))
+        };
+
+    public FashionMnistDatasetSpecification WithMetricIdentity(VectorMetric metric) =>
+        this with { DatasetId = GetDatasetId(metric) };
+
     private static FashionMnistDatasetSpecification CreateOfficial()
     {
-        const string datasetId = "fashion-mnist-784-euclidean";
         const string downloadRoot = "http://fashion-mnist.s3-website.eu-central-1.amazonaws.com/";
 
         static FashionMnistRawFileSpec RawFile(string fileName, string role, int expectedCount, string officialMd5) =>
             new(fileName, role, expectedCount, officialMd5, downloadRoot + fileName);
 
         return new FashionMnistDatasetSpecification(
-            datasetId,
+            EuclideanDatasetId,
             MaintainerUrl: "https://github.com/zalandoresearch/fashion-mnist",
             DownloadRoot: downloadRoot,
             OfficialReadmeUrl: "https://raw.githubusercontent.com/zalandoresearch/fashion-mnist/master/README.md",

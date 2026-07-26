@@ -29,7 +29,7 @@ public static class FashionMnistExternalHnswBenchmarkScenario
             options.TopK,
             dataset.Dimension,
             options.Metric);
-        HnswReturnedResultIntegrityInfo returnedIntegrity = ValidateReturnedResults(dataset, measurement.Results, options.QueryCount, options.TopK);
+        HnswReturnedResultIntegrityInfo returnedIntegrity = ValidateReturnedResults(dataset, measurement.Results, options.QueryCount, options.TopK, options.Metric);
         int extraResultCount = CountExtraResults(truth, measurement.Results, options.TopK);
         string validationStatus = comparison.MissingResultCount == 0 &&
             extraResultCount == 0 &&
@@ -118,7 +118,7 @@ public static class FashionMnistExternalHnswBenchmarkScenario
                 dataset.Truth.TruthDepth,
                 options.TopK,
                 dataset.Truth.TiePolicy,
-                "VecNet canonical squared distances for the external Euclidean ranking convention",
+                FashionMnistExactTruth.DistanceSemantics(options.Metric),
                 dataset.Truth.SourceRawSha256),
             new ScenarioInfo(
                 FashionMnistExternalHnswBenchmarkOptions.ScenarioName,
@@ -141,7 +141,7 @@ public static class FashionMnistExternalHnswBenchmarkScenario
                 options.EfSearch,
                 FormatHex(options.HnswSeed),
                 "admitted base matrix row order, external ids 0..baseCount-1",
-                "SquaredEuclidean only"),
+                $"{options.Metric} only"),
             new HnswBuildInfo(
                 "measured",
                 build.ElapsedMilliseconds,
@@ -207,7 +207,7 @@ public static class FashionMnistExternalHnswBenchmarkScenario
                 extraResultCount,
                 returnedIntegrity,
                 "set recall@k = returned ids intersect loaded exact truth top-k ids divided by min(k, truth depth), summed across measured queries",
-                "Every returned HNSW result is checked for finite distance, no duplicate ID within its query, admitted base-row ID membership, and squared-L2 distance matching recomputation for that returned ID/query within the accepted D-026 tolerance. HNSW is approximate and exact top-k recall/order are recorded, not required."),
+                $"Every returned HNSW result is checked for finite distance, no duplicate ID within its query, admitted base-row ID membership, and {options.Metric} distance matching recomputation for that returned ID/query within the accepted ResultComparer tolerance. HNSW is approximate and exact top-k recall/order are recorded, not required."),
             new ExternalHnswBenchmarkValidationInfo(
                 validationStatus,
                 "external-hnsw-smoke",
@@ -245,7 +245,8 @@ public static class FashionMnistExternalHnswBenchmarkScenario
         LoadedExternalDataset dataset,
         SearchResult[][] actual,
         int expectedQueryCount,
-        int topK)
+        int topK,
+        VectorMetric metric = VectorMetric.SquaredEuclidean)
     {
         int checkedResultCount = 0;
         int queryCountMismatchCount = actual.Length == expectedQueryCount ? 0 : 1;
@@ -287,10 +288,11 @@ public static class FashionMnistExternalHnswBenchmarkScenario
                     continue;
                 }
 
-                float expectedDistance = SquaredEuclideanDistance(
+                float expectedDistance = ScalarGroundTruth.CalculateDistance(
                     dataset.GetQueryVector(queryRow),
-                    dataset.GetBaseVector(checked((int)result.Id)));
-                if (!DistanceMatches(expectedDistance, result.Distance, dataset.Dimension))
+                    dataset.GetBaseVector(checked((int)result.Id)),
+                    metric);
+                if (!ResultComparer.DistanceMatches(expectedDistance, result.Distance, dataset.Dimension, metric))
                 {
                     distanceMismatchCount++;
                 }
@@ -313,7 +315,7 @@ public static class FashionMnistExternalHnswBenchmarkScenario
             duplicateIdCount,
             unknownIdCount,
             distanceMismatchCount,
-            "For every returned approximate external HNSW result: distance must be finite; IDs must be unique within a query; ID must be one of the admitted base-row IDs; and reported distance must match recomputed squared-L2 for that query and returned ID within the accepted D-026 tolerance.",
+            $"For every returned approximate external HNSW result: distance must be finite; IDs must be unique within a query; ID must be one of the admitted base-row IDs; and reported distance must match recomputed {metric} distance for that query and returned ID within the accepted ResultComparer tolerance.",
             passed
                 ? "All returned approximate external HNSW results are well formed and distance-integrity checked."
                 : "One or more returned approximate external HNSW results failed well-formedness or distance-integrity checks.");
@@ -322,7 +324,7 @@ public static class FashionMnistExternalHnswBenchmarkScenario
     internal static LoadedExternalDataset LoadAndValidateDataset(FashionMnistExternalHnswBenchmarkOptions options)
     {
         ValidateOptions(options);
-        DatasetPaths paths = DatasetPaths.Create(options.CacheRoot, FashionMnistDatasetSpecification.Official.DatasetId);
+        DatasetPaths paths = DatasetPaths.Create(options.CacheRoot, FashionMnistDatasetSpecification.GetDatasetId(options.Metric));
         string manifestPath = paths.ManifestPath;
         if (!File.Exists(manifestPath))
         {
@@ -332,7 +334,7 @@ public static class FashionMnistExternalHnswBenchmarkScenario
         ExternalDatasetManifest manifest = ReportWriter.Deserialize<ExternalDatasetManifest>(File.ReadAllText(manifestPath))
             ?? throw new InvalidDataException("External dataset manifest JSON could not be deserialized.");
         string manifestSha256 = FileChecksum.ComputeSha256(manifestPath);
-        ValidateManifest(manifest);
+        ValidateManifest(manifest, options.Metric);
 
         string conversionManifestPath = ResolveCacheRelativePath(options.CacheRoot, manifest.Conversion.ManifestRelativePath);
         RequireExistingFile(conversionManifestPath, "conversion manifest");
@@ -353,6 +355,7 @@ public static class FashionMnistExternalHnswBenchmarkScenario
 
         float[] baseVectors = DenseFloat32Matrix.Read(baseMatrixPath, (ulong)baseEntry.RowCount, (uint)baseEntry.Dimension);
         float[] queryVectors = DenseFloat32Matrix.Read(queryMatrixPath, (ulong)queryEntry.RowCount, (uint)queryEntry.Dimension);
+        ValidateCosineSelectedRows(options.Metric, baseVectors, queryVectors, baseEntry.RowCount, queryEntry.RowCount, baseEntry.Dimension, options.QueryCount, options.WarmupQueries);
 
         string truthPath = ResolveCacheRelativePath(options.CacheRoot, manifest.Truth.RelativePath);
         ValidateFileSha256(truthPath, manifest.Truth.Sha256, "truth artifact");
@@ -405,9 +408,9 @@ public static class FashionMnistExternalHnswBenchmarkScenario
             throw new ArgumentException("warmup queries must be non-negative.", nameof(options));
         }
 
-        if (options.Metric != VectorMetric.SquaredEuclidean)
+        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.Cosine))
         {
-            throw new ArgumentException("The Fashion-MNIST external HNSW benchmark supports only squared-euclidean metric mapping.", nameof(options));
+            throw new ArgumentException("The Fashion-MNIST external HNSW benchmark supports only squared-euclidean and cosine metric mapping.", nameof(options));
         }
 
         if (options.M is < 2 or > 64)
@@ -431,12 +434,13 @@ public static class FashionMnistExternalHnswBenchmarkScenario
         }
     }
 
-    private static void ValidateManifest(ExternalDatasetManifest manifest)
+    private static void ValidateManifest(ExternalDatasetManifest manifest, VectorMetric metric)
     {
         Require(manifest.SchemaName == "VecNet.ExternalDatasetManifest", "External dataset manifest schemaName must be VecNet.ExternalDatasetManifest.");
         Require(manifest.SchemaVersion == "0.1", "External dataset manifest schemaVersion must be 0.1.");
-        Require(manifest.DatasetId == FashionMnistDatasetSpecification.Official.DatasetId, "External dataset manifest datasetId must be fashion-mnist-784-euclidean.");
-        Require(manifest.Metric.VecNetMetric == nameof(VectorMetric.SquaredEuclidean), "External dataset manifest VecNet metric must be SquaredEuclidean.");
+        string expectedDatasetId = FashionMnistDatasetSpecification.GetDatasetId(metric);
+        Require(manifest.DatasetId == expectedDatasetId, $"External dataset manifest datasetId must be {expectedDatasetId}.");
+        Require(manifest.Metric.VecNetMetric == metric.ToString(), $"External dataset manifest VecNet metric must be {metric}.");
         Require(!manifest.Privacy.PublicClaimEligible, "External dataset manifest public-claim eligibility must be false.");
         Require(!manifest.Privacy.BaselineCandidateEligible, "External dataset manifest baseline-candidate eligibility must be false.");
         Require(!manifest.Privacy.RegressionGateEligible, "External dataset manifest regression-gate eligibility must be false.");
@@ -483,7 +487,7 @@ public static class FashionMnistExternalHnswBenchmarkScenario
         Require(truth.DatasetId == manifest.DatasetId, "External truth datasetId must match the manifest.");
         Require(truth.BaseCount == manifest.Shape.BaseCount, "External truth base count must match the manifest shape.");
         Require(truth.Dimension == manifest.Shape.Dimension, "External truth dimension must match the manifest shape.");
-        Require(truth.Metric == nameof(VectorMetric.SquaredEuclidean), "External truth metric must be SquaredEuclidean.");
+        Require(truth.Metric == options.Metric.ToString(), $"External truth metric must be {options.Metric}.");
         Require(truth.QuerySubsetCount == manifest.Truth.QuerySubsetCount, "External truth query subset count must match the manifest truth summary.");
         Require(truth.TruthDepth == manifest.Truth.TruthDepth, "External truth depth must match the manifest truth summary.");
         Require(options.QueryCount <= manifest.Shape.QueryCount, "Requested query count must not exceed the admitted query matrix count.");
@@ -504,12 +508,33 @@ public static class FashionMnistExternalHnswBenchmarkScenario
         }
     }
 
+    private static void ValidateCosineSelectedRows(
+        VectorMetric metric,
+        ReadOnlySpan<float> baseVectors,
+        ReadOnlySpan<float> queryVectors,
+        int baseCount,
+        int queryMatrixCount,
+        int dimension,
+        int queryCount,
+        int warmupQueries)
+    {
+        if (metric != VectorMetric.Cosine)
+        {
+            return;
+        }
+
+        int warmupSelectedQueryCount = warmupQueries == 0 ? 0 : Math.Min(warmupQueries, queryMatrixCount);
+        int selectedQueryCount = Math.Max(queryCount, warmupSelectedQueryCount);
+        FashionMnistExactTruth.ValidateNonZeroRows(baseVectors, baseCount, dimension, "base");
+        FashionMnistExactTruth.ValidateNonZeroRows(queryVectors, selectedQueryCount, dimension, "query");
+    }
+
     private static BuildMeasurement BuildIndex(FashionMnistExternalHnswBenchmarkOptions options, LoadedExternalDataset dataset)
     {
         var hnswOptions = new HnswIndexOptions(options.M, options.EfConstruction, options.EfSearch, options.HnswSeed);
         long allocationStart = GC.GetAllocatedBytesForCurrentThread();
         long start = Stopwatch.GetTimestamp();
-        var index = new HnswIndex(dataset.Dimension, VectorMetric.SquaredEuclidean, hnswOptions);
+        var index = new HnswIndex(dataset.Dimension, options.Metric, hnswOptions);
         for (int row = 0; row < dataset.BaseCount; row++)
         {
             index.Add((ulong)row, dataset.GetBaseVector(row));

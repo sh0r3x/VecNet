@@ -34,7 +34,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaScenario
             measurement.Results,
             options.TopK,
             dataset.Dimension,
-            VectorMetric.SquaredEuclidean);
+            options.Metric);
         HnswBasePlusExactDeltaReturnedResultIntegrityInfo returnedIntegrity =
             ValidateReturnedResults(dataset, measurement.Results, options, liveIds);
         HnswBasePlusExactDeltaUnderfillInfo underfill = CreateUnderfill(options, measurement.Results);
@@ -139,8 +139,8 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaScenario
                 options.QueryCount,
                 truth.Depth,
                 liveIds.Length,
-                "ascending scalar-reference squared-L2 distance, then ascending external ID for exact equal distances",
-                "VecNet canonical squared-L2 over admitted converted Fashion-MNIST float32 vectors",
+                FashionMnistExactTruth.TiePolicy(options.Metric),
+                FashionMnistExactTruth.DistanceSemantics(options.Metric),
                 "existing admitted truth artifact validates cache/truth readiness only and is not final updated truth",
                 "live candidate IDs are selected immutable base rows and committed exact delta rows after tombstone suppression"),
             new ScenarioInfo(
@@ -152,7 +152,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaScenario
             new IndexInfo(
                 "InternalHnswBasePlusExactDelta",
                 nameof(HnswBasePlusExactDeltaIndex),
-                VectorMetric.SquaredEuclidean.ToString(),
+                options.Metric.ToString(),
                 dataset.Dimension,
                 counts.LiveVectorCount,
                 "internal HnswBasePlusExactDeltaIndex over admitted Fashion-MNIST immutable HnswIndex base, exact in-memory delta and tombstone overlay; no public mutable HNSW API, durable overlay persistence, checkpoint/rebuild, filtering, comparison tooling or matrix mode"),
@@ -164,7 +164,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaScenario
                 options.EfSearch,
                 FormatHex(options.HnswSeed),
                 "admitted Fashion-MNIST base matrix row order, immutable base rows first, original row ordinals as external IDs",
-                "SquaredEuclidean only"),
+                $"{options.Metric} only"),
             new HnswBuildInfo(
                 "measured",
                 build.ElapsedMilliseconds,
@@ -210,7 +210,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaScenario
                 extraResultCount,
                 returnedIntegrity,
                 "set recall@k = returned live ids intersect exact updated top-k live ids divided by min(k, post-update live vector count), summed across measured queries",
-                "Every returned external composite result is checked for finite distance, no duplicate ID within its query, post-update live ID membership, no tombstoned ID, and squared-L2 distance matching recomputation for that returned ID/query within the accepted D-026 tolerance. HNSW base search is approximate and recall/order are recorded, not required."),
+                "Every returned external composite result is checked for finite distance, no duplicate ID within its query, post-update live ID membership, no tombstoned ID, and selected-metric distance matching recomputation for that returned ID/query within the accepted ResultComparer tolerance. HNSW base search is approximate and recall/order are recorded, not required."),
             underfill,
             new ExternalHnswBasePlusExactDeltaValidationInfo(
                 validationPassed ? "passed" : "failed",
@@ -308,10 +308,11 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaScenario
                     continue;
                 }
 
-                float expectedDistance = SquaredEuclideanDistance(
+                float expectedDistance = ScalarGroundTruth.CalculateDistance(
                     dataset.GetQueryVector(queryRow),
-                    dataset.GetBaseVector(checked((int)result.Id)));
-                if (!DistanceMatches(expectedDistance, result.Distance, dataset.Dimension))
+                    dataset.GetBaseVector(checked((int)result.Id)),
+                    options.Metric);
+                if (!ResultComparer.DistanceMatches(expectedDistance, result.Distance, dataset.Dimension, options.Metric))
                 {
                     distanceMismatchCount++;
                 }
@@ -336,7 +337,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaScenario
             unknownIdCount,
             tombstonedIdCount,
             distanceMismatchCount,
-            "For every returned external composite result: distance must be finite; IDs must be unique within a query; ID must be one of the selected post-update live Fashion-MNIST base-row IDs; tombstoned IDs must not be returned; and reported distance must match recomputed squared-L2 for that query and returned ID within the accepted D-026 tolerance.",
+            "For every returned external composite result: distance must be finite; IDs must be unique within a query; ID must be one of the selected post-update live Fashion-MNIST base-row IDs; tombstoned IDs must not be returned; and reported distance must match recomputed selected-metric distance for that query and returned ID within the accepted ResultComparer tolerance.",
             passed
                 ? "All returned external composite results are live, not tombstoned, well formed and distance-integrity checked."
                 : "One or more returned external composite results failed live-ID, tombstone, well-formedness or distance-integrity checks.");
@@ -352,7 +353,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaScenario
             options.TopK,
             Runs: 1,
             WarmupQueries: options.WarmupQueries,
-            VectorMetric.SquaredEuclidean,
+            options.Metric,
             options.M,
             options.EfConstruction,
             options.EfSearch,
@@ -373,7 +374,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaScenario
         var hnswOptions = new HnswIndexOptions(options.M, options.EfConstruction, options.EfSearch, options.HnswSeed);
         long allocationStart = GC.GetAllocatedBytesForCurrentThread();
         long start = Stopwatch.GetTimestamp();
-        var index = new HnswIndex(dataset.Dimension, VectorMetric.SquaredEuclidean, hnswOptions);
+        var index = new HnswIndex(dataset.Dimension, options.Metric, hnswOptions);
         for (int row = 0; row < options.BaseVectorCount; row++)
         {
             index.Add((ulong)row, dataset.GetBaseVector(row));
@@ -485,7 +486,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaScenario
             for (int i = 0; i < liveIds.Length; i++)
             {
                 ulong id = liveIds[i];
-                candidates[i] = new TruthItem(id, SquaredEuclideanDistance(query, dataset.GetBaseVector(checked((int)id))));
+                candidates[i] = new TruthItem(id, ScalarGroundTruth.CalculateDistance(query, dataset.GetBaseVector(checked((int)id)), options.Metric));
             }
 
             Array.Sort(candidates, CompareTruthItems);
@@ -867,9 +868,9 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaScenario
             throw new ArgumentException("warmup queries must be non-negative.", nameof(options));
         }
 
-        if (options.Metric != VectorMetric.SquaredEuclidean)
+        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.Cosine))
         {
-            throw new ArgumentException("external-fashion-mnist-hnsw-base-plus-exact-delta supports only SquaredEuclidean.", nameof(options));
+            throw new ArgumentException("external-fashion-mnist-hnsw-base-plus-exact-delta supports only SquaredEuclidean and Cosine.", nameof(options));
         }
 
         if (options.DuplicateInsertAttempts < 0 || options.UnknownDeleteAttempts < 0 || options.RepeatedDeleteAttempts < 0)

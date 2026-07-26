@@ -3,15 +3,16 @@ using System.Numerics;
 namespace VecNet;
 
 /// <summary>
-/// Approximate HNSW index for squared Euclidean distance.
+/// Approximate HNSW index for squared Euclidean and cosine distance.
 /// </summary>
 /// <remarks>
 /// This API supports build ingestion with <see cref="Add"/>, caller-owned workspace
 /// search with <see cref="Search(ReadOnlySpan{float}, Span{SearchResult}, HnswSearchWorkspace)"/>,
 /// caller-owned external-ID allowlist filtering, and durable round trips with
 /// <see cref="Save"/> and <see cref="OpenReadOnly"/>. Read-only searches may overlap only when each
-/// caller uses an independent result buffer and independent workspace. It currently supports only
-/// <see cref="VectorMetric.SquaredEuclidean"/>. Cosine HNSW, inner-product HNSW, stored labels,
+/// caller uses an independent result buffer and independent workspace. Supported metrics are
+/// <see cref="VectorMetric.SquaredEuclidean"/> and <see cref="VectorMetric.Cosine"/>.
+/// Inner-product HNSW, stored labels,
 /// durable graph-aware filtering metadata, public ordinal filters, full filter-aware graph
 /// traversal, update/delete, replacement, repair, direct graph mutation, and stable file-format
 /// compatibility are not supported by this API.
@@ -49,7 +50,7 @@ public sealed partial class HnswIndex
     /// Initializes an HNSW index with <see cref="HnswIndexOptions.Default"/>.
     /// </summary>
     /// <param name="dimension">The required positive vector dimension.</param>
-    /// <param name="metric">The canonical distance metric. Only <see cref="VectorMetric.SquaredEuclidean"/> is supported.</param>
+    /// <param name="metric">The canonical distance metric. Squared Euclidean and cosine are supported.</param>
     public HnswIndex(int dimension, VectorMetric metric)
         : this(dimension, metric, HnswIndexOptions.Default)
     {
@@ -59,7 +60,7 @@ public sealed partial class HnswIndex
     /// Initializes an HNSW index with <see cref="HnswIndexOptions.Default"/> and preallocated mutable row capacity.
     /// </summary>
     /// <param name="dimension">The required positive vector dimension.</param>
-    /// <param name="metric">The canonical distance metric. Only <see cref="VectorMetric.SquaredEuclidean"/> is supported.</param>
+    /// <param name="metric">The canonical distance metric. Squared Euclidean and cosine are supported.</param>
     /// <param name="initialCapacity">The non-negative number of vector rows to reserve in contiguous HNSW storage.</param>
     public HnswIndex(int dimension, VectorMetric metric, int initialCapacity)
         : this(dimension, metric, HnswIndexOptions.Default, initialCapacity)
@@ -70,7 +71,7 @@ public sealed partial class HnswIndex
     /// Initializes an HNSW index with explicit options.
     /// </summary>
     /// <param name="dimension">The required positive vector dimension.</param>
-    /// <param name="metric">The canonical distance metric. Only <see cref="VectorMetric.SquaredEuclidean"/> is supported.</param>
+    /// <param name="metric">The canonical distance metric. Squared Euclidean and cosine are supported.</param>
     /// <param name="options">The HNSW build and search options.</param>
     public HnswIndex(int dimension, VectorMetric metric, HnswIndexOptions options)
         : this(dimension, metric, options, levelProvider: null)
@@ -81,7 +82,7 @@ public sealed partial class HnswIndex
     /// Initializes an HNSW index with explicit options and preallocated mutable row capacity.
     /// </summary>
     /// <param name="dimension">The required positive vector dimension.</param>
-    /// <param name="metric">The canonical distance metric. Only <see cref="VectorMetric.SquaredEuclidean"/> is supported.</param>
+    /// <param name="metric">The canonical distance metric. Squared Euclidean and cosine are supported.</param>
     /// <param name="options">The HNSW build and search options.</param>
     /// <param name="initialCapacity">The non-negative number of vector rows to reserve in contiguous HNSW storage.</param>
     public HnswIndex(int dimension, VectorMetric metric, HnswIndexOptions options, int initialCapacity)
@@ -111,9 +112,9 @@ public sealed partial class HnswIndex
             throw new ArgumentOutOfRangeException(nameof(metric), "Metric is not supported.");
         }
 
-        if (metric != VectorMetric.SquaredEuclidean)
+        if (metric == VectorMetric.InnerProduct)
         {
-            throw new NotSupportedException("HNSW currently supports only squared Euclidean distance.");
+            throw new NotSupportedException("HNSW does not support inner product distance.");
         }
 
         ValidateOptions(options);
@@ -143,7 +144,7 @@ public sealed partial class HnswIndex
     /// <summary>
     /// Gets the canonical distance metric used by this HNSW index.
     /// </summary>
-    /// <remarks>Only <see cref="VectorMetric.SquaredEuclidean"/> is supported.</remarks>
+    /// <remarks>Squared Euclidean and cosine are supported. Inner product is not supported.</remarks>
     public VectorMetric Metric { get; }
 
     /// <summary>
@@ -257,7 +258,7 @@ public sealed partial class HnswIndex
     /// <see cref="OpenReadOnly"/> reject this operation.
     /// </remarks>
     /// <param name="id">The opaque external vector identifier.</param>
-    /// <param name="vector">The finite squared-L2 vector values to copy into index storage.</param>
+    /// <param name="vector">The finite vector values to copy into index storage. Cosine vectors are normalized during insertion.</param>
     public void Add(ulong id, ReadOnlySpan<float> vector)
     {
         if (_isReadOnly)
@@ -265,7 +266,7 @@ public sealed partial class HnswIndex
             throw new InvalidOperationException("This HNSW index was opened read-only and cannot be modified.");
         }
 
-        ValidateVector(vector, nameof(vector));
+        double magnitude = ValidateVector(vector, nameof(vector));
         if (_idToOrdinal.ContainsKey(id))
         {
             throw new ArgumentException("An item with the same identifier already exists.", nameof(id));
@@ -287,7 +288,7 @@ public sealed partial class HnswIndex
         }
 
         _ids[ordinal] = id;
-        vector.CopyTo(_vectors.AsSpan(ordinal * Dimension, Dimension));
+        StoreVector(vector, magnitude, ordinal);
         _levels[ordinal] = level;
         for (int layer = 1; layer <= level; layer++)
         {
@@ -309,7 +310,7 @@ public sealed partial class HnswIndex
 
         for (int layer = previousMaxLayer; layer > level; layer--)
         {
-            int found = SearchLayer(vector, entryPoint, 1, layer, workspace, _count);
+            int found = SearchLayer(vector, magnitude, entryPoint, 1, layer, workspace, _count);
             if (found > 0)
             {
                 entryPoint = workspace.ResultOrdinals[0];
@@ -318,7 +319,7 @@ public sealed partial class HnswIndex
 
         for (int layer = Math.Min(previousMaxLayer, level); layer >= 0; layer--)
         {
-            int found = SearchLayer(vector, entryPoint, _options.EfConstruction, layer, workspace, _count);
+            int found = SearchLayer(vector, magnitude, entryPoint, _options.EfConstruction, layer, workspace, _count);
             int selectedCount = SelectNeighbors(
                 ordinal,
                 workspace.ResultOrdinals.AsSpan(0, found),
@@ -370,11 +371,11 @@ public sealed partial class HnswIndex
     /// Searches this HNSW index and writes approximate nearest results in ascending distance order.
     /// </summary>
     /// <remarks>
-    /// Results are ordered by the executing squared-L2 distance, with external ID breaking equal
+    /// Results are ordered by the executing canonical distance, with external ID breaking equal
     /// computed-distance ties. The caller owns the result buffer and workspace. Do not share one
     /// workspace or one result buffer across overlapping searches.
     /// </remarks>
-    /// <param name="query">The finite squared-L2 query vector.</param>
+    /// <param name="query">The finite query vector. Cosine queries are normalized during search.</param>
     /// <param name="results">
     /// The caller-owned destination buffer. Its length specifies the requested result count.
     /// </param>
@@ -388,7 +389,7 @@ public sealed partial class HnswIndex
     public int Search(ReadOnlySpan<float> query, Span<SearchResult> results, HnswSearchWorkspace workspace)
     {
         ArgumentNullException.ThrowIfNull(workspace);
-        ValidateVector(query, nameof(query));
+        double queryMagnitude = ValidateVector(query, nameof(query));
         ValidateWorkspace(workspace);
 
         if (results.IsEmpty || _count == 0)
@@ -404,14 +405,14 @@ public sealed partial class HnswIndex
         int entryPoint = _entryPoint;
         for (int layer = _maxLayer; layer > 0; layer--)
         {
-            int found = SearchLayer(query, entryPoint, 1, layer, workspace, _count);
+            int found = SearchLayer(query, queryMagnitude, entryPoint, 1, layer, workspace, _count);
             if (found > 0)
             {
                 entryPoint = workspace.ResultOrdinals[0];
             }
         }
 
-        int candidateCount = SearchLayer(query, entryPoint, _options.EfSearch, 0, workspace, _count);
+        int candidateCount = SearchLayer(query, queryMagnitude, entryPoint, _options.EfSearch, 0, workspace, _count);
         int written = Math.Min(results.Length, candidateCount);
         for (int i = 0; i < written; i++)
         {
@@ -431,7 +432,7 @@ public sealed partial class HnswIndex
     /// HNSW traversal remains unfiltered and non-allowed candidates are suppressed at emission, so the
     /// result may underfill even when exact filtered truth has at least the requested number of results.
     /// </remarks>
-    /// <param name="query">The finite squared-L2 query vector.</param>
+    /// <param name="query">The finite query vector. Cosine queries are normalized during search.</param>
     /// <param name="allowedIds">Caller-supplied external identifiers allowed for this search.</param>
     /// <param name="results">The caller-owned destination buffer. Its length specifies the requested result count.</param>
     /// <param name="workspace">
@@ -446,7 +447,7 @@ public sealed partial class HnswIndex
         HnswSearchWorkspace workspace)
     {
         ArgumentNullException.ThrowIfNull(workspace);
-        ValidateVector(query, nameof(query));
+        double queryMagnitude = ValidateVector(query, nameof(query));
         ValidateWorkspace(workspace);
 
         if (results.IsEmpty || _count == 0 || allowedIds.IsEmpty)
@@ -468,10 +469,10 @@ public sealed partial class HnswIndex
 
         if (allowedCount <= _options.EfSearch)
         {
-            return SearchAllowedExact(query, results, workspace.FilterMarks, filterMark);
+            return SearchAllowedExact(query, queryMagnitude, results, workspace.FilterMarks, filterMark);
         }
 
-        return SearchAllowedByEmission(query, results, workspace, filterMark);
+        return SearchAllowedByEmission(query, queryMagnitude, results, workspace, filterMark);
     }
 
     internal int DebugGetLevel(int ordinal)
@@ -566,8 +567,8 @@ public sealed partial class HnswIndex
 
     internal bool TryGetOrdinal(ulong id, out int ordinal) => _idToOrdinal.TryGetValue(id, out ordinal);
 
-    internal float CalculateSquaredEuclideanDistance(ReadOnlySpan<float> query, int ordinal) =>
-        SquaredEuclideanDistance(query, ordinal);
+    internal float CalculateDistance(ReadOnlySpan<float> query, double queryMagnitude, int ordinal) =>
+        DistanceToQuery(query, queryMagnitude, ordinal);
 
     private static void ValidateOptions(HnswIndexOptions options)
     {
@@ -600,20 +601,49 @@ public sealed partial class HnswIndex
         }
     }
 
-    private void ValidateVector(ReadOnlySpan<float> vector, string parameterName)
+    private double ValidateVector(ReadOnlySpan<float> vector, string parameterName)
     {
         if (vector.Length != Dimension)
         {
             throw new ArgumentException($"Vector dimension must be {Dimension}.", parameterName);
         }
 
+        double squaredMagnitude = 0;
         foreach (float component in vector)
         {
             if (!float.IsFinite(component))
             {
                 throw new ArgumentException("Vector components must be finite.", parameterName);
             }
+
+            if (Metric == VectorMetric.Cosine)
+            {
+                squaredMagnitude += (double)component * component;
+            }
         }
+
+        if (Metric == VectorMetric.Cosine && squaredMagnitude == 0)
+        {
+            throw new ArgumentException("Cosine distance does not accept a zero vector.", parameterName);
+        }
+
+        return Metric == VectorMetric.Cosine ? Math.Sqrt(squaredMagnitude) : 0;
+    }
+
+    private void StoreVector(ReadOnlySpan<float> vector, double magnitude, int ordinal)
+    {
+        int offset = ordinal * Dimension;
+        if (Metric == VectorMetric.Cosine)
+        {
+            for (int i = 0; i < Dimension; i++)
+            {
+                _vectors[offset + i] = (float)(vector[i] / magnitude);
+            }
+
+            return;
+        }
+
+        vector.CopyTo(_vectors.AsSpan(offset, Dimension));
     }
 
     private void EnsureStorageCapacity(int requiredCount, int requiredMaxLayer, string parameterName, bool growForAppend)
@@ -791,6 +821,7 @@ public sealed partial class HnswIndex
 
     private int SearchLayer(
         ReadOnlySpan<float> query,
+        double queryMagnitude,
         int entryPoint,
         int ef,
         int layer,
@@ -801,7 +832,7 @@ public sealed partial class HnswIndex
         int candidateCount = 0;
         int bestCount = 0;
 
-        float entryDistance = SquaredEuclideanDistance(query, entryPoint);
+        float entryDistance = DistanceToQuery(query, queryMagnitude, entryPoint);
         workspace.VisitMarks[entryPoint] = visitMark;
         HnswPriorityQueues.PushNearest(
             workspace.CandidateOrdinals,
@@ -846,7 +877,7 @@ public sealed partial class HnswIndex
                 }
 
                 workspace.VisitMarks[neighbor] = visitMark;
-                float distance = SquaredEuclideanDistance(query, neighbor);
+                float distance = DistanceToQuery(query, queryMagnitude, neighbor);
                 bool accepted = HnswPriorityQueues.AddBoundedNearest(
                     workspace.BestOrdinals,
                     workspace.BestDistances,
@@ -904,6 +935,7 @@ public sealed partial class HnswIndex
 
     private int SearchAllowedExact(
         ReadOnlySpan<float> query,
+        double queryMagnitude,
         Span<SearchResult> results,
         int[] filterMarks,
         int filterMark)
@@ -916,7 +948,7 @@ public sealed partial class HnswIndex
                 continue;
             }
 
-            var candidate = new SearchResult(_ids[ordinal], SquaredEuclideanDistance(query, ordinal));
+            var candidate = new SearchResult(_ids[ordinal], DistanceToQuery(query, queryMagnitude, ordinal));
             written = InsertCandidate(results, written, candidate);
         }
 
@@ -925,6 +957,7 @@ public sealed partial class HnswIndex
 
     private int SearchAllowedByEmission(
         ReadOnlySpan<float> query,
+        double queryMagnitude,
         Span<SearchResult> results,
         HnswSearchWorkspace workspace,
         int filterMark)
@@ -932,14 +965,14 @@ public sealed partial class HnswIndex
         int entryPoint = _entryPoint;
         for (int layer = _maxLayer; layer > 0; layer--)
         {
-            int found = SearchLayer(query, entryPoint, 1, layer, workspace, _count);
+            int found = SearchLayer(query, queryMagnitude, entryPoint, 1, layer, workspace, _count);
             if (found > 0)
             {
                 entryPoint = workspace.ResultOrdinals[0];
             }
         }
 
-        int candidateCount = SearchLayer(query, entryPoint, _options.EfSearch, 0, workspace, _count);
+        int candidateCount = SearchLayer(query, queryMagnitude, entryPoint, _options.EfSearch, 0, workspace, _count);
         int written = 0;
         for (int i = 0; i < candidateCount && written < results.Length; i++)
         {
@@ -1097,7 +1130,31 @@ public sealed partial class HnswIndex
         return sum;
     }
 
+    private float DistanceToQuery(ReadOnlySpan<float> query, double queryMagnitude, int ordinal) =>
+        Metric == VectorMetric.Cosine
+            ? CosineDistance(query, queryMagnitude, ordinal)
+            : SquaredEuclideanDistance(query, ordinal);
+
+    private float CosineDistance(ReadOnlySpan<float> query, double queryMagnitude, int ordinal)
+    {
+        int offset = ordinal * Dimension;
+        double dotProduct = 0;
+        for (int i = 0; i < Dimension; i++)
+        {
+            dotProduct += _vectors[offset + i] * (query[i] / queryMagnitude);
+        }
+
+        return (float)(1 - dotProduct);
+    }
+
     private float DistanceBetween(int leftOrdinal, int rightOrdinal)
+    {
+        return Metric == VectorMetric.Cosine
+            ? CosineDistanceBetween(leftOrdinal, rightOrdinal)
+            : SquaredEuclideanDistanceBetween(leftOrdinal, rightOrdinal);
+    }
+
+    private float SquaredEuclideanDistanceBetween(int leftOrdinal, int rightOrdinal)
     {
         int leftOffset = leftOrdinal * Dimension;
         int rightOffset = rightOrdinal * Dimension;
@@ -1126,6 +1183,19 @@ public sealed partial class HnswIndex
         }
 
         return sum;
+    }
+
+    private float CosineDistanceBetween(int leftOrdinal, int rightOrdinal)
+    {
+        int leftOffset = leftOrdinal * Dimension;
+        int rightOffset = rightOrdinal * Dimension;
+        double dotProduct = 0;
+        for (int i = 0; i < Dimension; i++)
+        {
+            dotProduct += (double)_vectors[leftOffset + i] * _vectors[rightOffset + i];
+        }
+
+        return (float)(1 - dotProduct);
     }
 
     private void SortNearest(int[] ordinals, float[] distances, int count)

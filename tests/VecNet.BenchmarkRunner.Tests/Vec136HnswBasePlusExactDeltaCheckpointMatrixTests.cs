@@ -22,6 +22,7 @@ public sealed class Vec136HnswBasePlusExactDeltaCheckpointMatrixTests
         Assert.Equal(1, options.DuplicateInsertAttempts);
         Assert.Equal(1, options.UnknownDeleteAttempts);
         Assert.Equal(1, options.RepeatedDeleteAttempts);
+        Assert.Equal(VectorMetric.SquaredEuclidean, options.Metric);
         Assert.StartsWith("VecNet.BenchmarkRunner.Artifacts", options.OutputDirectory, StringComparison.OrdinalIgnoreCase);
         Assert.False(Path.IsPathFullyQualified(options.OutputDirectory));
         Assert.EndsWith("hnsw-base-plus-exact-delta-checkpoint-matrix-manifest.json", options.ManifestPath, StringComparison.OrdinalIgnoreCase);
@@ -55,7 +56,7 @@ public sealed class Vec136HnswBasePlusExactDeltaCheckpointMatrixTests
     [InlineData("generated-hnsw-base-plus-exact-delta-checkpoint-matrix", "--repeated-deletes", "-1")]
     [InlineData("generated-hnsw-base-plus-exact-delta-checkpoint-matrix", "--output-dir", "")]
     [InlineData("generated-hnsw-base-plus-exact-delta-checkpoint-matrix", "--manifest", "")]
-    [InlineData("generated-hnsw-base-plus-exact-delta-checkpoint-matrix", "--metric", "SquaredEuclidean")]
+    [InlineData("generated-hnsw-base-plus-exact-delta-checkpoint-matrix", "--metric", "InnerProduct")]
     [InlineData("generated-hnsw-base-plus-exact-delta-checkpoint-matrix", "--dimension", "128")]
     [InlineData("generated-hnsw-base-plus-exact-delta-checkpoint-matrix", "--top-k", "10")]
     [InlineData("generated-hnsw-base-plus-exact-delta-checkpoint-matrix", "--insertions", "10")]
@@ -71,6 +72,18 @@ public sealed class Vec136HnswBasePlusExactDeltaCheckpointMatrixTests
             () => CommandLine.ParseHnswBasePlusExactDeltaCheckpointMatrix(args));
 
         Assert.NotEmpty(exception.Message);
+    }
+
+    [Theory]
+    [InlineData("Cosine")]
+    [InlineData("cosine")]
+    public void ParseHnswBasePlusExactDeltaCheckpointMatrix_AcceptsCosine(string metric)
+    {
+        HnswBasePlusExactDeltaCheckpointMatrixOptions options =
+            CommandLine.ParseHnswBasePlusExactDeltaCheckpointMatrix(
+                [HnswBasePlusExactDeltaCheckpointMatrixOptions.ScenarioName, "--metric", metric]);
+
+        Assert.Equal(VectorMetric.Cosine, options.Metric);
     }
 
     [Fact]
@@ -93,7 +106,8 @@ public sealed class Vec136HnswBasePlusExactDeltaCheckpointMatrixTests
         {
             PresetName = "standard",
             BaseVectorCount = 256,
-            Runs = 2
+            Runs = 2,
+            Metric = VectorMetric.Cosine
         };
 
         HnswBasePlusExactDeltaCheckpointMatrixScenario.MatrixCase[] smokeCases =
@@ -109,7 +123,7 @@ public sealed class Vec136HnswBasePlusExactDeltaCheckpointMatrixTests
 
         Assert.All(standardCases, matrixCase =>
         {
-            Assert.Equal(VectorMetric.SquaredEuclidean, matrixCase.Options.Metric);
+            Assert.Equal(VectorMetric.Cosine, matrixCase.Options.Metric);
             Assert.Equal(256, matrixCase.Options.BaseVectorCount);
             Assert.Equal(2, matrixCase.Options.Runs);
             Assert.Equal(16, matrixCase.Options.M);

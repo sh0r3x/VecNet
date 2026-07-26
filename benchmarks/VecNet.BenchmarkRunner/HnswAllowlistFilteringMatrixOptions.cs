@@ -10,7 +10,8 @@ public sealed record HnswAllowlistFilteringMatrixOptions(
     int UnknownDeleteAttempts,
     int RepeatedDeleteAttempts,
     string OutputDirectory,
-    string ManifestPath)
+    string ManifestPath,
+    VectorMetric Metric = VectorMetric.SquaredEuclidean)
 {
     public const string ScenarioName = "generated-hnsw-allowlist-filtered-matrix";
     public const string SmokePresetName = "smoke";

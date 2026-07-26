@@ -28,15 +28,22 @@ internal static class HnswIndexStorage
     internal const int LevelsHeaderLength = 32;
     internal const int GraphHeaderLength = 64;
     internal const int GraphLayerDirectoryEntryLength = 48;
+    internal const uint SquaredEuclideanMetricCode = 1;
+    internal const uint InnerProductMetricCode = 2;
+    internal const uint CosineMetricCode = 3;
+    internal const uint NoNormalizationCode = 0;
+    internal const uint CosineUnitNormalizedCode = 1;
+    internal const double CosineStoredRowSquaredLengthTolerance = 1e-4;
 
     private const int MinM = 2;
     private const int MaxM = 64;
     private const int MaxEf = 4096;
     private const int MaxManifestBytes = 1024 * 1024;
     private const string CreatedByTask = "VEC-176";
-    private const string MetricText = "squared-euclidean";
     private const string BinaryVersionText = "1.0";
     private const string GraphAdjacencyLayout = "dense-layer0-sparse-upper-v1";
+    private const string NormalizationNone = "none";
+    private const string NormalizationCosineUnit = "cosine-unit-normalized";
     private const uint GraphLayerLayoutDense = 0;
     private const uint GraphLayerLayoutSparse = 1;
 
@@ -60,7 +67,7 @@ internal static class HnswIndexStorage
         try
         {
             WriteIdsFile(idsTempPath, index.InternalIds);
-            WriteVectorsFile(vectorsTempPath, index.Dimension, index.Count, index.InternalVectors);
+            WriteVectorsFile(vectorsTempPath, index.Dimension, index.Metric, index.Count, index.InternalVectors);
             WriteLevelsFile(levelsTempPath, index.InternalLevels);
             WriteGraphFile(graphTempPath, index);
 
@@ -129,7 +136,7 @@ internal static class HnswIndexStorage
         ValidateFileExistsLengthAndHash(graphPath, manifest.GraphFile, "graph");
 
         ulong[] ids = ReadIdsFile(idsPath, manifest.VectorCount);
-        float[] vectors = ReadVectorsFile(vectorsPath, manifest.Dimension, manifest.VectorCount);
+        float[] vectors = ReadVectorsFile(vectorsPath, manifest.Dimension, manifest.Metric, manifest.VectorCount);
         int[] levels = ReadLevelsFile(levelsPath, manifest.VectorCount, manifest.MaxLayer);
         HnswIndex.HnswLayerSnapshot[] layers = ReadGraphFile(graphPath, manifest);
 
@@ -137,7 +144,7 @@ internal static class HnswIndexStorage
 
         var snapshot = new HnswIndex.HnswStorageSnapshot(
             manifest.Dimension,
-            VectorMetric.SquaredEuclidean,
+            manifest.Metric,
             manifest.Options,
             manifest.MMax,
             manifest.MMax0,
@@ -191,7 +198,7 @@ internal static class HnswIndexStorage
         ValidateFileExistsLengthAndHash(graphPath, manifest.GraphFile, "graph");
 
         ValidateIdsFileMatches(idsPath, expected.InternalIds);
-        ValidateVectorsFileMatches(vectorsPath, expected.Dimension, expected.Count, expected.InternalVectors);
+        ValidateVectorsFileMatches(vectorsPath, expected.Dimension, expected.Metric, expected.Count, expected.InternalVectors);
         ValidateLevelsFileMatches(levelsPath, expected.InternalLevels, expected.MaxLayer);
         ValidateGraphFileMatches(graphPath, manifest, expected);
     }
@@ -200,6 +207,7 @@ internal static class HnswIndexStorage
     {
         int expectedLayerCount = expected.Count == 0 ? 0 : expected.MaxLayer + 1;
         if (manifest.Dimension != expected.Dimension ||
+            manifest.Metric != expected.Metric ||
             manifest.VectorCount != expected.Count ||
             manifest.Options != expected.Options ||
             manifest.MMax != expected.InternalMMax ||
@@ -234,6 +242,7 @@ internal static class HnswIndexStorage
     private static void ValidateVectorsFileMatches(
         string path,
         int expectedDimension,
+        VectorMetric expectedMetric,
         int expectedRowCount,
         ReadOnlySpan<float> expectedVectors)
     {
@@ -243,7 +252,7 @@ internal static class HnswIndexStorage
         }
 
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        ValidateVectorsFileHeader(stream, expectedDimension, expectedRowCount);
+        ValidateVectorsFileHeader(stream, expectedDimension, expectedMetric, expectedRowCount);
 
         Span<byte> buffer = stackalloc byte[sizeof(float)];
         for (int i = 0; i < expectedVectors.Length; i++)
@@ -453,7 +462,11 @@ internal static class HnswIndexStorage
         }
     }
 
-    private static void ValidateVectorsFileHeader(FileStream stream, int expectedDimension, int expectedRowCount)
+    private static void ValidateVectorsFileHeader(
+        FileStream stream,
+        int expectedDimension,
+        VectorMetric expectedMetric,
+        int expectedRowCount)
     {
         if (stream.Length < VectorsHeaderLength)
         {
@@ -478,8 +491,8 @@ internal static class HnswIndexStorage
         if (rowCount != checked((ulong)expectedRowCount) ||
             dimension != checked((uint)expectedDimension) ||
             representation != 1 ||
-            metric != 1 ||
-            normalization != 0 ||
+            metric != GetMetricCode(expectedMetric) ||
+            normalization != GetNormalizationCode(expectedMetric) ||
             reserved != 0)
         {
             throw new InvalidDataException("HNSW index vector file header is inconsistent.");
@@ -573,7 +586,12 @@ internal static class HnswIndexStorage
         }
     }
 
-    private static void WriteVectorsFile(string path, int dimension, int rowCount, ReadOnlySpan<float> vectors)
+    private static void WriteVectorsFile(
+        string path,
+        int dimension,
+        VectorMetric metric,
+        int rowCount,
+        ReadOnlySpan<float> vectors)
     {
         if (vectors.Length != checked(rowCount * dimension))
         {
@@ -589,8 +607,8 @@ internal static class HnswIndexStorage
         BinaryPrimitives.WriteUInt64LittleEndian(header[16..], checked((ulong)rowCount));
         BinaryPrimitives.WriteUInt32LittleEndian(header[24..], checked((uint)dimension));
         BinaryPrimitives.WriteUInt32LittleEndian(header[28..], 1);
-        BinaryPrimitives.WriteUInt32LittleEndian(header[32..], 1);
-        BinaryPrimitives.WriteUInt32LittleEndian(header[36..], 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[32..], GetMetricCode(metric));
+        BinaryPrimitives.WriteUInt32LittleEndian(header[36..], GetNormalizationCode(metric));
         BinaryPrimitives.WriteUInt64LittleEndian(header[40..], 0);
         stream.Write(header);
 
@@ -771,13 +789,13 @@ internal static class HnswIndexStorage
 
         writer.WriteStartObject("index");
         writer.WriteNumber("dimension", index.Dimension);
-        writer.WriteString("metric", MetricText);
+        writer.WriteString("metric", ToMetricText(index.Metric));
         writer.WriteNumber("vectorCount", index.Count);
         writer.WriteString("idType", "uint64");
         writer.WriteString("ordinalType", "int32");
         writer.WriteString("vectorElementType", "float32");
         writer.WriteString("vectorLayout", "row-major-dense");
-        writer.WriteString("normalizationState", "none");
+        writer.WriteString("normalizationState", GetNormalizationState(index.Metric));
         writer.WriteEndObject();
 
         writer.WriteStartObject("hnsw");
@@ -883,13 +901,17 @@ internal static class HnswIndexStorage
 
             JsonElement index = GetRequiredObject(root, "index");
             int dimension = GetRequiredInt32(index, "dimension", minimumValue: 1);
-            RequireString(index, "metric", MetricText);
+            VectorMetric metric = ParseMetric(GetRequiredString(index, "metric"));
             int vectorCount = GetRequiredInt32(index, "vectorCount", minimumValue: 0);
             RequireString(index, "idType", "uint64");
             RequireString(index, "ordinalType", "int32");
             RequireString(index, "vectorElementType", "float32");
             RequireString(index, "vectorLayout", "row-major-dense");
-            RequireString(index, "normalizationState", "none");
+            string normalizationState = GetRequiredString(index, "normalizationState");
+            if (!string.Equals(normalizationState, GetNormalizationState(metric), StringComparison.Ordinal))
+            {
+                throw new InvalidDataException("HNSW index manifest metric and normalization state are inconsistent.");
+            }
 
             JsonElement hnsw = GetRequiredObject(root, "hnsw");
             HnswIndexOptions options = ReadOptions(GetRequiredObject(hnsw, "options"));
@@ -934,6 +956,7 @@ internal static class HnswIndexStorage
 
             return new Manifest(
                 dimension,
+                metric,
                 vectorCount,
                 options,
                 mMax,
@@ -1157,7 +1180,11 @@ internal static class HnswIndexStorage
         return ids;
     }
 
-    private static float[] ReadVectorsFile(string path, int expectedDimension, int expectedRowCount)
+    private static float[] ReadVectorsFile(
+        string path,
+        int expectedDimension,
+        VectorMetric expectedMetric,
+        int expectedRowCount)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
         if (stream.Length < VectorsHeaderLength)
@@ -1183,8 +1210,8 @@ internal static class HnswIndexStorage
         if (rowCount != checked((ulong)expectedRowCount) ||
             dimension != checked((uint)expectedDimension) ||
             representation != 1 ||
-            metric != 1 ||
-            normalization != 0 ||
+            metric != GetMetricCode(expectedMetric) ||
+            normalization != GetNormalizationCode(expectedMetric) ||
             reserved != 0)
         {
             throw new InvalidDataException("HNSW index vector file header is inconsistent.");
@@ -1442,11 +1469,29 @@ internal static class HnswIndexStorage
             }
         }
 
-        foreach (float value in vectors)
+        for (int row = 0; row < ids.Length; row++)
         {
-            if (!float.IsFinite(value))
+            double squaredMagnitude = 0;
+            int offset = row * manifest.Dimension;
+            for (int i = 0; i < manifest.Dimension; i++)
             {
-                throw new InvalidDataException("HNSW index vector payload contains a non-finite component.");
+                float value = vectors[offset + i];
+                if (!float.IsFinite(value))
+                {
+                    throw new InvalidDataException("HNSW index vector payload contains a non-finite component.");
+                }
+
+                if (manifest.Metric == VectorMetric.Cosine)
+                {
+                    squaredMagnitude += (double)value * value;
+                }
+            }
+
+            if (manifest.Metric == VectorMetric.Cosine &&
+                (squaredMagnitude == 0 ||
+                 Math.Abs(squaredMagnitude - 1) > CosineStoredRowSquaredLengthTolerance))
+            {
+                throw new InvalidDataException("HNSW index cosine stored row is not within the unit-length tolerance.");
             }
         }
 
@@ -1729,8 +1774,42 @@ internal static class HnswIndexStorage
     private static bool IsLowerHex(char value) =>
         value is >= '0' and <= '9' or >= 'a' and <= 'f';
 
+    private static string ToMetricText(VectorMetric metric) =>
+        metric switch
+        {
+            VectorMetric.SquaredEuclidean => "squared-euclidean",
+            VectorMetric.Cosine => "cosine",
+            VectorMetric.InnerProduct => "inner-product",
+            _ => throw new ArgumentOutOfRangeException(nameof(metric))
+        };
+
+    private static VectorMetric ParseMetric(string metric) =>
+        metric switch
+        {
+            "squared-euclidean" => VectorMetric.SquaredEuclidean,
+            "cosine" => VectorMetric.Cosine,
+            "inner-product" => throw new InvalidDataException("HNSW index manifest metric is unsupported."),
+            _ => throw new InvalidDataException("HNSW index manifest metric is unsupported.")
+        };
+
+    private static string GetNormalizationState(VectorMetric metric) =>
+        metric == VectorMetric.Cosine ? NormalizationCosineUnit : NormalizationNone;
+
+    private static uint GetMetricCode(VectorMetric metric) =>
+        metric switch
+        {
+            VectorMetric.SquaredEuclidean => SquaredEuclideanMetricCode,
+            VectorMetric.Cosine => CosineMetricCode,
+            VectorMetric.InnerProduct => InnerProductMetricCode,
+            _ => throw new ArgumentOutOfRangeException(nameof(metric))
+        };
+
+    private static uint GetNormalizationCode(VectorMetric metric) =>
+        metric == VectorMetric.Cosine ? CosineUnitNormalizedCode : NoNormalizationCode;
+
     private sealed record Manifest(
         int Dimension,
+        VectorMetric Metric,
         int VectorCount,
         HnswIndexOptions Options,
         int MMax,

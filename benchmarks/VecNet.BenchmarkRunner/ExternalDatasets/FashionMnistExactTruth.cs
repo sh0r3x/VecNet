@@ -2,8 +2,34 @@ namespace VecNet.BenchmarkRunner.ExternalDatasets;
 
 public static class FashionMnistExactTruth
 {
-    public const string Kind = "vecnet-scalar-reference-squared-l2";
-    public const string TiePolicy = "ascending scalar-reference squared distance, then ascending base ordinal";
+    public const string SquaredEuclideanKind = "vecnet-scalar-reference-squared-l2";
+    public const string CosineKind = "vecnet-scalar-reference-cosine";
+    public const string SquaredEuclideanTiePolicy = "ascending scalar-reference squared distance, then ascending base ordinal";
+    public const string CosineTiePolicy = "ascending scalar-reference canonical cosine distance, then ascending base ordinal";
+
+    public static string Kind(VectorMetric metric) =>
+        metric switch
+        {
+            VectorMetric.SquaredEuclidean => SquaredEuclideanKind,
+            VectorMetric.Cosine => CosineKind,
+            _ => throw new ArgumentException("Fashion-MNIST truth supports only SquaredEuclidean and Cosine.", nameof(metric))
+        };
+
+    public static string TiePolicy(VectorMetric metric) =>
+        metric switch
+        {
+            VectorMetric.SquaredEuclidean => SquaredEuclideanTiePolicy,
+            VectorMetric.Cosine => CosineTiePolicy,
+            _ => throw new ArgumentException("Fashion-MNIST truth supports only SquaredEuclidean and Cosine.", nameof(metric))
+        };
+
+    public static string DistanceSemantics(VectorMetric metric) =>
+        metric switch
+        {
+            VectorMetric.SquaredEuclidean => "VecNet canonical squared distances for the external Euclidean ranking convention",
+            VectorMetric.Cosine => "VecNet canonical cosine distances: 1 - dot(normalizedQuery, normalizedBase)",
+            _ => throw new ArgumentException("Fashion-MNIST truth supports only SquaredEuclidean and Cosine.", nameof(metric))
+        };
 
     public static TruthSet Generate(
         ReadOnlySpan<float> baseVectors,
@@ -12,7 +38,8 @@ public static class FashionMnistExactTruth
         int queryCount,
         int dimension,
         int querySubsetCount,
-        int depth)
+        int depth,
+        VectorMetric metric = VectorMetric.SquaredEuclidean)
     {
         if (baseVectors.Length != checked(baseCount * dimension))
         {
@@ -34,6 +61,17 @@ public static class FashionMnistExactTruth
             throw new ArgumentOutOfRangeException(nameof(depth), "Truth depth must be positive and no larger than base count.");
         }
 
+        if (metric is not (VectorMetric.SquaredEuclidean or VectorMetric.Cosine))
+        {
+            throw new ArgumentException("Fashion-MNIST truth supports only SquaredEuclidean and Cosine.", nameof(metric));
+        }
+
+        if (metric == VectorMetric.Cosine)
+        {
+            ValidateNonZeroRows(baseVectors, baseCount, dimension, "base");
+            ValidateNonZeroRows(queryVectors, querySubsetCount, dimension, "query");
+        }
+
         var results = new TruthItem[querySubsetCount][];
         for (int queryRow = 0; queryRow < querySubsetCount; queryRow++)
         {
@@ -42,7 +80,7 @@ public static class FashionMnistExactTruth
             for (int baseRow = 0; baseRow < baseCount; baseRow++)
             {
                 ReadOnlySpan<float> vector = baseVectors.Slice(baseRow * dimension, dimension);
-                candidates[baseRow] = new TruthItem((ulong)baseRow, SquaredEuclidean(query, vector));
+                candidates[baseRow] = new TruthItem((ulong)baseRow, ScalarGroundTruth.CalculateDistance(query, vector, metric));
             }
 
             Array.Sort(candidates, Compare);
@@ -61,7 +99,9 @@ public static class FashionMnistExactTruth
         int querySubsetCount,
         int dimension,
         string[] rawSha256,
-        string converterIdentity)
+        string converterIdentity,
+        VectorMetric metric = VectorMetric.SquaredEuclidean,
+        string taskId = "VEC-023")
     {
         var queries = new ExternalTruthQuery[truth.Results.Length];
         for (int queryIndex = 0; queryIndex < truth.Results.Length; queryIndex++)
@@ -77,13 +117,13 @@ public static class FashionMnistExactTruth
             "VecNet.ExternalExactTruth",
             "0.1",
             datasetId,
-            "VEC-023",
+            taskId,
             baseCount,
             querySubsetCount,
             dimension,
-            nameof(VectorMetric.SquaredEuclidean),
+            metric.ToString(),
             truth.Depth,
-            TiePolicy,
+            TiePolicy(metric),
             rawSha256,
             converterIdentity,
             queries);
@@ -95,15 +135,21 @@ public static class FashionMnistExactTruth
         return distanceComparison != 0 ? distanceComparison : left.Id.CompareTo(right.Id);
     }
 
-    private static float SquaredEuclidean(ReadOnlySpan<float> query, ReadOnlySpan<float> vector)
+    internal static void ValidateNonZeroRows(ReadOnlySpan<float> vectors, int rowCount, int dimension, string role)
     {
-        double sum = 0;
-        for (int i = 0; i < query.Length; i++)
+        for (int row = 0; row < rowCount; row++)
         {
-            double difference = query[i] - vector[i];
-            sum += difference * difference;
-        }
+            ReadOnlySpan<float> vector = vectors.Slice(row * dimension, dimension);
+            double squaredMagnitude = 0;
+            for (int column = 0; column < vector.Length; column++)
+            {
+                squaredMagnitude += (double)vector[column] * vector[column];
+            }
 
-        return (float)sum;
+            if (squaredMagnitude == 0)
+            {
+                throw new InvalidDataException($"Fashion-MNIST cosine evidence requires nonzero {role} rows; {role} row {row} is zero.");
+            }
+        }
     }
 }

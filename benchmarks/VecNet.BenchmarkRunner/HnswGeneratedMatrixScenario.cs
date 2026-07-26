@@ -10,6 +10,7 @@ public static class HnswGeneratedMatrixScenario
 
     private static readonly int[] SmokeDimensions = [16, 32];
     private static readonly int[] SmokeTopKValues = [1, 10];
+    private static readonly VectorMetric[] SupportedMetrics = [VectorMetric.SquaredEuclidean, VectorMetric.Cosine];
     private static readonly HnswMatrixProfile[] SmokeProfiles =
     [
         new("low-ef-m4", M: 4, EfConstruction: 16, EfSearch: 10),
@@ -98,7 +99,7 @@ public static class HnswGeneratedMatrixScenario
                 "Generated HNSW baseline-candidate policy has not been accepted.",
                 "Generated HNSW regression-gate policy has not been accepted."),
             [
-                "Generated squared-L2 HNSW matrix smoke evidence only; no external datasets are used.",
+                "Generated SquaredEuclidean and Cosine HNSW matrix smoke evidence only; no external datasets are used.",
                 "Each case reuses the existing hnsw-generated scenario and VecNet.HnswBenchmarkReport schema 0.1 measurement semantics.",
                 "Per-case HNSW build, exact truth generation, warmup, final-run result capture/comparison and report writing remain excluded from measured search latency and QPS.",
                 "The standard preset broadens generated HNSW parameter coverage but remains private smoke evidence, not a baseline candidate, regression gate or public benchmark claim.",
@@ -109,33 +110,36 @@ public static class HnswGeneratedMatrixScenario
     public static HnswMatrixCase[] ExpandCases(HnswGeneratedMatrixOptions options)
     {
         HnswMatrixPreset preset = GetPreset(options.PresetName);
-        var cases = new List<HnswMatrixCase>(preset.Dimensions.Length * preset.TopKValues.Length * preset.Profiles.Length);
+        var cases = new List<HnswMatrixCase>(SupportedMetrics.Length * preset.Dimensions.Length * preset.TopKValues.Length * preset.Profiles.Length);
         int caseIndex = 0;
 
-        foreach (int dimension in preset.Dimensions)
+        foreach (VectorMetric metric in SupportedMetrics)
         {
-            foreach (int topK in preset.TopKValues)
+            foreach (int dimension in preset.Dimensions)
             {
-                foreach (HnswMatrixProfile profile in preset.Profiles)
+                foreach (int topK in preset.TopKValues)
                 {
-                    uint dataSeed = unchecked(options.Seed + (uint)caseIndex);
-                    ulong hnswSeed = CreateHnswSeed(options.Seed, caseIndex);
-                    var caseOptions = new HnswGeneratedOptions(
-                        VectorMetric.SquaredEuclidean,
-                        dimension,
-                        options.VectorCount,
-                        options.QueryCount,
-                        topK,
-                        dataSeed,
-                        CreateReportPath(options.OutputDirectory, caseIndex + 1, profile.Name, dimension, topK),
-                        options.Runs,
-                        options.WarmupQueries,
-                        profile.M,
-                        profile.EfConstruction,
-                        profile.EfSearch,
-                        hnswSeed);
-                    cases.Add(new HnswMatrixCase(profile.Name, caseOptions));
-                    caseIndex++;
+                    foreach (HnswMatrixProfile profile in preset.Profiles)
+                    {
+                        uint dataSeed = unchecked(options.Seed + (uint)caseIndex);
+                        ulong hnswSeed = CreateHnswSeed(options.Seed, caseIndex);
+                        var caseOptions = new HnswGeneratedOptions(
+                            metric,
+                            dimension,
+                            options.VectorCount,
+                            options.QueryCount,
+                            topK,
+                            dataSeed,
+                            CreateReportPath(options.OutputDirectory, caseIndex + 1, metric, profile.Name, dimension, topK),
+                            options.Runs,
+                            options.WarmupQueries,
+                            profile.M,
+                            profile.EfConstruction,
+                            profile.EfSearch,
+                            hnswSeed);
+                        cases.Add(new HnswMatrixCase(profile.Name, caseOptions));
+                        caseIndex++;
+                    }
                 }
             }
         }
@@ -208,6 +212,7 @@ public static class HnswGeneratedMatrixScenario
     private static string CreateReportPath(
         string outputDirectory,
         int caseNumber,
+        VectorMetric metric,
         string profileName,
         int dimension,
         int topK) =>
@@ -215,7 +220,7 @@ public static class HnswGeneratedMatrixScenario
             outputDirectory,
             string.Create(
                 CultureInfo.InvariantCulture,
-                $"case-{caseNumber:D2}-{profileName}-{dimension}d-{topK}k.json"));
+                $"case-{caseNumber:D2}-{metric}-{profileName}-{dimension}d-{topK}k.json"));
 
     private static HnswMatrixPreset GetPreset(string presetName)
     {

@@ -227,7 +227,7 @@ public sealed class Vec074DurableHnswGeneratedIndependentTests
         Assert.Equal("passed", report.Metrics.OpenedHnsw.ReturnedResultIntegrity.Status);
         Assert.Equal(report.Metrics.SourceHnsw.ReturnedResultIntegrity.CheckedResultCount, report.Metrics.OpenedHnsw.ReturnedResultIntegrity.CheckedResultCount);
         Assert.True(report.Metrics.SourceHnsw.ReturnedResultIntegrity.CheckedResultCount > 0);
-        Assert.Contains("within the accepted D-026 tolerance", report.Metrics.SourceHnsw.DistanceValidationScope, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("within the accepted runner tolerance", report.Metrics.SourceHnsw.DistanceValidationScope, StringComparison.OrdinalIgnoreCase);
 
         Assert.Equal("passed", report.Validation.Status);
         Assert.True(report.Validation.SourceHnswComparedToTruth);

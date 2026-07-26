@@ -49,7 +49,7 @@ public sealed class Vec138FashionMnistExternalHnswBasePlusExactDeltaCheckpointTe
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint", "--manifest", "manifest.json")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint", "--snapshot-directory", "snapshot")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint", "--hnswlib-python", "python")]
-    [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint", "--metric", "Cosine")]
+    [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint", "--metric", "InnerProduct")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint", "--query-count", "0")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint", "--top-k", "0")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint", "--base-vectors", "0")]
@@ -75,6 +75,19 @@ public sealed class Vec138FashionMnistExternalHnswBasePlusExactDeltaCheckpointTe
             () => CommandLine.ParseExternalFashionMnistHnswBasePlusExactDeltaCheckpoint(args));
 
         Assert.NotEmpty(exception.Message);
+    }
+
+    [Theory]
+    [InlineData("Cosine")]
+    [InlineData("cosine")]
+    public void ParseExternalFashionMnistHnswBasePlusExactDeltaCheckpoint_AcceptsCosine(string metric)
+    {
+        FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions options =
+            CommandLine.ParseExternalFashionMnistHnswBasePlusExactDeltaCheckpoint(
+                [FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions.ScenarioName, "--metric", metric]);
+
+        Assert.Equal(VectorMetric.Cosine, options.Metric);
+        Assert.Equal("fashion-mnist-784-cosine", FashionMnistDatasetSpecification.GetDatasetId(options.Metric));
     }
 
     [Fact]

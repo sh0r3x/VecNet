@@ -51,7 +51,7 @@ public sealed class Vec127FashionMnistExternalHnswBasePlusExactDeltaTests
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta", "--hnswlib-python", "python")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta", "--allowlist", "broad")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta", "--candidate-set", "selective")]
-    [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta", "--metric", "Cosine")]
+    [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta", "--metric", "InnerProduct")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta", "--query-count", "0")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta", "--top-k", "0")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta", "--base-vectors", "0")]
@@ -78,6 +78,19 @@ public sealed class Vec127FashionMnistExternalHnswBasePlusExactDeltaTests
             () => CommandLine.ParseExternalFashionMnistHnswBasePlusExactDelta(args));
 
         Assert.NotEmpty(exception.Message);
+    }
+
+    [Theory]
+    [InlineData("Cosine")]
+    [InlineData("cosine")]
+    public void ParseExternalFashionMnistHnswBasePlusExactDelta_AcceptsCosine(string metric)
+    {
+        FashionMnistExternalHnswBasePlusExactDeltaOptions options =
+            CommandLine.ParseExternalFashionMnistHnswBasePlusExactDelta(
+                [FashionMnistExternalHnswBasePlusExactDeltaOptions.ScenarioName, "--metric", metric]);
+
+        Assert.Equal(VectorMetric.Cosine, options.Metric);
+        Assert.Equal("fashion-mnist-784-cosine", FashionMnistDatasetSpecification.GetDatasetId(options.Metric));
     }
 
     [Fact]
@@ -141,7 +154,7 @@ public sealed class Vec127FashionMnistExternalHnswBasePlusExactDeltaTests
         Assert.Equal(6, report.UpdatedTruth.TruthDepth);
         Assert.Equal(36 + 8 - 5 - 3, report.UpdatedTruth.LiveVectorCount);
         Assert.Contains("post-update live view", report.UpdatedTruth.Source, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("ascending scalar-reference squared-L2", report.UpdatedTruth.TiePolicy, StringComparison.Ordinal);
+        Assert.Contains("ascending scalar-reference squared", report.UpdatedTruth.TiePolicy, StringComparison.Ordinal);
 
         Assert.Equal(48, report.Workload.AdmittedBaseMatrixRowCount);
         Assert.Equal(6, report.Workload.QueryMatrixCount);

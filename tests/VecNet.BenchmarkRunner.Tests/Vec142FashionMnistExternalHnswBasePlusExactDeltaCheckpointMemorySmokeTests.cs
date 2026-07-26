@@ -54,7 +54,7 @@ public sealed class Vec142FashionMnistExternalHnswBasePlusExactDeltaCheckpointMe
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-memory-smoke", "--repeated-deletes", "1")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-memory-smoke", "--runs", "1")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-memory-smoke", "--warmup-queries", "3")]
-    [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-memory-smoke", "--metric", "squared-euclidean")]
+    [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-memory-smoke", "--metric", "InnerProduct")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-memory-smoke", "--seed", "0x5EED2141")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-memory-smoke", "--m", "16")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-memory-smoke", "--ef-construction", "128")]
@@ -76,6 +76,19 @@ public sealed class Vec142FashionMnistExternalHnswBasePlusExactDeltaCheckpointMe
             () => CommandLine.ParseExternalFashionMnistHnswBasePlusExactDeltaCheckpointMemorySmoke(args));
 
         Assert.NotEmpty(exception.Message);
+    }
+
+    [Theory]
+    [InlineData("Cosine")]
+    [InlineData("cosine")]
+    public void ParseExternalFashionMnistCheckpointMemorySmoke_AcceptsCosine(string metric)
+    {
+        FashionMnistExternalHnswBasePlusExactDeltaCheckpointMemorySmokeOptions options =
+            CommandLine.ParseExternalFashionMnistHnswBasePlusExactDeltaCheckpointMemorySmoke(
+                [FashionMnistExternalHnswBasePlusExactDeltaCheckpointMemorySmokeOptions.ScenarioName, "--metric", metric]);
+
+        Assert.Equal(VectorMetric.Cosine, options.Metric);
+        Assert.Equal("fashion-mnist-784-cosine", FashionMnistDatasetSpecification.GetDatasetId(options.Metric));
     }
 
     [Fact]

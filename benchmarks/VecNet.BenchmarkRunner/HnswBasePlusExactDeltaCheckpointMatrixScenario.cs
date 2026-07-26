@@ -115,7 +115,7 @@ public static class HnswBasePlusExactDeltaCheckpointMatrixScenario
             new RunnerInfo("VecNet.BenchmarkRunner", "0.1", commandArguments.ToArray()),
             new CommandInfo(HnswBasePlusExactDeltaCheckpointMatrixOptions.ScenarioName, commandArguments.ToArray()),
             options.OutputDirectory,
-            CreateDesign(presetName),
+            CreateDesign(presetName, options.Metric),
             caseManifests.Length,
             failed == 0 && blocked == 0 ? "passed" : "failed",
             caseManifests,
@@ -149,7 +149,7 @@ public static class HnswBasePlusExactDeltaCheckpointMatrixScenario
             string relativeReportPath = CreateRelativePath(manifestDirectory, reportPath);
             string relativeCheckpointDirectory = CreateRelativePath(manifestDirectory, checkpointDirectory);
             var caseOptions = new HnswBasePlusExactDeltaCheckpointOptions(
-                VectorMetric.SquaredEuclidean,
+                options.Metric,
                 presetCase.Dimension,
                 options.BaseVectorCount,
                 options.QueryCount,
@@ -505,11 +505,11 @@ public static class HnswBasePlusExactDeltaCheckpointMatrixScenario
             AllEligibilityFlagsFalse: allReportsInspected && !publicClaimEligible && !baselineCandidateEligible && !comparisonArtifactEligible && !regressionGateEligible);
     }
 
-    private static HnswBasePlusExactDeltaCheckpointMatrixDesignInfo CreateDesign(string presetName)
+    private static HnswBasePlusExactDeltaCheckpointMatrixDesignInfo CreateDesign(string presetName, VectorMetric metric)
     {
         CheckpointMatrixPresetCase[] presetCases = GetPresetCases(presetName);
         return new HnswBasePlusExactDeltaCheckpointMatrixDesignInfo(
-            VectorMetric.SquaredEuclidean.ToString(),
+            metric.ToString(),
             presetCases.Select(item => item.Dimension).Distinct().Order().ToArray(),
             presetCases.Select(item => item.TopK).Distinct().Order().ToArray(),
             presetCases

@@ -21,6 +21,7 @@ public sealed class Vec140FashionMnistExternalHnswBasePlusExactDeltaCheckpointMa
                     "EXTERNAL-FASHION-MNIST-HNSW-BASE-PLUS-EXACT-DELTA-CHECKPOINT-MATRIX",
                     "--PRESET", "STANDARD",
                     "--CACHE-ROOT", "VecNet.DatasetCache",
+                    "--METRIC", "COSINE",
                     "--OUTPUT-DIR", outputDirectory,
                     "--MANIFEST", Path.Combine(outputDirectory, "manifests", "manifest.json")
                 ]);
@@ -49,7 +50,7 @@ public sealed class Vec140FashionMnistExternalHnswBasePlusExactDeltaCheckpointMa
 
         Assert.All(standard, matrixCase =>
         {
-            Assert.Equal(VectorMetric.SquaredEuclidean, matrixCase.Options.Metric);
+            Assert.Equal(VectorMetric.Cosine, matrixCase.Options.Metric);
             Assert.Equal(50, matrixCase.Options.QueryCount);
             Assert.Equal(3, matrixCase.Options.WarmupQueries);
             Assert.Equal(2, matrixCase.Options.Runs);
@@ -88,7 +89,6 @@ public sealed class Vec140FashionMnistExternalHnswBasePlusExactDeltaCheckpointMa
     [InlineData("--queries", "50")]
     [InlineData("--runs", "2")]
     [InlineData("--warmup-queries", "3")]
-    [InlineData("--metric", "squared-euclidean")]
     [InlineData("--seed", "0x5EED2139")]
     [InlineData("--top-k", "10")]
     [InlineData("--base-vectors", "59000")]

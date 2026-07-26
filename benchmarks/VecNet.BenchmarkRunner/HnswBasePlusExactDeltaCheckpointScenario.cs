@@ -157,14 +157,14 @@ public static class HnswBasePlusExactDeltaCheckpointScenario
                 "generated-no-external-source",
                 GeneratedDataset.Distribution,
                 dataset.SeedText,
-                VectorMetric.SquaredEuclidean.ToString(),
+                options.Metric.ToString(),
                 options.Dimension,
                 options.PhysicalVectorCount,
                 options.QueryCount),
             new TruthInfo(
                 "scalar-reference-generated-live-hnsw-base-plus-exact-delta-checkpoint",
                 truth.Depth,
-                "post-update live base plus live delta minus tombstones, ordered by ascending scalar-reference squared-L2 distance and ascending external ID"),
+                "post-update live base plus live delta minus tombstones, ordered by ascending scalar-reference canonical distance and ascending external ID"),
             new ScenarioInfo(
                 HnswBasePlusExactDeltaCheckpointOptions.ScenarioName,
                 options.TopK,
@@ -174,10 +174,10 @@ public static class HnswBasePlusExactDeltaCheckpointScenario
             new IndexInfo(
                 "InternalHnswBasePlusExactDeltaCheckpoint",
                 nameof(HnswBasePlusExactDeltaIndex),
-                VectorMetric.SquaredEuclidean.ToString(),
+                options.Metric.ToString(),
                 options.Dimension,
                 postCounts.LiveVectorCount,
-                "internal HnswBasePlusExactDeltaIndex checkpoint/rebuild smoke report over generated squared-L2 data; no public mutable/update HNSW API, matrix preset, external dataset, memory evidence, concurrency evidence or public claim"),
+                "internal HnswBasePlusExactDeltaIndex checkpoint/rebuild smoke report over generated data; no public mutable/update HNSW API, matrix preset, external dataset, memory evidence, concurrency evidence or public claim"),
             new HnswConfigurationInfo(
                 options.M,
                 MMax: options.M,
@@ -186,7 +186,7 @@ public static class HnswBasePlusExactDeltaCheckpointScenario
                 options.EfSearch,
                 FormatHex(options.HnswSeed),
                 "generated base vector row order, external base ids 0..baseVectorCount-1; delta ids continue from baseVectorCount",
-                "SquaredEuclidean only"),
+                $"{options.Metric} only"),
             new HnswBasePlusExactDeltaCheckpointWorkloadInfo(
                 options.BaseVectorCount,
                 options.InsertedDeltaCount,
@@ -289,7 +289,7 @@ public static class HnswBasePlusExactDeltaCheckpointScenario
             eligibility,
             [
                 "Private generated HNSW base-plus-exact-delta checkpoint smoke evidence only; not a public benchmark claim.",
-                "Generated finite squared-L2 data only; no external dataset source, license, version or checksum applies.",
+                "Generated finite squared-L2/cosine data only; no external dataset source, license, version or checksum applies.",
                 "This report exercises internal checkpoint/rebuild diagnostics and does not add or imply a public mutable/update HNSW API.",
                 "Checkpoint timing/allocation is measured at the runner call boundary and VEC-133 phase diagnostics are copied from the internal result; phase timings are not inferred or fabricated.",
                 "For runs greater than one, checkpoint timing/allocation is measured across independently rebuilt equivalent checkpoint attempts with fresh generated state and fresh checkpoint output subdirectories; detailed validation uses the final run.",
@@ -463,9 +463,9 @@ public static class HnswBasePlusExactDeltaCheckpointScenario
             search.Results,
             options.TopK,
             options.Dimension,
-            VectorMetric.SquaredEuclidean);
+            options.Metric);
         HnswBasePlusExactDeltaReturnedResultIntegrityInfo integrity =
-            ValidateReturnedResults(dataset, search.Results, options.TopK, liveIds);
+            ValidateReturnedResults(dataset, search.Results, options.TopK, liveIds, options.Metric);
         int extraResultCount = CountExtraResults(truth, search.Results, options.TopK);
 
         return new SearchSectionEvaluation(
@@ -478,7 +478,7 @@ public static class HnswBasePlusExactDeltaCheckpointScenario
                 extraResultCount,
                 integrity,
                 "set recall@k = returned live ids intersect exact updated top-k live ids divided by min(k, post-update live vector count), summed across measured queries",
-                "Every returned result is checked for finite distance, no duplicate ID within its query, generated live ID membership, no tombstoned ID, and squared-L2 distance matching recomputation for that returned ID/query within the accepted D-026 tolerance. HNSW search is approximate and recall/order are recorded, not required."),
+                "Every returned result is checked for finite distance, no duplicate ID within its query, generated live ID membership, no tombstoned ID, and selected-metric distance matching recomputation for that returned ID/query within the accepted ResultComparer tolerance. HNSW search is approximate and recall/order are recorded, not required."),
             CreateUnderfill(options, search.Results));
     }
 
@@ -486,7 +486,8 @@ public static class HnswBasePlusExactDeltaCheckpointScenario
         GeneratedDataset dataset,
         SearchResult[][] actual,
         int topK,
-        IReadOnlyCollection<ulong> liveIds)
+        IReadOnlyCollection<ulong> liveIds,
+        VectorMetric metric)
     {
         var live = new HashSet<ulong>(liveIds);
         int checkedResultCount = 0;
@@ -536,10 +537,11 @@ public static class HnswBasePlusExactDeltaCheckpointScenario
                     continue;
                 }
 
-                float expectedDistance = SquaredEuclideanDistance(
+                float expectedDistance = ScalarGroundTruth.CalculateDistance(
                     dataset.GetQuery(queryRow),
-                    dataset.GetVector(checked((int)result.Id)));
-                if (!DistanceMatches(expectedDistance, result.Distance, dataset.Dimension))
+                    dataset.GetVector(checked((int)result.Id)),
+                    metric);
+                if (!ResultComparer.DistanceMatches(expectedDistance, result.Distance, dataset.Dimension, metric))
                 {
                     distanceMismatchCount++;
                 }
@@ -564,7 +566,7 @@ public static class HnswBasePlusExactDeltaCheckpointScenario
             unknownIdCount,
             tombstonedIdCount,
             distanceMismatchCount,
-            "For every returned result: distance must be finite; IDs must be unique within a query; ID must be one of the post-update live generated IDs; tombstoned IDs must not be returned; and reported distance must match recomputed squared-L2 for that query and returned ID within the accepted D-026 tolerance.",
+            "For every returned result: distance must be finite; IDs must be unique within a query; ID must be one of the post-update live generated IDs; tombstoned IDs must not be returned; and reported distance must match recomputed selected-metric distance for that query and returned ID within the accepted ResultComparer tolerance.",
             passed
                 ? "All returned results are live, not tombstoned, well formed and distance-integrity checked."
                 : "One or more returned results failed live-ID, tombstone, well-formedness or distance-integrity checks.");
@@ -572,7 +574,7 @@ public static class HnswBasePlusExactDeltaCheckpointScenario
 
     private static GeneratedExactSearchOptions ToGeneratedOptions(HnswBasePlusExactDeltaCheckpointOptions options) =>
         new(
-            VectorMetric.SquaredEuclidean,
+            options.Metric,
             options.Dimension,
             options.PhysicalVectorCount,
             options.QueryCount,
@@ -588,7 +590,7 @@ public static class HnswBasePlusExactDeltaCheckpointScenario
         var hnswOptions = new HnswIndexOptions(options.M, options.EfConstruction, options.EfSearch, options.HnswSeed);
         long allocationStart = GC.GetAllocatedBytesForCurrentThread();
         long start = Stopwatch.GetTimestamp();
-        var index = new HnswIndex(options.Dimension, VectorMetric.SquaredEuclidean, hnswOptions);
+        var index = new HnswIndex(options.Dimension, options.Metric, hnswOptions);
         for (int row = 0; row < options.BaseVectorCount; row++)
         {
             index.Add((ulong)row, dataset.GetVector(row));
@@ -696,7 +698,7 @@ public static class HnswBasePlusExactDeltaCheckpointScenario
             for (int i = 0; i < liveIds.Length; i++)
             {
                 ulong id = liveIds[i];
-                candidates[i] = new TruthItem(id, SquaredEuclideanDistance(query, dataset.GetVector(checked((int)id))));
+                candidates[i] = new TruthItem(id, ScalarGroundTruth.CalculateDistance(query, dataset.GetVector(checked((int)id)), options.Metric));
             }
 
             Array.Sort(candidates, CompareTruthItems);
@@ -933,13 +935,9 @@ public static class HnswBasePlusExactDeltaCheckpointScenario
 
             ReadOnlySpan<float> expectedVector = dataset.GetVector(checked((int)expectedId));
             ReadOnlySpan<float> openedVector = openedVectors.Slice(row * options.Dimension, options.Dimension);
-            for (int i = 0; i < options.Dimension; i++)
+            if (!OpenedVectorPayloadMatches(openedVector, expectedVector, options.Metric))
             {
-                if (openedVector[i] != expectedVector[i])
-                {
-                    vectorMismatchCount++;
-                    break;
-                }
+                vectorMismatchCount++;
             }
         }
 
@@ -951,7 +949,47 @@ public static class HnswBasePlusExactDeltaCheckpointScenario
             idMismatchCount,
             vectorMismatchCount,
             preParity ?? new HnswBasePlusExactDeltaCheckpointParityInfo(0, 0, 0, 0, 0, false, "Search parity is populated after post-checkpoint and opened searches are captured."),
-            "Opened read-only HNSW checkpoint output must contain live IDs in checkpoint live-view order and vector payloads matching generated live rows exactly; search parity is validated separately for the same queries and equivalent workspaces.");
+            "Opened read-only HNSW checkpoint output must contain live IDs in checkpoint live-view order and vector payloads matching generated live rows under the selected metric storage policy; cosine payloads are unit-normalized by HNSW storage. Search parity is validated separately for the same queries and equivalent workspaces.");
+    }
+
+    private static bool OpenedVectorPayloadMatches(
+        ReadOnlySpan<float> openedVector,
+        ReadOnlySpan<float> expectedVector,
+        VectorMetric metric)
+    {
+        if (metric == VectorMetric.SquaredEuclidean)
+        {
+            return openedVector.SequenceEqual(expectedVector);
+        }
+
+        if (metric != VectorMetric.Cosine)
+        {
+            return false;
+        }
+
+        double magnitudeSquared = 0;
+        for (int i = 0; i < expectedVector.Length; i++)
+        {
+            magnitudeSquared += (double)expectedVector[i] * expectedVector[i];
+        }
+
+        if (magnitudeSquared <= 0)
+        {
+            return false;
+        }
+
+        double magnitude = Math.Sqrt(magnitudeSquared);
+        const float tolerance = 1e-6f;
+        for (int i = 0; i < expectedVector.Length; i++)
+        {
+            float normalized = (float)(expectedVector[i] / magnitude);
+            if (MathF.Abs(openedVector[i] - normalized) > tolerance)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static HnswBasePlusExactDeltaCheckpointParityInfo CompareSearchParity(
@@ -1315,7 +1353,7 @@ public static class HnswBasePlusExactDeltaCheckpointScenario
             "No generated mutable/update HNSW checkpoint baseline-candidate policy is accepted.",
             "No generated mutable/update HNSW checkpoint regression-gate policy, threshold, comparison artifact or hard gate is accepted.",
             [
-                "Generated squared-L2 HNSW base-plus-exact-delta checkpoint smoke evidence only; no external dataset source, license, version or checksum applies.",
+                "Generated squared-L2/cosine HNSW base-plus-exact-delta checkpoint smoke evidence only; no external dataset source, license, version or checksum applies.",
                 "Checkpoint total timing/allocation and VEC-133 phase diagnostics are reported separately from all search timings.",
                 "Output bytes are scanned after checkpoint timing has ended.",
                 "Managed allocations are smoke fields only; resident/process memory and peak memory are explicitly not measured.",
@@ -1376,9 +1414,9 @@ public static class HnswBasePlusExactDeltaCheckpointScenario
 
     private static void ValidateOptions(HnswBasePlusExactDeltaCheckpointOptions options)
     {
-        if (options.Metric != VectorMetric.SquaredEuclidean)
+        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.Cosine))
         {
-            throw new ArgumentException("generated-hnsw-base-plus-exact-delta-checkpoint supports only SquaredEuclidean.", nameof(options));
+            throw new ArgumentException("generated-hnsw-base-plus-exact-delta-checkpoint supports only SquaredEuclidean and Cosine.", nameof(options));
         }
 
         if (options.InsertedDeltaCount <= 0)

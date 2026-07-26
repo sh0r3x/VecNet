@@ -34,18 +34,27 @@ public sealed class Vec125HnswBasePlusExactDeltaMatrixIndependentTests
 
         string[] expectedPaths =
         [
-            "case-001-balanced-m8-low-churn-32d-10k.json",
-            "case-002-balanced-m8-tombstone-heavy-32d-10k.json",
-            "case-003-balanced-m8-low-churn-32d-50k.json",
-            "case-004-balanced-m8-tombstone-heavy-32d-50k.json",
-            "case-005-balanced-m8-low-churn-128d-10k.json",
-            "case-006-balanced-m8-tombstone-heavy-128d-10k.json",
-            "case-007-balanced-m8-low-churn-128d-50k.json",
-            "case-008-balanced-m8-tombstone-heavy-128d-50k.json"
+            "case-001-SquaredEuclidean-balanced-m8-low-churn-32d-10k.json",
+            "case-002-SquaredEuclidean-balanced-m8-tombstone-heavy-32d-10k.json",
+            "case-003-SquaredEuclidean-balanced-m8-low-churn-32d-50k.json",
+            "case-004-SquaredEuclidean-balanced-m8-tombstone-heavy-32d-50k.json",
+            "case-005-SquaredEuclidean-balanced-m8-low-churn-128d-10k.json",
+            "case-006-SquaredEuclidean-balanced-m8-tombstone-heavy-128d-10k.json",
+            "case-007-SquaredEuclidean-balanced-m8-low-churn-128d-50k.json",
+            "case-008-SquaredEuclidean-balanced-m8-tombstone-heavy-128d-50k.json",
+            "case-009-Cosine-balanced-m8-low-churn-32d-10k.json",
+            "case-010-Cosine-balanced-m8-tombstone-heavy-32d-10k.json",
+            "case-011-Cosine-balanced-m8-low-churn-32d-50k.json",
+            "case-012-Cosine-balanced-m8-tombstone-heavy-32d-50k.json",
+            "case-013-Cosine-balanced-m8-low-churn-128d-10k.json",
+            "case-014-Cosine-balanced-m8-tombstone-heavy-128d-10k.json",
+            "case-015-Cosine-balanced-m8-low-churn-128d-50k.json",
+            "case-016-Cosine-balanced-m8-tombstone-heavy-128d-50k.json"
         ];
 
         Assert.Equal(expectedPaths, first.Select(item => item.RelativeReportPath).ToArray());
         Assert.Equal(expectedPaths, second.Select(item => item.RelativeReportPath).ToArray());
+        Assert.Equal([VectorMetric.SquaredEuclidean, VectorMetric.Cosine], first.Select(item => item.Options.Metric).Distinct().ToArray());
         Assert.Equal([32, 128], first.Select(item => item.Options.Dimension).Distinct().ToArray());
         Assert.Equal([10, 50], first.Select(item => item.Options.TopK).Distinct().ToArray());
         Assert.Equal(["low-churn", "tombstone-heavy"], first.Select(item => item.UpdateProfileName).Distinct().ToArray());
@@ -82,7 +91,7 @@ public sealed class Vec125HnswBasePlusExactDeltaMatrixIndependentTests
         HnswBasePlusExactDeltaMatrixManifest manifest = HnswBasePlusExactDeltaMatrixScenario.Run(options, args);
         HnswBasePlusExactDeltaMatrixScenario.WriteManifest(manifest, manifestPath);
 
-        Assert.Equal(2, manifest.Cases.Length);
+        Assert.Equal(4, manifest.Cases.Length);
         Assert.All(manifest.Cases, matrixCase =>
         {
             string reportPath = Path.Combine(outputDirectory, matrixCase.LinkedReportPath);
@@ -119,7 +128,7 @@ public sealed class Vec125HnswBasePlusExactDeltaMatrixIndependentTests
     public void BlockedReportWriteIsSerializedAsRepresentedUnavailableCase()
     {
         string outputDirectory = NewArtifactDirectory("blocked-json");
-        Directory.CreateDirectory(Path.Combine(outputDirectory, "case-002-balanced-m4-low-churn-16d-10k.json"));
+        Directory.CreateDirectory(Path.Combine(outputDirectory, "case-002-SquaredEuclidean-balanced-m4-low-churn-16d-10k.json"));
         string manifestPath = Path.Combine(outputDirectory, "manifest.json");
         var options = new HnswBasePlusExactDeltaMatrixOptions(
             "smoke",
@@ -141,8 +150,8 @@ public sealed class Vec125HnswBasePlusExactDeltaMatrixIndependentTests
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(manifestPath));
         JsonElement root = document.RootElement;
 
-        Assert.Equal(2, root.GetProperty("caseCount").GetInt32());
-        Assert.Equal(1, root.GetProperty("aggregate").GetProperty("passedCaseCount").GetInt32());
+        Assert.Equal(4, root.GetProperty("caseCount").GetInt32());
+        Assert.Equal(3, root.GetProperty("aggregate").GetProperty("passedCaseCount").GetInt32());
         Assert.Equal(1, root.GetProperty("aggregate").GetProperty("blockedCaseCount").GetInt32());
         Assert.False(root.GetProperty("eligibility").GetProperty("publicClaimEligible").GetBoolean());
         Assert.False(root.GetProperty("eligibility").GetProperty("baselineCandidateEligible").GetBoolean());

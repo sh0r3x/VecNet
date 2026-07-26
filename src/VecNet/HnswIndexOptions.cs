@@ -1,7 +1,7 @@
 namespace VecNet;
 
 /// <summary>
-/// Configuration values for a squared-L2 <see cref="HnswIndex"/>.
+/// Configuration values for an <see cref="HnswIndex"/> using a supported HNSW metric.
 /// </summary>
 /// <param name="M">
 /// The maximum upper-layer neighbor count. The supported validation range is 2 through 64.

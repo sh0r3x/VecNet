@@ -10,6 +10,7 @@ public static class HnswBasePlusExactDeltaMatrixScenario
 
     private static readonly int[] SmokeDimensions = [16];
     private static readonly int[] SmokeTopKValues = [1, 10];
+    private static readonly VectorMetric[] SupportedMetrics = [VectorMetric.SquaredEuclidean, VectorMetric.Cosine];
     private static readonly HnswMatrixProfile[] SmokeHnswProfiles =
     [
         new("balanced-m4", M: 4, EfConstruction: 16, EfSearch: 16)
@@ -117,7 +118,7 @@ public static class HnswBasePlusExactDeltaMatrixScenario
             [
                 "Private generated HNSW base-plus-exact-delta matrix evidence only; not a public benchmark, baseline candidate, regression gate or public mutable/update HNSW claim.",
                 "Each case reuses the accepted VEC-124 generated-hnsw-base-plus-exact-delta report schema and writes a linked private per-case report when execution succeeds.",
-                "Generated finite squared-L2 data only; no external dataset, hnswlib, FAISS, checkpoint/rebuild, durable mutable overlay persistence, filtering or direct HNSW graph mutation is introduced.",
+                "Generated finite SquaredEuclidean and Cosine data only; no external dataset, hnswlib, FAISS, checkpoint/rebuild, durable mutable overlay persistence, filtering or direct HNSW graph mutation is introduced.",
                 "The standard preset covers two dimensions, two top-k values and two update/tombstone profiles with efSearch greater than or equal to top-k.",
                 "Per-case summaries repeat recall, ordered-agreement, underfill, mutation and count metadata from linked VEC-124 reports for matrix-level inspection."
             ]);
@@ -127,49 +128,52 @@ public static class HnswBasePlusExactDeltaMatrixScenario
     {
         MatrixPreset preset = GetPreset(options.PresetName);
         var cases = new List<MatrixCase>(
-            preset.Dimensions.Length * preset.TopKValues.Length * preset.HnswProfiles.Length * preset.UpdateProfiles.Length);
+            SupportedMetrics.Length * preset.Dimensions.Length * preset.TopKValues.Length * preset.HnswProfiles.Length * preset.UpdateProfiles.Length);
         int caseIndex = 0;
 
-        foreach (int dimension in preset.Dimensions)
+        foreach (VectorMetric metric in SupportedMetrics)
         {
-            foreach (int topK in preset.TopKValues)
+            foreach (int dimension in preset.Dimensions)
             {
-                foreach (HnswMatrixProfile hnswProfile in preset.HnswProfiles)
+                foreach (int topK in preset.TopKValues)
                 {
-                    if (hnswProfile.EfSearch < topK)
+                    foreach (HnswMatrixProfile hnswProfile in preset.HnswProfiles)
                     {
-                        throw new InvalidOperationException("Matrix HNSW profile efSearch must be at least top-k for every case.");
-                    }
+                        if (hnswProfile.EfSearch < topK)
+                        {
+                            throw new InvalidOperationException("Matrix HNSW profile efSearch must be at least top-k for every case.");
+                        }
 
-                    foreach (UpdateMatrixProfile updateProfile in preset.UpdateProfiles)
-                    {
-                        uint dataSeed = unchecked(options.Seed + (uint)caseIndex);
-                        ulong hnswSeed = CreateHnswSeed(options.Seed, caseIndex);
-                        string caseId = CreateCaseId(caseIndex + 1, hnswProfile.Name, updateProfile.Name, dimension, topK);
-                        string relativeReportPath = $"{caseId}.json";
-                        string outputPath = Path.Combine(options.OutputDirectory, relativeReportPath);
-                        var caseOptions = new HnswBasePlusExactDeltaGeneratedOptions(
-                            VectorMetric.SquaredEuclidean,
-                            dimension,
-                            options.BaseVectorCount,
-                            options.QueryCount,
-                            topK,
-                            dataSeed,
-                            updateProfile.InsertedDeltaCount,
-                            updateProfile.DeletedBaseCount,
-                            updateProfile.DeletedDeltaCount,
-                            options.DuplicateInsertAttempts,
-                            options.UnknownDeleteAttempts,
-                            options.RepeatedDeleteAttempts,
-                            outputPath,
-                            options.Runs,
-                            options.WarmupQueries,
-                            hnswProfile.M,
-                            hnswProfile.EfConstruction,
-                            hnswProfile.EfSearch,
-                            hnswSeed);
-                        cases.Add(new MatrixCase(caseId, hnswProfile.Name, updateProfile.Name, relativeReportPath, caseOptions));
-                        caseIndex++;
+                        foreach (UpdateMatrixProfile updateProfile in preset.UpdateProfiles)
+                        {
+                            uint dataSeed = unchecked(options.Seed + (uint)caseIndex);
+                            ulong hnswSeed = CreateHnswSeed(options.Seed, caseIndex);
+                            string caseId = CreateCaseId(caseIndex + 1, metric, hnswProfile.Name, updateProfile.Name, dimension, topK);
+                            string relativeReportPath = $"{caseId}.json";
+                            string outputPath = Path.Combine(options.OutputDirectory, relativeReportPath);
+                            var caseOptions = new HnswBasePlusExactDeltaGeneratedOptions(
+                                metric,
+                                dimension,
+                                options.BaseVectorCount,
+                                options.QueryCount,
+                                topK,
+                                dataSeed,
+                                updateProfile.InsertedDeltaCount,
+                                updateProfile.DeletedBaseCount,
+                                updateProfile.DeletedDeltaCount,
+                                options.DuplicateInsertAttempts,
+                                options.UnknownDeleteAttempts,
+                                options.RepeatedDeleteAttempts,
+                                outputPath,
+                                options.Runs,
+                                options.WarmupQueries,
+                                hnswProfile.M,
+                                hnswProfile.EfConstruction,
+                                hnswProfile.EfSearch,
+                                hnswSeed);
+                            cases.Add(new MatrixCase(caseId, hnswProfile.Name, updateProfile.Name, relativeReportPath, caseOptions));
+                            caseIndex++;
+                        }
                     }
                 }
             }
@@ -386,7 +390,7 @@ public static class HnswBasePlusExactDeltaMatrixScenario
     {
         MatrixPreset preset = GetPreset(presetName);
         return new HnswBasePlusExactDeltaMatrixDesignInfo(
-            VectorMetric.SquaredEuclidean.ToString(),
+            string.Join(",", SupportedMetrics.Select(metric => metric.ToString())),
             preset.Dimensions,
             preset.TopKValues,
             preset.HnswProfiles
@@ -395,7 +399,7 @@ public static class HnswBasePlusExactDeltaMatrixScenario
             preset.UpdateProfiles
                 .Select(profile => new HnswBasePlusExactDeltaMatrixUpdateProfileInfo(profile.Name, profile.InsertedDeltaCount, profile.DeletedBaseCount, profile.DeletedDeltaCount, profile.Description))
                 .ToArray(),
-            "Generated finite squared-L2 base vectors, delta vectors and queries only; exact updated truth is computed by the linked VEC-124 report from the post-update live view.",
+            "Generated finite SquaredEuclidean or Cosine base vectors, delta vectors and queries only; exact updated truth is computed by the linked VEC-124 report from the post-update live view.",
             "Smoke is a small local validation preset; standard covers at least two dimensions, two top-k values and two update/tombstone profiles.",
             "Internal composite matrix evidence only; no public mutable/update HNSW API, durable mutable overlay persistence, checkpoint/rebuild, external dataset, baseline, regression gate or public claim.");
     }
@@ -423,8 +427,8 @@ public static class HnswBasePlusExactDeltaMatrixScenario
         };
     }
 
-    private static string CreateCaseId(int caseNumber, string hnswProfileName, string updateProfileName, int dimension, int topK) =>
-        string.Create(CultureInfo.InvariantCulture, $"case-{caseNumber:D3}-{hnswProfileName}-{updateProfileName}-{dimension}d-{topK}k");
+    private static string CreateCaseId(int caseNumber, VectorMetric metric, string hnswProfileName, string updateProfileName, int dimension, int topK) =>
+        string.Create(CultureInfo.InvariantCulture, $"case-{caseNumber:D3}-{metric}-{hnswProfileName}-{updateProfileName}-{dimension}d-{topK}k");
 
     private static ulong CreateHnswSeed(uint baseSeed, int caseIndex) =>
         0x484E5357_00012500UL ^ ((ulong)baseSeed << 16) ^ (uint)(caseIndex + 1);

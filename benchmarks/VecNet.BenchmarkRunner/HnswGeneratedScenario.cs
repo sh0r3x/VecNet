@@ -17,8 +17,8 @@ public static class HnswGeneratedScenario
         ValidateOptions(options);
 
         GeneratedDataset dataset = GeneratedDatasetFactory.Create(ToGeneratedOptions(options));
-        ValidateFinite(dataset);
-        TruthSet truth = ScalarGroundTruth.Generate(dataset, VectorMetric.SquaredEuclidean, options.TopK);
+        ValidateDataset(dataset, options.Metric);
+        TruthSet truth = ScalarGroundTruth.Generate(dataset, options.Metric, options.TopK);
 
         BuildMeasurement build = BuildIndex(options, dataset);
         WarmupSearch(options, dataset, build.Index);
@@ -29,8 +29,8 @@ public static class HnswGeneratedScenario
             measurement.Results,
             options.TopK,
             options.Dimension,
-            VectorMetric.SquaredEuclidean);
-        HnswReturnedResultIntegrityInfo returnedIntegrity = ValidateReturnedResults(dataset, measurement.Results, options.TopK);
+            options.Metric);
+        HnswReturnedResultIntegrityInfo returnedIntegrity = ValidateReturnedResults(dataset, options.Metric, measurement.Results, options.TopK);
         int extraResultCount = CountExtraResults(truth, measurement.Results, options.TopK);
         string validationStatus = comparison.MissingResultCount == 0 &&
             extraResultCount == 0 &&
@@ -60,7 +60,7 @@ public static class HnswGeneratedScenario
                 "Generated HNSW baseline-candidate policy has not been accepted.",
                 "Generated HNSW regression-gate policy has not been accepted.",
                 [
-                    "Generated squared-L2 HNSW smoke evidence only; no external dataset source, license, version or checksum applies.",
+                    $"Generated {options.Metric} HNSW smoke evidence only; no external dataset source, license, version or checksum applies.",
                     "HNSW build, exact truth generation, warmup queries, final-run result capture/comparison and report writing are excluded from measured search latency and QPS.",
                     "Latency percentiles are nearest-rank per-run query latency samples aggregated as per-run means, not BenchmarkDotNet statistics.",
                     "Managed allocations are measured for the internal HnswIndex.Search(query, results, workspace) call boundary only; resident/process memory is explicitly not measured.",
@@ -83,7 +83,7 @@ public static class HnswGeneratedScenario
                 "generated-no-external-source",
                 GeneratedDataset.Distribution,
                 dataset.SeedText,
-                VectorMetric.SquaredEuclidean.ToString(),
+                options.Metric.ToString(),
                 options.Dimension,
                 options.VectorCount,
                 options.QueryCount),
@@ -100,7 +100,7 @@ public static class HnswGeneratedScenario
             new IndexInfo(
                 "InternalHnswEvaluation",
                 nameof(HnswIndex),
-                VectorMetric.SquaredEuclidean.ToString(),
+                options.Metric.ToString(),
                 options.Dimension,
                 options.VectorCount,
                 "internal/evaluation-only HnswIndex; built from generated vectors outside measured search timing; no public API, persistence, filtering, updates, external dataset mode or parameter matrix"),
@@ -112,7 +112,7 @@ public static class HnswGeneratedScenario
                 options.EfSearch,
                 FormatHex(options.HnswSeed),
                 "generated vector row order, external ids 0..vectorCount-1",
-                "SquaredEuclidean only"),
+                $"{options.Metric} private generated HNSW metric; InnerProduct unsupported"),
             new HnswBuildInfo(
                 "measured",
                 build.ElapsedMilliseconds,
@@ -178,7 +178,7 @@ public static class HnswGeneratedScenario
                 extraResultCount,
                 returnedIntegrity,
                 "set recall@k = returned ids intersect exact top-k ids divided by min(k, vectorCount), summed across measured queries",
-                "Every returned HNSW result is checked for finite distance, no duplicate ID within its query, generated-index ID membership, and squared-L2 distance matching recomputation for that returned ID/query within the accepted D-026 tolerance. HNSW is approximate and exact top-k recall/order are recorded, not required."),
+                $"Every returned HNSW result is checked for finite distance, no duplicate ID within its query, generated-index ID membership, and {options.Metric} distance matching recomputation for that returned ID/query within the accepted runner tolerance. HNSW is approximate and exact top-k recall/order are recorded, not required."),
             new HnswValidationInfo(
                 validationStatus,
                 "generated-hnsw-smoke",
@@ -200,7 +200,7 @@ public static class HnswGeneratedScenario
             [
                 "Private generated HNSW smoke evidence only; not a public benchmark claim.",
                 "This report exercises internal/evaluation-only HnswIndex and does not add or imply a public HNSW API.",
-                "HNSW supports only SquaredEuclidean in this report.",
+                $"HNSW metric in this report is {options.Metric}; InnerProduct HNSW remains unsupported.",
                 "Latency and QPS time only internal HnswIndex.Search(query, results, workspace) calls.",
                 "HNSW build and exact scalar-reference truth generation are setup work and are excluded from measured search timing.",
                 "Managed allocations are measured only for the internal HNSW search-call boundary.",
@@ -215,6 +215,7 @@ public static class HnswGeneratedScenario
 
     public static HnswReturnedResultIntegrityInfo ValidateReturnedResults(
         GeneratedDataset dataset,
+        VectorMetric metric,
         SearchResult[][] actual,
         int topK)
     {
@@ -258,10 +259,11 @@ public static class HnswGeneratedScenario
                     continue;
                 }
 
-                float expectedDistance = SquaredEuclideanDistance(
+                float expectedDistance = ScalarGroundTruth.CalculateDistance(
                     dataset.GetQuery(queryRow),
-                    dataset.GetVector(checked((int)result.Id)));
-                if (!DistanceMatches(expectedDistance, result.Distance, dataset.Dimension))
+                    dataset.GetVector(checked((int)result.Id)),
+                    metric);
+                if (!ResultComparer.DistanceMatches(expectedDistance, result.Distance, dataset.Dimension, metric))
                 {
                     distanceMismatchCount++;
                 }
@@ -284,15 +286,21 @@ public static class HnswGeneratedScenario
             duplicateIdCount,
             unknownIdCount,
             distanceMismatchCount,
-            "For every returned approximate HNSW result: distance must be finite; IDs must be unique within a query; ID must be one of the generated index IDs; and reported distance must match recomputed squared-L2 for that query and returned ID within the accepted D-026 tolerance.",
+            $"For every returned approximate HNSW result: distance must be finite; IDs must be unique within a query; ID must be one of the generated index IDs; and reported distance must match recomputed {metric} distance for that query and returned ID within the accepted runner tolerance.",
             passed
                 ? "All returned approximate HNSW results are well formed and distance-integrity checked."
                 : "One or more returned approximate HNSW results failed well-formedness or distance-integrity checks.");
     }
 
+    public static HnswReturnedResultIntegrityInfo ValidateReturnedResults(
+        GeneratedDataset dataset,
+        SearchResult[][] actual,
+        int topK) =>
+        ValidateReturnedResults(dataset, VectorMetric.SquaredEuclidean, actual, topK);
+
     private static GeneratedExactSearchOptions ToGeneratedOptions(HnswGeneratedOptions options) =>
         new(
-            VectorMetric.SquaredEuclidean,
+            options.Metric,
             options.Dimension,
             options.VectorCount,
             options.QueryCount,
@@ -308,7 +316,7 @@ public static class HnswGeneratedScenario
         var hnswOptions = new HnswIndexOptions(options.M, options.EfConstruction, options.EfSearch, options.HnswSeed);
         long allocationStart = GC.GetAllocatedBytesForCurrentThread();
         long start = Stopwatch.GetTimestamp();
-        var index = new HnswIndex(options.Dimension, VectorMetric.SquaredEuclidean, hnswOptions);
+        var index = new HnswIndex(options.Dimension, options.Metric, hnswOptions);
         for (int row = 0; row < dataset.VectorCount; row++)
         {
             index.Add((ulong)row, dataset.GetVector(row));
@@ -540,37 +548,11 @@ public static class HnswGeneratedScenario
         return extra;
     }
 
-    private static float SquaredEuclideanDistance(ReadOnlySpan<float> query, ReadOnlySpan<float> vector)
-    {
-        double sum = 0;
-        for (int i = 0; i < query.Length; i++)
-        {
-            double difference = query[i] - vector[i];
-            sum += difference * difference;
-        }
-
-        return (float)sum;
-    }
-
-    private static bool DistanceMatches(float expected, float actual, int dimension)
-    {
-        if (!float.IsFinite(actual))
-        {
-            return false;
-        }
-
-        double relative =
-            (8.0 * dimension / 16_777_216.0) *
-            Math.Max(1.0, Math.Abs(expected));
-        float tolerance = (float)Math.Max(2e-4, relative);
-        return MathF.Abs(expected - actual) <= tolerance;
-    }
-
     private static void ValidateOptions(HnswGeneratedOptions options)
     {
-        if (options.Metric != VectorMetric.SquaredEuclidean)
+        if (!IsSupportedMetric(options.Metric))
         {
-            throw new ArgumentException("hnsw-generated supports only SquaredEuclidean.", nameof(options));
+            throw new ArgumentException("hnsw-generated supports SquaredEuclidean and Cosine only.", nameof(options));
         }
 
         if (options.TopK > options.VectorCount)
@@ -609,7 +591,10 @@ public static class HnswGeneratedScenario
         }
     }
 
-    private static void ValidateFinite(GeneratedDataset dataset)
+    private static bool IsSupportedMetric(VectorMetric metric) =>
+        metric is VectorMetric.SquaredEuclidean or VectorMetric.Cosine;
+
+    private static void ValidateDataset(GeneratedDataset dataset, VectorMetric metric)
     {
         foreach (float value in dataset.Vectors)
         {
@@ -626,6 +611,31 @@ public static class HnswGeneratedScenario
                 throw new InvalidOperationException("Generated query data must be finite.");
             }
         }
+
+        if (metric == VectorMetric.Cosine)
+        {
+            ValidateNonZeroRows(dataset.Vectors, dataset.VectorCount, dataset.Dimension, "vector");
+            ValidateNonZeroRows(dataset.Queries, dataset.QueryCount, dataset.Dimension, "query");
+        }
+    }
+
+    private static void ValidateNonZeroRows(float[] values, int rowCount, int dimension, string rowKind)
+    {
+        for (int row = 0; row < rowCount; row++)
+        {
+            double magnitudeSquared = 0;
+            int offset = checked(row * dimension);
+            for (int i = 0; i < dimension; i++)
+            {
+                float value = values[offset + i];
+                magnitudeSquared += (double)value * value;
+            }
+
+            if (magnitudeSquared == 0)
+            {
+                throw new InvalidOperationException($"Generated cosine {rowKind} data must not contain zero rows.");
+            }
+        }
     }
 
     private static double? FiniteOrNull(double value) => double.IsFinite(value) ? value : null;
@@ -635,7 +645,7 @@ public static class HnswGeneratedScenario
         string commitPart = string.IsNullOrWhiteSpace(commit) ? "unknown" : commit[..Math.Min(12, commit.Length)];
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"{HnswGeneratedOptions.ScenarioName}-{commitPart}-{options.Dimension}d-{options.VectorCount}v-{options.QueryCount}q-{options.TopK}k-{options.Runs}r-{options.WarmupQueries}w-m{options.M}-efc{options.EfConstruction}-efs{options.EfSearch}-{options.Seed:X8}-{options.HnswSeed:X16}");
+            $"{HnswGeneratedOptions.ScenarioName}-{commitPart}-{options.Metric}-{options.Dimension}d-{options.VectorCount}v-{options.QueryCount}q-{options.TopK}k-{options.Runs}r-{options.WarmupQueries}w-m{options.M}-efc{options.EfConstruction}-efs{options.EfSearch}-{options.Seed:X8}-{options.HnswSeed:X16}");
     }
 
     private static string FormatHex(ulong value) => string.Create(CultureInfo.InvariantCulture, $"0x{value:X16}");

@@ -20,6 +20,7 @@ public sealed class Vec150HnswAllowlistFilteringMatrixTests
         Assert.Equal(1, options.DuplicateInsertAttempts);
         Assert.Equal(1, options.UnknownDeleteAttempts);
         Assert.Equal(1, options.RepeatedDeleteAttempts);
+        Assert.Equal(VectorMetric.SquaredEuclidean, options.Metric);
         Assert.StartsWith("VecNet.BenchmarkRunner.Artifacts", options.OutputDirectory, StringComparison.OrdinalIgnoreCase);
         Assert.False(Path.IsPathFullyQualified(options.OutputDirectory));
         Assert.EndsWith("hnsw-allowlist-filtered-matrix-manifest.json", options.ManifestPath, StringComparison.OrdinalIgnoreCase);
@@ -51,7 +52,7 @@ public sealed class Vec150HnswAllowlistFilteringMatrixTests
     [InlineData("generated-hnsw-allowlist-filtered-matrix", "--repeated-deletes", "-1")]
     [InlineData("generated-hnsw-allowlist-filtered-matrix", "--output-dir", "")]
     [InlineData("generated-hnsw-allowlist-filtered-matrix", "--manifest", "")]
-    [InlineData("generated-hnsw-allowlist-filtered-matrix", "--metric", "SquaredEuclidean")]
+    [InlineData("generated-hnsw-allowlist-filtered-matrix", "--metric", "InnerProduct")]
     [InlineData("generated-hnsw-allowlist-filtered-matrix", "--dimension", "32")]
     [InlineData("generated-hnsw-allowlist-filtered-matrix", "--vectors", "512")]
     [InlineData("generated-hnsw-allowlist-filtered-matrix", "--top-k", "10")]
@@ -65,6 +66,18 @@ public sealed class Vec150HnswAllowlistFilteringMatrixTests
             () => CommandLine.ParseHnswAllowlistFilteringMatrix(args));
 
         Assert.NotEmpty(exception.Message);
+    }
+
+    [Theory]
+    [InlineData("Cosine")]
+    [InlineData("cosine")]
+    public void ParseHnswAllowlistFilteringMatrix_AcceptsCosine(string metric)
+    {
+        HnswAllowlistFilteringMatrixOptions options =
+            CommandLine.ParseHnswAllowlistFilteringMatrix(
+                [HnswAllowlistFilteringMatrixOptions.ScenarioName, "--metric", metric]);
+
+        Assert.Equal(VectorMetric.Cosine, options.Metric);
     }
 
     [Fact]
@@ -88,7 +101,8 @@ public sealed class Vec150HnswAllowlistFilteringMatrixTests
             PresetName = "standard",
             QueryCount = 32,
             Runs = 3,
-            WarmupQueries = 3
+            WarmupQueries = 3,
+            Metric = VectorMetric.Cosine
         };
 
         HnswAllowlistFilteringMatrixScenario.MatrixCase[] smokeCases =
@@ -113,7 +127,7 @@ public sealed class Vec150HnswAllowlistFilteringMatrixTests
 
         Assert.All(standardCases, matrixCase =>
         {
-            Assert.Equal(VectorMetric.SquaredEuclidean, matrixCase.Options.Metric);
+            Assert.Equal(VectorMetric.Cosine, matrixCase.Options.Metric);
             Assert.Equal(32, matrixCase.Options.QueryCount);
             Assert.Equal(3, matrixCase.Options.Runs);
             Assert.Equal(3, matrixCase.Options.WarmupQueries);

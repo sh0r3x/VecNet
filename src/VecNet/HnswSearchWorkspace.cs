@@ -1,7 +1,7 @@
 namespace VecNet;
 
 /// <summary>
-/// Caller-owned reusable workspace for approximate HNSW squared Euclidean search.
+/// Caller-owned reusable workspace for approximate HNSW search.
 /// </summary>
 /// <remarks>
 /// A workspace stores transient visited-set and candidate/result queue state for one search at a

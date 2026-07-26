@@ -247,7 +247,7 @@ public sealed class Vec127FashionMnistExternalHnswBasePlusExactDeltaIndependentT
         Assert.Equal(1, integrity.TombstonedIdCount);
         Assert.Equal(1, integrity.NonFiniteDistanceCount);
         Assert.True(integrity.DistanceMismatchCount >= 1);
-        Assert.Contains("distance must match recomputed squared-L2", integrity.Policy, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("distance must match recomputed", integrity.Policy, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -4,7 +4,8 @@ public sealed record FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixO
     string PresetName,
     string CacheRoot,
     string OutputDirectory,
-    string ManifestPath)
+    string ManifestPath,
+    VectorMetric Metric = VectorMetric.SquaredEuclidean)
 {
     public const string ScenarioName = "external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-matrix";
     public const string SmokePresetName = "smoke";

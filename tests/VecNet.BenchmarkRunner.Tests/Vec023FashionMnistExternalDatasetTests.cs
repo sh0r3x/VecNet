@@ -18,6 +18,7 @@ public sealed class Vec023FashionMnistExternalDatasetTests
         Assert.Equal(100, options.QueryCount);
         Assert.Equal(10, options.TruthDepth);
         Assert.False(options.DownloadRawFiles);
+        Assert.Equal(VectorMetric.SquaredEuclidean, options.Metric);
     }
 
     [Theory]
@@ -33,6 +34,17 @@ public sealed class Vec023FashionMnistExternalDatasetTests
         ArgumentException exception = Assert.Throws<ArgumentException>(() => CommandLine.ParseExternalFashionMnist(args));
 
         Assert.NotEmpty(exception.Message);
+    }
+
+    [Fact]
+    public void ParseExternalFashionMnist_AcceptsCosineAndRejectsInnerProduct()
+    {
+        FashionMnistExternalDatasetOptions options =
+            CommandLine.ParseExternalFashionMnist(["external-fashion-mnist", "--metric", "Cosine"]);
+
+        Assert.Equal(VectorMetric.Cosine, options.Metric);
+        Assert.Throws<ArgumentException>(() =>
+            CommandLine.ParseExternalFashionMnist(["external-fashion-mnist", "--metric", "InnerProduct"]));
     }
 
     [Fact]
@@ -177,6 +189,41 @@ public sealed class Vec023FashionMnistExternalDatasetTests
     }
 
     [Fact]
+    public void FashionMnistExactTruth_CosineUsesCanonicalOrderingAndIdTies()
+    {
+        float[] bases =
+        [
+            2f, 0f,
+            4f, 0f,
+            0f, 3f,
+            -1f, 0f
+        ];
+        float[] queries =
+        [
+            1f, 0f
+        ];
+
+        TruthSet truth = FashionMnistExactTruth.Generate(
+            bases,
+            baseCount: 4,
+            queries,
+            queryCount: 1,
+            dimension: 2,
+            querySubsetCount: 1,
+            depth: 4,
+            VectorMetric.Cosine);
+
+        Assert.Equal(
+            [
+                new TruthItem(0, 0f),
+                new TruthItem(1, 0f),
+                new TruthItem(2, 1f),
+                new TruthItem(3, 2f)
+            ],
+            truth.Results[0]);
+    }
+
+    [Fact]
     public void Run_WithSyntheticTinyOfficialFileSet_EmitsPrivateManifestConversionTruthAndEvidence()
     {
         string cacheRoot = CreateArtifactDirectory("workflow");
@@ -237,7 +284,86 @@ public sealed class Vec023FashionMnistExternalDatasetTests
         Assert.False(manifest.RootElement.GetProperty("evidence").GetProperty("regressionGateEligible").GetBoolean());
     }
 
-    private static FashionMnistDatasetSpecification WriteSyntheticFashionMnistRawFiles(string cacheRoot)
+    [Fact]
+    public void Run_WithCosineMetric_UsesDistinctIdentityAndCosineTruthMetadata()
+    {
+        string cacheRoot = CreateArtifactDirectory("cosine-workflow");
+        FashionMnistDatasetSpecification spec = WriteSyntheticFashionMnistRawFiles(
+            cacheRoot,
+            basePayload:
+            [
+                1, 0, 0, 0,
+                1, 0, 0, 0,
+                0, 1, 0, 0,
+                9, 9, 9, 9
+            ]);
+        var options = new FashionMnistExternalDatasetOptions(
+            cacheRoot,
+            QueryCount: 2,
+            TruthDepth: 2,
+            DownloadRawFiles: false,
+            VectorMetric.Cosine);
+
+        FashionMnistAdmissionResult result = FashionMnistExternalDatasetScenario.Run(
+            options,
+            ["external-fashion-mnist", "--metric", "Cosine"],
+            spec);
+
+        Assert.Equal("fashion-mnist-784-cosine", result.Manifest.DatasetId);
+        Assert.Equal("VEC-239", result.Manifest.AdmittingTaskId);
+        Assert.Equal("cosine", result.Manifest.Metric.UpstreamName);
+        Assert.Equal("Cosine", result.Manifest.Metric.VecNetMetric);
+        Assert.Equal("vecnet-scalar-reference-cosine", result.Manifest.Truth.Kind);
+        Assert.Contains("canonical cosine", result.Manifest.Truth.TiePolicy, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Cosine", result.Evidence.Metric);
+        Assert.Equal("cosine", result.Evidence.UpstreamMetric);
+        Assert.Equal("passed", result.Evidence.Validation.Status);
+        Assert.True(File.Exists(Path.Combine(cacheRoot, "converted", "fashion-mnist-784-cosine", "base.f32le")));
+        Assert.True(File.Exists(Path.Combine(cacheRoot, "truth", "fashion-mnist-784-cosine", "exact-truth.json")));
+
+        ExternalExactTruthArtifact truth = ReportWriter.Deserialize<ExternalExactTruthArtifact>(File.ReadAllText(result.TruthPath))!;
+        Assert.Equal("fashion-mnist-784-cosine", truth.DatasetId);
+        Assert.Equal("VEC-239", truth.TaskId);
+        Assert.Equal("Cosine", truth.Metric);
+    }
+
+    [Fact]
+    public void Run_WithCosineMetric_RejectsZeroBaseOrSelectedQueryRows()
+    {
+        string zeroBaseCacheRoot = CreateArtifactDirectory("cosine-zero-base");
+        FashionMnistDatasetSpecification zeroBaseSpec = WriteSyntheticFashionMnistRawFiles(zeroBaseCacheRoot);
+        var cosineOptions = new FashionMnistExternalDatasetOptions(zeroBaseCacheRoot, QueryCount: 2, TruthDepth: 2, DownloadRawFiles: false, VectorMetric.Cosine);
+
+        InvalidDataException baseException = Assert.Throws<InvalidDataException>(() =>
+            FashionMnistExternalDatasetScenario.Run(cosineOptions, ["external-fashion-mnist", "--metric", "Cosine"], zeroBaseSpec));
+        Assert.Contains("base row 0 is zero", baseException.Message, StringComparison.OrdinalIgnoreCase);
+
+        string zeroQueryCacheRoot = CreateArtifactDirectory("cosine-zero-query");
+        FashionMnistDatasetSpecification zeroQuerySpec = WriteSyntheticFashionMnistRawFiles(
+            zeroQueryCacheRoot,
+            basePayload:
+            [
+                1, 0, 0, 0,
+                1, 0, 0, 0,
+                0, 1, 0, 0,
+                9, 9, 9, 9
+            ],
+            queryPayload:
+            [
+                0, 0, 0, 0,
+                0, 1, 0, 0
+            ]);
+        cosineOptions = new FashionMnistExternalDatasetOptions(zeroQueryCacheRoot, QueryCount: 2, TruthDepth: 2, DownloadRawFiles: false, VectorMetric.Cosine);
+
+        InvalidDataException queryException = Assert.Throws<InvalidDataException>(() =>
+            FashionMnistExternalDatasetScenario.Run(cosineOptions, ["external-fashion-mnist", "--metric", "Cosine"], zeroQuerySpec));
+        Assert.Contains("query row 0 is zero", queryException.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static FashionMnistDatasetSpecification WriteSyntheticFashionMnistRawFiles(
+        string cacheRoot,
+        byte[]? basePayload = null,
+        byte[]? queryPayload = null)
     {
         const string datasetId = "fashion-mnist-784-euclidean";
         const string downloadRoot = "http://fashion-mnist.s3-website.eu-central-1.amazonaws.com/";
@@ -249,14 +375,14 @@ public sealed class Vec023FashionMnistExternalDatasetTests
         string queryImages = Path.Combine(rawDirectory, "t10k-images-idx3-ubyte.gz");
         string queryLabels = Path.Combine(rawDirectory, "t10k-labels-idx1-ubyte.gz");
 
-        File.WriteAllBytes(trainImages, CreateImageIdxGzip(4, 2, 2, [
+        File.WriteAllBytes(trainImages, CreateImageIdxGzip(4, 2, 2, basePayload ?? [
             0, 0, 0, 0,
             1, 0, 0, 0,
             0, 1, 0, 0,
             9, 9, 9, 9
         ]).ToArray());
         File.WriteAllBytes(trainLabels, CreateLabelIdxGzip(4, [0, 1, 2, 9]).ToArray());
-        File.WriteAllBytes(queryImages, CreateImageIdxGzip(2, 2, 2, [
+        File.WriteAllBytes(queryImages, CreateImageIdxGzip(2, 2, 2, queryPayload ?? [
             1, 0, 0, 0,
             0, 1, 0, 0
         ]).ToArray());

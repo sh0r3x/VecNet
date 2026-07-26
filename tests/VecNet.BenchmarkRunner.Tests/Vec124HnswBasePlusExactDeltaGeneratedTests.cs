@@ -39,7 +39,6 @@ public sealed class Vec124HnswBasePlusExactDeltaGeneratedTests
 
     [Theory]
     [InlineData("unexpected")]
-    [InlineData("generated-hnsw-base-plus-exact-delta", "--metric", "Cosine")]
     [InlineData("generated-hnsw-base-plus-exact-delta", "--metric", "InnerProduct")]
     [InlineData("generated-hnsw-base-plus-exact-delta", "--dimension", "0")]
     [InlineData("generated-hnsw-base-plus-exact-delta", "--vectors", "0")]
@@ -78,6 +77,95 @@ public sealed class Vec124HnswBasePlusExactDeltaGeneratedTests
             () => CommandLine.ParseHnswBasePlusExactDeltaGenerated(args));
 
         Assert.NotEmpty(exception.Message);
+    }
+
+    [Fact]
+    public void ParseHnswBasePlusExactDeltaGenerated_AcceptsCosineAndRejectsInnerProduct()
+    {
+        HnswBasePlusExactDeltaGeneratedOptions cosine =
+            CommandLine.ParseHnswBasePlusExactDeltaGenerated(
+                [
+                    "generated-hnsw-base-plus-exact-delta",
+                    "--metric", "Cosine",
+                    "--dimension", "6",
+                    "--vectors", "16",
+                    "--queries", "2",
+                    "--top-k", "3",
+                    "--insertions", "4",
+                    "--deletes", "2",
+                    "--delta-deletes", "1",
+                    "--ef-search", "4"
+                ]);
+
+        Assert.Equal(VectorMetric.Cosine, cosine.Metric);
+
+        ArgumentException rejected = Assert.Throws<ArgumentException>(
+            () => CommandLine.ParseHnswBasePlusExactDeltaGenerated(
+                [
+                    "generated-hnsw-base-plus-exact-delta",
+                    "--metric", "InnerProduct",
+                    "--dimension", "6",
+                    "--vectors", "16",
+                    "--queries", "2",
+                    "--top-k", "3",
+                    "--insertions", "4",
+                    "--deletes", "2",
+                    "--delta-deletes", "1",
+                    "--ef-search", "4"
+                ]));
+        Assert.Contains("Cosine", rejected.Message, StringComparison.Ordinal);
+        Assert.Contains("SquaredEuclidean", rejected.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Run_CosineCompositeReportPassesLiveTruthMutationAndPrivateValidation()
+    {
+        string outputPath = NewArtifactPath("updated-hnsw-cosine.json");
+        string[] arguments =
+        [
+            "generated-hnsw-base-plus-exact-delta",
+            "--metric", "Cosine",
+            "--dimension", "7",
+            "--vectors", "24",
+            "--queries", "3",
+            "--top-k", "4",
+            "--insertions", "5",
+            "--deletes", "3",
+            "--delta-deletes", "1",
+            "--duplicate-inserts", "2",
+            "--unknown-deletes", "2",
+            "--repeated-deletes", "2",
+            "--runs", "1",
+            "--warmup-queries", "1",
+            "--seed", "0x5EED2322",
+            "--m", "4",
+            "--ef-construction", "16",
+            "--ef-search", "8",
+            "--hnsw-seed", "0x0000000000002322",
+            "--output", outputPath
+        ];
+        HnswBasePlusExactDeltaGeneratedOptions options =
+            CommandLine.ParseHnswBasePlusExactDeltaGenerated(arguments);
+
+        HnswBasePlusExactDeltaBenchmarkReport report =
+            HnswBasePlusExactDeltaGeneratedScenario.Run(options, arguments);
+        HnswBasePlusExactDeltaGeneratedScenario.Write(report, outputPath);
+
+        Assert.True(File.Exists(outputPath));
+        Assert.Equal(VectorMetric.Cosine.ToString(), report.Dataset.Metric);
+        Assert.Equal(VectorMetric.Cosine.ToString(), report.Index.Metric);
+        Assert.Equal("passed", report.Validation.Status);
+        Assert.True(report.Validation.LiveTruthGenerated);
+        Assert.True(report.Validation.MutationStatusCountsMatched);
+        Assert.True(report.Validation.GenerationMovementMatchedCommittedMutations);
+        Assert.Equal("passed", report.Metrics.ReturnedResultIntegrity.Status);
+        Assert.Equal(0, report.Metrics.DistanceMismatchCount);
+        Assert.Equal(0, report.Metrics.ReturnedResultIntegrity.TombstonedIdCount);
+        Assert.Equal(2, report.Mutations.StatusCounts.DuplicateId);
+        Assert.Equal(2, report.Mutations.StatusCounts.UnknownId);
+        Assert.Equal(2, report.Mutations.StatusCounts.AlreadyDeleted);
+        Assert.False(report.Evidence.PublicClaimEligible);
+        Assert.True(report.Validation.ReportIsPrivateRaw);
     }
 
     [Fact]

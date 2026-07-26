@@ -96,7 +96,8 @@ public sealed class Vec037HnswGeneratedMatrixTests
 
         HnswGeneratedMatrixScenario.HnswMatrixCase[] cases = HnswGeneratedMatrixScenario.ExpandCases(options);
 
-        Assert.Equal(8, cases.Length);
+        Assert.Equal(16, cases.Length);
+        Assert.Equal([VectorMetric.SquaredEuclidean, VectorMetric.Cosine], cases.Select(item => item.Options.Metric).Distinct().ToArray());
         Assert.Equal([16, 32], cases.Select(item => item.Options.Dimension).Distinct().ToArray());
         Assert.Equal([1, 10], cases.Select(item => item.Options.TopK).Distinct().ToArray());
         Assert.Equal(["low-ef-m4", "balanced-m8"], cases.Select(item => item.ProfileName).Distinct().ToArray());
@@ -106,7 +107,6 @@ public sealed class Vec037HnswGeneratedMatrixTests
         Assert.Equal(cases.Length, cases.Select(item => item.Options.HnswSeed).Distinct().Count());
         Assert.All(cases, item =>
         {
-            Assert.Equal(VectorMetric.SquaredEuclidean, item.Options.Metric);
             Assert.Equal(64, item.Options.VectorCount);
             Assert.Equal(2, item.Options.QueryCount);
             Assert.Equal(3, item.Options.Runs);
@@ -134,14 +134,15 @@ public sealed class Vec037HnswGeneratedMatrixTests
 
         HnswGeneratedMatrixScenario.HnswMatrixCase[] cases = HnswGeneratedMatrixScenario.ExpandCases(options);
 
-        Assert.Equal(27, cases.Length);
+        Assert.Equal(54, cases.Length);
+        Assert.Equal([VectorMetric.SquaredEuclidean, VectorMetric.Cosine], cases.Select(item => item.Options.Metric).Distinct().ToArray());
         Assert.Equal([32, 128, 386], cases.Select(item => item.Options.Dimension).Distinct().ToArray());
         Assert.Equal([1, 10, 50], cases.Select(item => item.Options.TopK).Distinct().ToArray());
         Assert.Equal(["low-ef-m4", "balanced-m8", "wide-m16"], cases.Select(item => item.ProfileName).Distinct().ToArray());
         Assert.Contains(cases, item => item.ProfileName == "wide-m16" && item.Options.Dimension == 386 && item.Options.TopK == 50);
         Assert.Equal(0xFFFF_FFF0u, cases[0].Options.Seed);
-        Assert.Equal(10u, cases[^1].Options.Seed);
-        Assert.EndsWith("case-27-wide-m16-386d-50k.json", cases[^1].Options.OutputPath, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(37u, cases[^1].Options.Seed);
+        Assert.EndsWith("case-54-Cosine-wide-m16-386d-50k.json", cases[^1].Options.OutputPath, StringComparison.OrdinalIgnoreCase);
         Assert.All(cases, item =>
         {
             Assert.Equal(96, item.Options.VectorCount);
@@ -216,8 +217,8 @@ public sealed class Vec037HnswGeneratedMatrixTests
         Assert.Equal("VEC-037", manifest.TaskId);
         Assert.Equal("hnsw-generated-matrix", manifest.ScenarioName);
         Assert.Equal("smoke", manifest.PresetName);
-        Assert.Equal(8, manifest.CaseCount);
-        Assert.Equal(8, manifest.Aggregate.PassedCaseCount);
+        Assert.Equal(16, manifest.CaseCount);
+        Assert.Equal(16, manifest.Aggregate.PassedCaseCount);
         Assert.Equal(0, manifest.Aggregate.FailedCaseCount);
         Assert.Equal("local-evidence", manifest.Eligibility.ClaimClass);
         Assert.Equal("private-raw", manifest.Eligibility.PrivacyClass);
@@ -230,7 +231,6 @@ public sealed class Vec037HnswGeneratedMatrixTests
 
         Assert.All(manifest.Cases, matrixCase =>
         {
-            Assert.Equal("SquaredEuclidean", matrixCase.Metric);
             Assert.Equal("passed", matrixCase.Status);
             Assert.Equal("passed", matrixCase.ValidationStatus);
             Assert.NotNull(matrixCase.ReportId);
@@ -247,13 +247,13 @@ public sealed class Vec037HnswGeneratedMatrixTests
         JsonElement manifestRoot = manifestDocument.RootElement;
         Assert.Equal("VecNet.HnswBenchmarkMatrixManifest", manifestRoot.GetProperty("schemaName").GetString());
         Assert.Equal("VEC-037", manifestRoot.GetProperty("taskId").GetString());
-        Assert.Equal(8, manifestRoot.GetProperty("caseCount").GetInt32());
+        Assert.Equal(16, manifestRoot.GetProperty("caseCount").GetInt32());
         AssertFalseMatrixEligibility(manifestRoot);
         AssertNoComparisonOrBaselineFields(manifestRoot);
 
         HnswGeneratedMatrixCaseManifest sampledCase = Assert.Single(
             manifest.Cases,
-            item => item.Dimension == 32 && item.TopK == 10 && item.ProfileName == "balanced-m8");
+            item => item.Metric == "Cosine" && item.Dimension == 32 && item.TopK == 10 && item.ProfileName == "balanced-m8");
         using JsonDocument reportDocument = JsonDocument.Parse(File.ReadAllText(sampledCase.ReportPath));
         JsonElement reportRoot = reportDocument.RootElement;
         Assert.Equal("VecNet.HnswBenchmarkReport", reportRoot.GetProperty("schemaName").GetString());
@@ -261,6 +261,7 @@ public sealed class Vec037HnswGeneratedMatrixTests
         Assert.Equal("VEC-036", reportRoot.GetProperty("taskId").GetString());
         Assert.Equal("hnsw-generated", reportRoot.GetProperty("scenarioName").GetString());
         Assert.Equal("hnsw-generated", reportRoot.GetProperty("command").GetProperty("scenario").GetString());
+        Assert.Equal("Cosine", reportRoot.GetProperty("dataset").GetProperty("metric").GetString());
         Assert.Equal(sampledCase.Dimension, reportRoot.GetProperty("dataset").GetProperty("dimension").GetInt32());
         Assert.Equal(sampledCase.VectorCount, reportRoot.GetProperty("dataset").GetProperty("vectorCount").GetInt32());
         Assert.Equal(sampledCase.QueryCount, reportRoot.GetProperty("dataset").GetProperty("queryCount").GetInt32());
@@ -296,11 +297,11 @@ public sealed class Vec037HnswGeneratedMatrixTests
 
         HnswGeneratedMatrixManifest manifest = HnswGeneratedMatrixScenario.Run(options, ["hnsw-generated-matrix"]);
 
-        Assert.Equal(8, manifest.CaseCount);
-        Assert.Equal(4, manifest.Aggregate.PassedCaseCount);
-        Assert.Equal(4, manifest.Aggregate.FailedCaseCount);
-        Assert.Equal(4, manifest.Cases.Count(item => item.Status == "passed"));
-        Assert.Equal(4, manifest.Cases.Count(item => item.Status == "failed"));
+        Assert.Equal(16, manifest.CaseCount);
+        Assert.Equal(8, manifest.Aggregate.PassedCaseCount);
+        Assert.Equal(8, manifest.Aggregate.FailedCaseCount);
+        Assert.Equal(8, manifest.Cases.Count(item => item.Status == "passed"));
+        Assert.Equal(8, manifest.Cases.Count(item => item.Status == "failed"));
         Assert.All(manifest.Cases.Where(item => item.TopK == 10), matrixCase =>
         {
             Assert.Equal("failed", matrixCase.Status);

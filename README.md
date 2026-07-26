@@ -11,14 +11,14 @@ and durable application storage.
 Use VecNet from a `.NET 10` project. Add the core package:
 
 ```bash
-dotnet add package VecNet --version 1.1.0
+dotnet add package VecNet --version 1.2.0
 ```
 
 For `Microsoft.Extensions.VectorData` applications, add the separate optional
 exact-flat adapter package in addition to the core package:
 
 ```bash
-dotnet add package VecNet.Integration.VectorData --version 1.1.0
+dotnet add package VecNet.Integration.VectorData --version 1.2.0
 ```
 
 The core `VecNet` package intentionally has no runtime package dependencies
@@ -31,8 +31,8 @@ and no dependency on `Microsoft.Extensions.VectorData`.
 | Exhaustive search for squared L2, inner product, or cosine | `ExactFlatIndex` | Scans live rows and ranks by canonical distance. |
 | Save/open an exact snapshot | `ExactFlatIndex.Save` and `ExactFlatIndex.OpenReadOnly` | Opens as immutable read-only exact search. |
 | Exact search over changing data in one process | `ExactFlatIndex.TryAdd`, `TryDelete`, and `Checkpoint` | Deletes are tombstones until checkpoint compaction; deleted IDs remain reserved. |
-| Approximate in-memory graph search | `HnswIndex` | Squared-L2 only; build ingestion is not upsert or graph mutation. |
-| Update-oriented HNSW workflow | `HnswMutableIndex` | Immutable HNSW base plus exact delta/tombstones; checkpoint rebuilds a new immutable HNSW base. |
+| Approximate in-memory graph search | `HnswIndex` | Squared-L2 and cosine immutable build/search plus durable save/open. Inner product remains unsupported. |
+| Update-oriented HNSW workflow | `HnswMutableIndex` | Squared-L2 or cosine immutable HNSW base plus exact delta/tombstones; checkpoint rebuilds a new immutable HNSW base with the same supported metric. |
 | VectorData integration | `VecNet.Integration.VectorData` | Separate optional exact-flat in-memory adapter, not HNSW or durable VectorData storage. |
 
 ## Small Exact-Flat Example
@@ -58,7 +58,8 @@ for (int i = 0; i < written; i++)
 ## Where Next?
 
 - Durable exact-flat save/open: [Persistence](#persistence).
-- HNSW squared-L2 search and persistence: [HNSW](#hnsw).
+- HNSW squared-L2 and cosine search, including update-oriented mutable
+  workflows where supported: [HNSW](#hnsw).
 - Filtering with caller-owned IDs: [Filtering](#filtering).
 - Mutation and checkpoint workflows: [Updates And Checkpoints](#updates-and-checkpoints).
 - Benchmark summaries: [Benchmarks](#benchmarks).
@@ -74,6 +75,8 @@ VecNet has bounded benchmark summaries:
 - `HnswIndex` squared-L2 recall versus latency over generated data and
   Fashion-MNIST:
   [docs/benchmarks/hnsw-squared-l2.md](docs/benchmarks/hnsw-squared-l2.md).
+- `HnswIndex` cosine recall versus latency:
+  [docs/benchmarks/hnsw-cosine.md](docs/benchmarks/hnsw-cosine.md).
 
 Read each methodology and limit section before using the numbers. The
 summaries are narrow search measurements, not capacity, package-wide,
@@ -105,21 +108,22 @@ or semantic-relevance claims.
   read-back or vector enumeration APIs. Keep your source vectors and
   application records if you need rebuild, export, display, reranking, or
   non-index storage.
-- To grow a saved HNSW index, use the
+- To grow a saved squared-L2 or cosine HNSW index, use the
   [HNSW Saved-Index Growth Recipe](#hnsw-saved-index-growth-recipe): open the
   saved index read-only, wrap it in `HnswMutableIndex`, apply `TryAdd` and
   `TryDelete`, `Checkpoint` to a new or empty directory, then reopen the new
   durable HNSW output.
-- HNSW durable files are the current round-trip format for `Save`,
-  `OpenReadOnly`, and mutable checkpoint output. They are not a cross-version
-  or long-term stable file-format promise.
+- Immutable HNSW durable files are the current round-trip format for `Save`
+  and `OpenReadOnly`. Squared-L2 and cosine mutable checkpoint output use the same
+  current format. These files are not a cross-version or long-term stable
+  file-format promise.
 - The optional VectorData adapter follows `IncludeVectors`: null/default
   options and `IncludeVectors = false` omit vectors, while
   `IncludeVectors = true` includes vectors. Omitting vectors may require a
   projectable class record shape; unsupported projection shapes throw a clear
   `NotSupportedException`.
 
-## Supported 1.1.0 Feature List
+## Supported 1.2.0 Feature List
 
 - Target framework: `net10.0`.
 - The core `VecNet` package is dependency-free and ships managed `lib/net10.0`
@@ -139,14 +143,18 @@ or semantic-relevance claims.
 - Exact raw allowlist filtering and reusable exact candidate sets.
 - Exact-flat `TryAdd`, `TryDelete`, and `Checkpoint` for visible generation
   updates in the current process.
-- HNSW approximate indexing for `VectorMetric.SquaredEuclidean` with
-  build ingestion, caller-owned workspace search, caller-owned external-ID
-  allowlist filtering, durable `Save`/`OpenReadOnly`, opened read-only search,
-  and read-only concurrent search when each caller uses independent result
+- HNSW approximate indexing for `VectorMetric.SquaredEuclidean` with build
+  ingestion, caller-owned workspace search, caller-owned external-ID allowlist
+  filtering, durable `Save`/`OpenReadOnly`, opened read-only search, and
+  read-only concurrent search when each caller uses independent result
   buffers and workspaces.
-- Update-oriented HNSW mode for squared L2 using an immutable HNSW base plus
-  exact in-memory delta rows, tombstones, search merge/rerank, and
-  caller-initiated checkpoint/rebuild into a new immutable HNSW snapshot.
+- HNSW approximate indexing for `VectorMetric.Cosine` with immutable
+  `HnswIndex` build/search, durable `Save`/`OpenReadOnly`, opened read-only
+  search, and update-oriented mutable functional support.
+- Update-oriented HNSW mode for squared L2 and cosine using an immutable HNSW
+  base plus exact in-memory delta rows, tombstones, search merge/rerank,
+  allowlist search, and caller-initiated checkpoint/rebuild into a new
+  immutable HNSW snapshot with the same metric.
 - Optional `Microsoft.Extensions.VectorData` support through the separate
   `VecNet.Integration.VectorData` adapter package. The adapter is exact-flat
   and in-memory, supports pregenerated `float[]` or `ReadOnlyMemory<float>`
@@ -164,9 +172,9 @@ or semantic-relevance claims.
   grouping, deduplication, freshness checks, reranking, and presentation.
 - Application metadata filtering, authorization, transactions, backups, and
   record hydration remain the responsibility of the host application.
-- HNSW support is squared-L2-only and approximate. Cosine HNSW and
-  inner-product HNSW are not supported for 1.0; use exact-flat indexes for
-  those metrics.
+- Immutable HNSW support is approximate and limited to squared L2 and cosine.
+  HNSW inner product remains unsupported; use exact-flat indexes for
+  inner-product retrieval.
 - HNSW `Add` is build ingestion for an immutable graph, not upsert,
   replacement, delete, repair, direct graph mutation, or live graph update.
   HNSW indexes opened with `OpenReadOnly` are searchable but reject mutation.
@@ -179,10 +187,11 @@ or semantic-relevance claims.
   HNSW traversal remains approximate and unfiltered; non-allowed candidates are
   suppressed at emission and fewer than the requested number of results may be
   returned.
-- Read-only HNSW searches may overlap only over a logically frozen index or
-  generation with independent caller-owned result buffers and independent
-  workspaces. Concurrent mutation/search, concurrent checkpoint/search, and
-  shared scratch are not supported.
+- Read-only overlap is documented for squared-L2 HNSW only, over a logically
+  frozen index or generation with independent caller-owned result buffers and
+  independent workspaces. Concurrent mutation/search, concurrent
+  checkpoint/search, shared scratch, and HNSW cosine concurrency are not
+  supported.
 - The update-oriented HNSW mode does not mutate the graph in place. Delta rows
   are exact in-memory rows, deletes are tombstones, checkpoint/rebuild writes a
   new immutable HNSW snapshot after validation, and mutable overlay state is
@@ -200,11 +209,12 @@ or semantic-relevance claims.
 - The package-smoke evidence is functional package-consumer evidence. It is
   not a public performance, platform support, NativeAOT, trimming, or
   universal deployment claim.
-- `1.0.0` is the stable API compatibility line for the supported public API
-  surfaces described here. Except for the dedicated benchmark documents linked
-  above, this README does not make public HNSW recall, latency, throughput,
-  allocation, memory, capacity, storage-size, comparison, stable file-format,
-  production-readiness, platform support, NativeAOT, or trimming claims.
+- `1.2.0` is the stable package version for the supported public API surfaces
+  described here. Except for the dedicated benchmark documents linked above,
+  this README does not make public HNSW recall, latency, throughput,
+  allocation, memory, capacity, storage-size, update-profile, concurrency,
+  comparison, stable file-format, production-readiness, platform support,
+  NativeAOT, or trimming claims.
 
 ## Metric Selection
 
@@ -220,8 +230,8 @@ Use `VectorMetric.Cosine` when angle/direction should rank better. VecNet
 normalizes inserted and query vectors for cosine indexes, rejects zero vectors,
 and reports `1 - dot(normalizedQuery, normalizedStored)`.
 
-HNSW currently supports only squared L2. For cosine or inner-product retrieval,
-use exact flat or the exact-flat VectorData adapter.
+Immutable HNSW supports squared L2 and cosine. HNSW inner product remains
+unsupported. For inner-product retrieval, use exact flat.
 
 ## Optional VectorData Adapter
 
@@ -278,9 +288,14 @@ current live view, so deleted rows are not searchable in the saved output.
 
 ## HNSW
 
-`HnswIndex` is an approximate index for squared L2 only. Use
-`HnswIndexOptions` to choose build/search parameters, and pass a caller-owned
-`HnswSearchWorkspace` to every search.
+`HnswIndex` is an approximate index for squared L2 and cosine. HNSW inner
+product remains unsupported. The example below uses squared L2. Cosine uses
+the same immutable `HnswIndex` build/search and durable save/open surface, and
+it can also be wrapped by `HnswMutableIndex` for the update-oriented workflow
+described below.
+
+Use `HnswIndexOptions` to choose build/search parameters, and pass a
+caller-owned `HnswSearchWorkspace` to every search.
 
 ```csharp
 using VecNet;
@@ -303,8 +318,9 @@ Span<SearchResult> results = stackalloc SearchResult[2];
 int written = index.Search([0.9f, 0.1f, 0.0f], results, workspace);
 ```
 
-For caller-owned external-ID allowlist filtering, pass the allowlist to
-`Search` with the same caller-owned result buffer and workspace pattern.
+For squared-L2 or cosine caller-owned external-ID allowlist filtering, pass the
+allowlist to `Search` with the same caller-owned result buffer and workspace
+pattern.
 
 ```csharp
 ulong[] allowedIds = [1001, 1003];
@@ -316,10 +332,11 @@ int filteredWritten = index.Search(
 ```
 
 The allowlist contains application-owned external IDs. Unknown IDs are ignored
-and duplicates are coalesced. For selective allowlists within the configured
-`EfSearch` budget, VecNet uses exact filtered fallback. For broader allowlists,
-HNSW traversal remains approximate and may return fewer than the requested
-number of results even when exact filtered truth has enough live matches.
+and duplicates are coalesced. For selective squared-L2 or cosine allowlists
+within the configured `EfSearch` budget, VecNet uses exact filtered fallback.
+For broader allowlists, HNSW traversal remains approximate and may return
+fewer than the requested number of results even when exact filtered truth has
+enough live matches.
 
 For HNSW persistence, save to a new or empty directory and open it as read-only.
 
@@ -333,9 +350,10 @@ var openedWorkspace = opened.CreateSearchWorkspace();
 int openedWritten = opened.Search([0.9f, 0.1f, 0.0f], results, openedWorkspace);
 ```
 
-Opened HNSW indexes reject `Add`. HNSW callers own synchronization, result
-buffers, and workspaces; do not share a result buffer or workspace between
-overlapping searches.
+Opened HNSW indexes reject `Add`. HNSW callers own result buffers and
+workspaces. Do not share a result buffer or workspace between overlapping
+squared-L2 searches; this README does not claim overlapping-search support
+for cosine.
 
 ### HNSW Capacity, Workspace, And Scratch Guidance
 
@@ -345,30 +363,32 @@ row, graph, ID-map, and build-scratch storage for mutable/buildable HNSW
 instances. `Capacity` is storage reservation, not vector cardinality or a
 published supported scale limit.
 
-Buildable HNSW instances retain build scratch so additional `Add` operations
-can continue without a separate seal step. Applications that want to serve a
-logically frozen HNSW generation without build scratch should save the
-generation and open it with `OpenReadOnly`.
+Buildable squared-L2 and cosine HNSW instances retain build scratch so additional `Add`
+operations can continue without a separate seal step. Applications that want
+to serve a logically frozen HNSW generation without build scratch
+should save the generation and open it with `OpenReadOnly`.
 
-Create one `HnswSearchWorkspace` per overlapping search. Size immutable HNSW
-workspaces from the current `Count` and the configured `EfSearch`; recreate a
-workspace when either value can exceed the workspace's recorded capacity. High
-`EfSearch` values and high concurrent reader counts increase caller-owned
-workspace memory that the application must budget.
+Create one `HnswSearchWorkspace` per overlapping squared-L2 search. Size
+immutable HNSW workspaces from the current `Count` and the configured
+`EfSearch`; recreate a workspace when either value can exceed the workspace's
+recorded capacity. High `EfSearch` values and high concurrent squared-L2
+reader counts increase caller-owned workspace memory that the application must
+budget.
 
-`Save`, `OpenReadOnly`, and mutable checkpoint/rebuild operate over the index
-state and may need temporary memory and disk space while publishing or
-validating output. This README gives qualitative planning guidance only; it
-does not publish numeric memory, capacity, storage-size, latency, throughput,
-or recall claims.
+Squared-L2 and cosine `Save`, `OpenReadOnly`, and mutable checkpoint/rebuild operate
+over the index state and may need temporary memory and disk space while
+publishing or validating output. This README gives qualitative planning
+guidance only; it does not publish numeric memory, capacity, storage-size,
+latency, throughput, or recall claims.
 
 ## HNSW Update-Oriented Mode
 
-The HNSW update-oriented mode searches an immutable HNSW base plus exact
-in-memory delta rows. Deletes are represented as tombstones over base or delta
+The HNSW update-oriented mode is documented for squared L2 and cosine. It
+searches an immutable HNSW base plus exact in-memory delta rows with the same
+metric as the base. Deletes are represented as tombstones over base or delta
 IDs. Checkpoint rebuilds the current live view into a new immutable HNSW
-snapshot and publishes that rebuilt base in the current instance after
-validation.
+snapshot with the same metric and publishes that rebuilt base in the current
+instance after validation.
 
 ```csharp
 using VecNet;
@@ -407,13 +427,16 @@ overlay reopen.
 For planned mutable HNSW checkpoint/rebuild workflows, capacity-plan the HNSW
 base around the expected live row count after folding delta rows and
 tombstones. Mutable HNSW workspaces are tied to the wrapper generation and
-must be recreated after any generation-changing mutation or checkpoint.
+must be recreated after any generation-changing mutation or checkpoint. This
+README makes no public mutable-cosine benchmark, memory, capacity,
+update-profile, concurrency, NativeAOT, trimming, or platform claim.
 
 ### HNSW Saved-Index Growth Recipe
 
-Saved HNSW directories open as immutable read-only graph generations. To add
-or delete IDs after saving, create a new durable generation instead of editing
-the saved directory in place:
+Saved squared-L2 and cosine HNSW directories open as immutable read-only graph
+generations. To add or delete IDs after saving, create a new durable
+generation with the same supported metric instead of editing the saved
+directory in place:
 
 1. Open the saved HNSW directory with `HnswIndex.OpenReadOnly`.
 2. Create `new HnswMutableIndex(opened)`.

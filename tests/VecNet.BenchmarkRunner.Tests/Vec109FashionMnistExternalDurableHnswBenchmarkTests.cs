@@ -48,7 +48,6 @@ public sealed class Vec109FashionMnistExternalDurableHnswBenchmarkTests
     [InlineData("external-fashion-mnist-hnsw-durable", "--runs", "0")]
     [InlineData("external-fashion-mnist-hnsw-durable", "--runs", "6")]
     [InlineData("external-fashion-mnist-hnsw-durable", "--warmup-queries", "-1")]
-    [InlineData("external-fashion-mnist-hnsw-durable", "--metric", "Cosine")]
     [InlineData("external-fashion-mnist-hnsw-durable", "--m", "1")]
     [InlineData("external-fashion-mnist-hnsw-durable", "--m", "65")]
     [InlineData("external-fashion-mnist-hnsw-durable", "--m", "8", "--ef-construction", "7")]
@@ -61,6 +60,26 @@ public sealed class Vec109FashionMnistExternalDurableHnswBenchmarkTests
         ArgumentException exception = Assert.Throws<ArgumentException>(() => CommandLine.ParseExternalFashionMnistDurableHnsw(args));
 
         Assert.NotEmpty(exception.Message);
+    }
+
+    [Theory]
+    [InlineData("Cosine")]
+    [InlineData("cosine")]
+    public void ParseExternalFashionMnistDurableHnsw_AcceptsCosine(string metric)
+    {
+        FashionMnistExternalDurableHnswBenchmarkOptions options =
+            CommandLine.ParseExternalFashionMnistDurableHnsw(["external-fashion-mnist-hnsw-durable", "--metric", metric]);
+
+        Assert.Equal(VectorMetric.Cosine, options.Metric);
+    }
+
+    [Fact]
+    public void ParseExternalFashionMnistDurableHnsw_RejectsInnerProduct()
+    {
+        ArgumentException exception = Assert.Throws<ArgumentException>(() =>
+            CommandLine.ParseExternalFashionMnistDurableHnsw(["external-fashion-mnist-hnsw-durable", "--metric", "InnerProduct"]));
+
+        Assert.Contains("unsupported", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -217,6 +236,42 @@ public sealed class Vec109FashionMnistExternalDurableHnswBenchmarkTests
     }
 
     [Fact]
+    public void Run_WithSyntheticCosineAdmittedCache_EmitsDurableCosineParityReport()
+    {
+        FashionMnistAdmissionResult admission = RunSyntheticAdmission("cosine-report", baseCount: 32, queryCount: 5, truthDepth: 5, metric: VectorMetric.Cosine);
+        string cacheRoot = CacheRootFromManifest(admission.ManifestPath);
+        string outputPath = Path.Combine(cacheRoot, "..", "external-durable-hnsw-cosine-report.json");
+        string snapshotDirectory = Path.Combine(cacheRoot, "..", "external-durable-hnsw-cosine-snapshot");
+        var options = new FashionMnistExternalDurableHnswBenchmarkOptions(
+            cacheRoot,
+            outputPath,
+            snapshotDirectory,
+            QueryCount: 3,
+            TopK: 5,
+            Runs: 1,
+            WarmupQueries: 1,
+            VectorMetric.Cosine,
+            M: 4,
+            EfConstruction: 16,
+            EfSearch: 16,
+            HnswSeed: 0x0000000000012390UL);
+
+        ExternalDurableHnswBenchmarkReport report =
+            FashionMnistExternalDurableHnswBenchmarkScenario.Run(options, ["external-fashion-mnist-hnsw-durable", "--metric", "Cosine"]);
+
+        Assert.Equal("fashion-mnist-784-cosine", report.Dataset.DatasetId);
+        Assert.Equal("Cosine", report.Workload.VecNetMetric);
+        Assert.Equal("Cosine", report.Index.Metric);
+        Assert.Equal("Cosine", report.DurableWorkload.Metric);
+        Assert.Equal("vecnet-scalar-reference-cosine", report.Truth.Kind);
+        Assert.Contains("canonical cosine", report.Truth.DistanceSemantics, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("passed", report.Metrics.SourceHnsw.DistanceToleranceStatus);
+        Assert.Equal("passed", report.Metrics.OpenedHnsw.DistanceToleranceStatus);
+        Assert.Equal("passed", report.Validation.Status);
+        Assert.True(report.Validation.SourceOpenedParity.AllResultsMatched);
+    }
+
+    [Fact]
     public void Program_UnsupportedDownloadOptionDoesNotRunAdmissionOrWriteArtifacts()
     {
         string cacheRoot = CreateArtifactDirectory("program-no-download");
@@ -308,11 +363,16 @@ public sealed class Vec109FashionMnistExternalDurableHnswBenchmarkTests
         Assert.Equal(0, metrics.ReturnedResultIntegrity.DistanceMismatchCount);
     }
 
-    private static FashionMnistAdmissionResult RunSyntheticAdmission(string prefix, int baseCount, int queryCount, int truthDepth)
+    private static FashionMnistAdmissionResult RunSyntheticAdmission(
+        string prefix,
+        int baseCount,
+        int queryCount,
+        int truthDepth,
+        VectorMetric metric = VectorMetric.SquaredEuclidean)
     {
         string cacheRoot = CreateArtifactDirectory(prefix);
         FashionMnistDatasetSpecification spec = WriteSyntheticRawFiles(cacheRoot, baseCount, queryCount, rows: 4, columns: 4);
-        var options = new FashionMnistExternalDatasetOptions(cacheRoot, QueryCount: queryCount, TruthDepth: truthDepth, DownloadRawFiles: false);
+        var options = new FashionMnistExternalDatasetOptions(cacheRoot, QueryCount: queryCount, TruthDepth: truthDepth, DownloadRawFiles: false, metric);
         return FashionMnistExternalDatasetScenario.Run(options, ["external-fashion-mnist", "--download", "false"], spec);
     }
 

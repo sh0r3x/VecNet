@@ -24,6 +24,7 @@ public sealed class Vec150HnswAllowlistFilteringMatrixIndependentTests
                     "--DUPLICATE-INSERTS", "2",
                     "--UNKNOWN-DELETES", "3",
                     "--REPEATED-DELETES", "4",
+                    "--METRIC", "COSINE",
                     "--OUTPUT-DIR", outputDirectory,
                     "--MANIFEST", manifestPath
                 ]);
@@ -36,6 +37,7 @@ public sealed class Vec150HnswAllowlistFilteringMatrixIndependentTests
         Assert.Equal(2, options.DuplicateInsertAttempts);
         Assert.Equal(3, options.UnknownDeleteAttempts);
         Assert.Equal(4, options.RepeatedDeleteAttempts);
+        Assert.Equal(VectorMetric.Cosine, options.Metric);
         Assert.Equal(outputDirectory, options.OutputDirectory);
         Assert.Equal(manifestPath, options.ManifestPath);
     }
@@ -73,7 +75,14 @@ public sealed class Vec150HnswAllowlistFilteringMatrixIndependentTests
             () => CommandLine.ParseHnswAllowlistFilteringMatrix(
                 [HnswAllowlistFilteringMatrixOptions.ScenarioName, option, value]));
 
-        Assert.Contains(option.TrimStart('-'), exception.Message, StringComparison.OrdinalIgnoreCase);
+        if (option.Equals("--metric", StringComparison.OrdinalIgnoreCase))
+        {
+            Assert.Contains("supports", exception.Message, StringComparison.OrdinalIgnoreCase);
+        }
+        else
+        {
+            Assert.Contains(option.TrimStart('-'), exception.Message, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     [Fact]

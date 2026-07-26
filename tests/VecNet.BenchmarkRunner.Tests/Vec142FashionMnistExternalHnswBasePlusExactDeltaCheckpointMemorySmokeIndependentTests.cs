@@ -28,7 +28,8 @@ public sealed class Vec142FashionMnistExternalHnswBasePlusExactDeltaCheckpointMe
                     "--CACHE-ROOT", "CacheRoot",
                     "--OUTPUT", Path.Combine(root, "report.json"),
                     "--CHECKPOINT-DIRECTORY", Path.Combine(root, "checkpoint-output"),
-                    "--SAMPLE-INTERVAL-MS", "1000"
+                    "--SAMPLE-INTERVAL-MS", "1000",
+                    "--METRIC", "COSINE"
                 ]);
 
         Assert.Equal("CacheRoot", parsed.CacheRoot);
@@ -43,7 +44,8 @@ public sealed class Vec142FashionMnistExternalHnswBasePlusExactDeltaCheckpointMe
         Assert.Equal(57_900, parsed.LiveVectorCount);
         Assert.Equal(1_100, parsed.DeletedReservedIdCount);
         Assert.Equal(3, parsed.WarmupQueries);
-        Assert.Equal(VectorMetric.SquaredEuclidean, parsed.Metric);
+        Assert.Equal(VectorMetric.Cosine, parsed.Metric);
+        Assert.Equal("fashion-mnist-784-cosine", FashionMnistDatasetSpecification.GetDatasetId(parsed.Metric));
         Assert.Equal(16, parsed.M);
         Assert.Equal(128, parsed.EfConstruction);
         Assert.Equal(192, parsed.EfSearch);
@@ -51,7 +53,6 @@ public sealed class Vec142FashionMnistExternalHnswBasePlusExactDeltaCheckpointMe
 
     [Theory]
     [InlineData("--dimension", "784")]
-    [InlineData("--metric", "cosine")]
     [InlineData("--query-count", "1")]
     [InlineData("--queries", "1")]
     [InlineData("--top-k", "1")]
@@ -103,6 +104,7 @@ public sealed class Vec142FashionMnistExternalHnswBasePlusExactDeltaCheckpointMe
     }
 
     [Theory]
+    [InlineData("--metric", "inner-product")]
     [InlineData("--sample-interval-ms", "not-a-number")]
     [InlineData("--sample-interval-ms", "-1")]
     [InlineData("--sample-interval-ms", "0")]

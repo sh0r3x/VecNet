@@ -34,7 +34,7 @@ public sealed class Vec151FashionMnistExternalHnswAllowlistFilteringIndependentT
                     "--FILTER", "FALLBACK-BOUNDARY",
                     "--RUNS", "5",
                     "--WARMUP-QUERIES", "0",
-                    "--METRIC", "SQUARED-EUCLIDEAN",
+                    "--METRIC", "COSINE",
                     "--SEED", "0xFFFFFFFF",
                     "--M", "64",
                     "--EF-CONSTRUCTION", "4096",
@@ -44,7 +44,8 @@ public sealed class Vec151FashionMnistExternalHnswAllowlistFilteringIndependentT
 
         Assert.Equal("cache-root", options.CacheRoot);
         Assert.Equal("fallback-boundary", options.FilterProfile);
-        Assert.Equal(VectorMetric.SquaredEuclidean, options.Metric);
+        Assert.Equal(VectorMetric.Cosine, options.Metric);
+        Assert.Equal("fashion-mnist-784-cosine", FashionMnistDatasetSpecification.GetDatasetId(options.Metric));
         Assert.Equal(4_097, options.PhysicalCandidateVectorCount);
         Assert.Equal(4_097, options.LiveVectorCount);
         Assert.Equal(4_096, options.TopK);
@@ -98,7 +99,6 @@ public sealed class Vec151FashionMnistExternalHnswAllowlistFilteringIndependentT
     [InlineData("--runs", "6")]
     [InlineData("--warmup-queries", "-1")]
     [InlineData("--metric", "InnerProduct")]
-    [InlineData("--metric", "Cosine")]
     [InlineData("--filter", "all")]
     [InlineData("--filter", "very-selective")]
     [InlineData("--top-k", "5", "--ef-search", "4")]

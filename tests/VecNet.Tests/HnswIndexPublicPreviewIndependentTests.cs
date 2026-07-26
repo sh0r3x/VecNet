@@ -94,18 +94,17 @@ public sealed class HnswIndexPublicPreviewIndependentTests
     }
 
     [Fact]
-    public void PublicConstruction_UnsupportedMetricsFailForDefaultAndExplicitOptions()
+    public void PublicConstruction_InnerProductFailsAndCosineIsAcceptedForDefaultAndExplicitOptions()
     {
-        foreach (VectorMetric metric in new[] { VectorMetric.InnerProduct, VectorMetric.Cosine })
-        {
-            NotSupportedException defaultException = Assert.Throws<NotSupportedException>(
-                () => new HnswIndex(3, metric));
-            NotSupportedException explicitException = Assert.Throws<NotSupportedException>(
-                () => new HnswIndex(3, metric, HnswIndexOptions.Default));
+        NotSupportedException defaultException = Assert.Throws<NotSupportedException>(
+            () => new HnswIndex(3, VectorMetric.InnerProduct));
+        NotSupportedException explicitException = Assert.Throws<NotSupportedException>(
+            () => new HnswIndex(3, VectorMetric.InnerProduct, HnswIndexOptions.Default));
 
-            Assert.Contains("squared Euclidean", defaultException.Message, StringComparison.OrdinalIgnoreCase);
-            Assert.Contains("squared Euclidean", explicitException.Message, StringComparison.OrdinalIgnoreCase);
-        }
+        Assert.Contains("inner product", defaultException.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("inner product", explicitException.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(VectorMetric.Cosine, new HnswIndex(3, VectorMetric.Cosine).Metric);
+        Assert.Equal(VectorMetric.Cosine, new HnswIndex(3, VectorMetric.Cosine, HnswIndexOptions.Default).Metric);
     }
 
     [Fact]

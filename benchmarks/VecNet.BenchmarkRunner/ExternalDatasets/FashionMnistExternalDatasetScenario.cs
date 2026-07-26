@@ -17,6 +17,7 @@ public static class FashionMnistExternalDatasetScenario
         IReadOnlyList<string> commandArguments,
         FashionMnistDatasetSpecification spec)
     {
+        spec = spec.WithMetricIdentity(options.Metric);
         ValidateOptions(options, spec);
 
         DatasetPaths paths = DatasetPaths.Create(options.CacheRoot, spec.DatasetId);
@@ -36,6 +37,11 @@ public static class FashionMnistExternalDatasetScenario
 
         float[] baseVectors = DenseFloat32Matrix.ConvertImages(baseImages);
         float[] queryVectors = DenseFloat32Matrix.ConvertImages(queryImages);
+        if (options.Metric == VectorMetric.Cosine)
+        {
+            FashionMnistExactTruth.ValidateNonZeroRows(baseVectors, spec.BaseCount, spec.Dimension, "base");
+            FashionMnistExactTruth.ValidateNonZeroRows(queryVectors, options.QueryCount, spec.Dimension, "query");
+        }
 
         DenseFloat32Matrix.Write(paths.BaseMatrixPath, spec.BaseCount, spec.Dimension, baseVectors);
         DenseFloat32Matrix.Write(paths.QueryMatrixPath, spec.QueryCount, spec.Dimension, queryVectors);
@@ -53,7 +59,7 @@ public static class FashionMnistExternalDatasetScenario
             "VecNetDenseFloat32MatrixConversion",
             "0.1",
             spec.DatasetId,
-            TaskId,
+            GetTaskId(options.Metric),
             DenseFloat32Matrix.SchemaName,
             DenseFloat32Matrix.SchemaVersion,
             "little-endian",
@@ -74,7 +80,8 @@ public static class FashionMnistExternalDatasetScenario
             spec.QueryCount,
             spec.Dimension,
             options.QueryCount,
-            options.TruthDepth);
+            options.TruthDepth,
+            options.Metric);
         var truthArtifact = FashionMnistExactTruth.CreateArtifact(
             spec.DatasetId,
             truth,
@@ -82,11 +89,13 @@ public static class FashionMnistExternalDatasetScenario
             options.QueryCount,
             spec.Dimension,
             rawFiles.Select(file => file.ComputedSha256).ToArray(),
-            ConverterIdentity);
+            ConverterIdentity,
+            options.Metric,
+            GetTaskId(options.Metric));
         ReportWriter.WriteJson(truthArtifact, paths.TruthPath);
         string truthSha256 = FileChecksum.ComputeSha256(paths.TruthPath);
 
-        SearchResult[][] actual = ValidateExactIndex(baseVectors, queryVectors, spec.BaseCount, options.QueryCount, spec.Dimension, options.TruthDepth);
+        SearchResult[][] actual = ValidateExactIndex(baseVectors, queryVectors, spec.BaseCount, options.QueryCount, spec.Dimension, options.TruthDepth, options.Metric);
         validationStopwatch.Stop();
 
         ResultComparison comparison = ResultComparer.Compare(
@@ -94,7 +103,7 @@ public static class FashionMnistExternalDatasetScenario
             actual,
             options.TruthDepth,
             spec.Dimension,
-            VectorMetric.SquaredEuclidean);
+            options.Metric);
         int extraResultCount = CountExtraResults(truth, actual, options.TruthDepth);
 
         ExternalExactValidationEvidence evidence = CreateEvidence(
@@ -147,6 +156,11 @@ public static class FashionMnistExternalDatasetScenario
         {
             throw new ArgumentException($"Truth depth must be in the range 1..{spec.BaseCount}.", nameof(options));
         }
+
+        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.Cosine))
+        {
+            throw new ArgumentException("Fashion-MNIST external admission supports only SquaredEuclidean and Cosine.", nameof(options));
+        }
     }
 
     private static void EnsureRawFiles(DatasetPaths paths, FashionMnistDatasetSpecification spec, bool downloadRawFiles)
@@ -186,9 +200,10 @@ public static class FashionMnistExternalDatasetScenario
         int baseCount,
         int queryCount,
         int dimension,
-        int truthDepth)
+        int truthDepth,
+        VectorMetric metric)
     {
-        var index = new ExactFlatIndex(dimension, VectorMetric.SquaredEuclidean);
+        var index = new ExactFlatIndex(dimension, metric);
         for (int baseRow = 0; baseRow < baseCount; baseRow++)
         {
             index.Add((ulong)baseRow, baseVectors.Slice(baseRow * dimension, dimension));
@@ -239,7 +254,7 @@ public static class FashionMnistExternalDatasetScenario
         return new ExternalExactValidationEvidence(
             "VecNet.ExternalExactValidation",
             "0.1",
-            TaskId,
+            GetTaskId(options.Metric),
             spec.DatasetId,
             rawFiles.Select(file => file.SourceUrl).ToArray(),
             rawFiles.Select(file => file.ComputedSha256).ToArray(),
@@ -248,8 +263,8 @@ public static class FashionMnistExternalDatasetScenario
             options.QueryCount,
             options.TruthDepth,
             "public ExactFlatIndex",
-            nameof(VectorMetric.SquaredEuclidean),
-            "euclidean",
+            options.Metric.ToString(),
+            GetUpstreamMetricName(options.Metric),
             new ExternalValidationOutcome(
                 status,
                 comparison.RecallAtK,
@@ -257,7 +272,7 @@ public static class FashionMnistExternalDatasetScenario
                 comparison.MissingResultCount,
                 extraResultCount,
                 comparison.DistanceMismatchCount),
-            "D-026 squared-L2 tolerance used by ResultComparer; ordering requires exact ID order agreement for the selected truth depth.",
+            GetDistanceTolerancePolicy(options.Metric),
             new ExternalWorkflowTiming(
                 "privateWorkflowDiagnostic",
                 validationElapsedMilliseconds,
@@ -294,7 +309,7 @@ public static class FashionMnistExternalDatasetScenario
             "VecNet.ExternalDatasetManifest",
             "0.1",
             spec.DatasetId,
-            TaskId,
+            GetTaskId(options.Metric),
             new ExternalDatasetSource(
                 spec.MaintainerUrl,
                 spec.DownloadRoot,
@@ -323,10 +338,10 @@ public static class FashionMnistExternalDatasetScenario
                 "uint8-source",
                 "float32"),
             new ExternalDatasetMetric(
-                "euclidean",
-                nameof(VectorMetric.SquaredEuclidean),
-                "Euclidean and squared Euclidean preserve nearest-neighbor order for non-negative distances.",
-                "VecNet private evidence records canonical squared distances."),
+                GetUpstreamMetricName(options.Metric),
+                options.Metric.ToString(),
+                GetMetricRankingNote(options.Metric),
+                GetMetricDistanceNote(options.Metric)),
             rawFiles.Select(file => new ExternalRawFileManifestEntry(
                 file.FileName,
                 file.SourceUrl,
@@ -347,12 +362,12 @@ public static class FashionMnistExternalDatasetScenario
                 "deterministic row-major little-endian matrix bytes from verified raw SHA-256 inputs",
                 convertedMatrices),
             new TruthManifestSummary(
-                FashionMnistExactTruth.Kind,
+                FashionMnistExactTruth.Kind(options.Metric),
                 paths.RelativeTruthPath,
                 truthSha256,
                 options.QueryCount,
                 options.TruthDepth,
-                FashionMnistExactTruth.TiePolicy),
+                FashionMnistExactTruth.TiePolicy(options.Metric)),
             new EvidenceManifestSummary(
                 paths.RelativeEvidencePath,
                 evidenceSha256,
@@ -364,8 +379,32 @@ public static class FashionMnistExternalDatasetScenario
                 "Private Fashion-MNIST admission evidence only; not a public benchmark claim.",
                 "Only the four official Fashion-MNIST raw IDX gzip files are supported by VEC-023.",
                 "Labels are recorded as private metadata only and are absent from converted vector matrices and truth artifacts.",
+                options.Metric == VectorMetric.Cosine
+                    ? "Cosine evidence validates all selected base/query rows are nonzero and stores unnormalized float32 pixel vectors."
+                    : "Squared-L2 behavior and existing Fashion-MNIST euclidean identity are preserved.",
                 "ANN-Benchmarks HDF5 import, ANN algorithms, public summaries, hard regression gates and resident/process memory comparison are out of scope."
             ]);
+
+    private static string GetTaskId(VectorMetric metric) =>
+        metric == VectorMetric.Cosine ? "VEC-239" : TaskId;
+
+    private static string GetUpstreamMetricName(VectorMetric metric) =>
+        metric == VectorMetric.Cosine ? "cosine" : "euclidean";
+
+    private static string GetMetricRankingNote(VectorMetric metric) =>
+        metric == VectorMetric.Cosine
+            ? "Cosine ranks by ascending canonical distance over VecNet-normalized vectors."
+            : "Euclidean and squared Euclidean preserve nearest-neighbor order for non-negative distances.";
+
+    private static string GetMetricDistanceNote(VectorMetric metric) =>
+        metric == VectorMetric.Cosine
+            ? "VecNet private evidence records canonical cosine distances: 1 - dot(normalizedQuery, normalizedBase)."
+            : "VecNet private evidence records canonical squared distances.";
+
+    private static string GetDistanceTolerancePolicy(VectorMetric metric) =>
+        metric == VectorMetric.Cosine
+            ? "ResultComparer non-squared-L2 tolerance is used for canonical cosine distance; ordering requires exact ID order agreement for the selected truth depth."
+            : "D-026 squared-L2 tolerance used by ResultComparer; ordering requires exact ID order agreement for the selected truth depth.";
 
     private sealed record DatasetPaths(
         string CacheRoot,
@@ -390,7 +429,7 @@ public static class FashionMnistExternalDatasetScenario
 
         public static DatasetPaths Create(string cacheRoot, string datasetId)
         {
-            string raw = Path.Combine(cacheRoot, "raw", datasetId);
+            string raw = Path.Combine(cacheRoot, "raw", FashionMnistDatasetSpecification.RawDatasetId);
             string converted = Path.Combine(cacheRoot, "converted", datasetId);
             string truth = Path.Combine(cacheRoot, "truth", datasetId);
             string manifests = Path.Combine(cacheRoot, "manifests", datasetId);
@@ -411,7 +450,7 @@ public static class FashionMnistExternalDatasetScenario
                 Path.Combine(evidence, "exact-validation.json"));
         }
 
-        public string RelativeRawPath(string fileName) => Relative("raw", DatasetId, fileName);
+        public string RelativeRawPath(string fileName) => Relative("raw", FashionMnistDatasetSpecification.RawDatasetId, fileName);
 
         private static string Relative(params string[] parts) => string.Join('/', parts);
     }

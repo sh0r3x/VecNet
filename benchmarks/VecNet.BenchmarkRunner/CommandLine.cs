@@ -2221,8 +2221,9 @@ public static class CommandLine
         int queryCount = GetPositiveInt(values, "query-count", defaults.QueryCount);
         int truthDepth = GetPositiveInt(values, "truth-depth", defaults.TruthDepth);
         bool download = GetBoolean(values, "download", defaults.DownloadRawFiles);
+        VectorMetric metric = GetExternalFashionMnistMetric(values, "metric", defaults.Metric);
 
-        return new FashionMnistExternalDatasetOptions(cacheRoot, queryCount, truthDepth, download);
+        return new FashionMnistExternalDatasetOptions(cacheRoot, queryCount, truthDepth, download, metric);
     }
 
     public static FashionMnistExternalExactBenchmarkOptions ParseExternalFashionMnistExact(IReadOnlyList<string> args)
@@ -3197,7 +3198,8 @@ public static class CommandLine
         string.Equals(name, "cache-root", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "query-count", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "truth-depth", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(name, "download", StringComparison.OrdinalIgnoreCase);
+        string.Equals(name, "download", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedExternalFashionMnistExactOption(string name) =>
         string.Equals(name, "cache-root", StringComparison.OrdinalIgnoreCase) ||
@@ -3567,6 +3569,12 @@ public static class CommandLine
             string.Equals(value, nameof(VectorMetric.SquaredEuclidean), StringComparison.OrdinalIgnoreCase))
         {
             return VectorMetric.SquaredEuclidean;
+        }
+
+        if (string.Equals(value, "cosine", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(value, nameof(VectorMetric.Cosine), StringComparison.OrdinalIgnoreCase))
+        {
+            return VectorMetric.Cosine;
         }
 
         throw new ArgumentException($"Option --{name} has unsupported value '{value}'.");

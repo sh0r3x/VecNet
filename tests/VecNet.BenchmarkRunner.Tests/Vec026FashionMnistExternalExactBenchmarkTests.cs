@@ -30,7 +30,6 @@ public sealed class Vec026FashionMnistExternalExactBenchmarkTests
     [InlineData("external-fashion-mnist-exact", "--runs", "0")]
     [InlineData("external-fashion-mnist-exact", "--runs", "6")]
     [InlineData("external-fashion-mnist-exact", "--warmup-queries", "-1")]
-    [InlineData("external-fashion-mnist-exact", "--metric", "Cosine")]
     [InlineData("external-fashion-mnist-exact", "--cache-root", "")]
     [InlineData("external-fashion-mnist-exact", "--output", "")]
     public void ParseExternalFashionMnistExact_RejectsInvalidCommandLines(params string[] args)
@@ -38,6 +37,26 @@ public sealed class Vec026FashionMnistExternalExactBenchmarkTests
         ArgumentException exception = Assert.Throws<ArgumentException>(() => CommandLine.ParseExternalFashionMnistExact(args));
 
         Assert.NotEmpty(exception.Message);
+    }
+
+    [Theory]
+    [InlineData("Cosine")]
+    [InlineData("cosine")]
+    public void ParseExternalFashionMnistExact_AcceptsCosine(string metric)
+    {
+        FashionMnistExternalExactBenchmarkOptions options =
+            CommandLine.ParseExternalFashionMnistExact(["external-fashion-mnist-exact", "--metric", metric]);
+
+        Assert.Equal(VectorMetric.Cosine, options.Metric);
+    }
+
+    [Fact]
+    public void ParseExternalFashionMnistExact_RejectsInnerProduct()
+    {
+        ArgumentException exception = Assert.Throws<ArgumentException>(() =>
+            CommandLine.ParseExternalFashionMnistExact(["external-fashion-mnist-exact", "--metric", "InnerProduct"]));
+
+        Assert.Contains("unsupported", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -110,6 +129,37 @@ public sealed class Vec026FashionMnistExternalExactBenchmarkTests
     }
 
     [Fact]
+    public void Run_WithSyntheticCosineAdmittedCache_UsesCosineTruthAndDistances()
+    {
+        FashionMnistAdmissionResult admission = RunSyntheticAdmission("cosine-report", VectorMetric.Cosine);
+        string cacheRoot = CacheRootFromManifest(admission.ManifestPath);
+        string outputPath = Path.Combine(cacheRoot, "..", "exact-cosine-report.json");
+        var options = new FashionMnistExternalExactBenchmarkOptions(
+            cacheRoot,
+            outputPath,
+            QueryCount: 2,
+            TopK: 2,
+            Runs: 1,
+            WarmupQueries: 1,
+            VectorMetric.Cosine);
+
+        ExternalBenchmarkReport report = FashionMnistExternalExactBenchmarkScenario.Run(
+            options,
+            ["external-fashion-mnist-exact", "--metric", "Cosine"]);
+
+        Assert.Equal("fashion-mnist-784-cosine", report.Dataset.DatasetId);
+        Assert.Equal("Cosine", report.Workload.VecNetMetric);
+        Assert.Equal("Cosine", report.Index.Metric);
+        Assert.Equal("vecnet-scalar-reference-cosine", report.Truth.Kind);
+        Assert.Contains("canonical cosine", report.Truth.DistanceSemantics, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("passed", report.Validation.Status);
+        Assert.Equal(1.0, report.Metrics.RecallAtK);
+        Assert.Equal(1.0, report.Metrics.OrderedAgreement);
+        Assert.Equal(0, report.Metrics.DistanceMismatchCount);
+        Assert.Equal(admission.Manifest.Truth.Sha256, report.Truth.Sha256);
+    }
+
+    [Fact]
     public void Run_MissingManifest_FailsWithoutCreatingReport()
     {
         string cacheRoot = CreateArtifactDirectory("missing-manifest");
@@ -179,11 +229,11 @@ public sealed class Vec026FashionMnistExternalExactBenchmarkTests
         Assert.False(comparison.RegressionGateEligible);
     }
 
-    private static FashionMnistAdmissionResult RunSyntheticAdmission(string prefix)
+    private static FashionMnistAdmissionResult RunSyntheticAdmission(string prefix, VectorMetric metric = VectorMetric.SquaredEuclidean)
     {
         string cacheRoot = CreateArtifactDirectory(prefix);
         FashionMnistDatasetSpecification spec = WriteSyntheticRawFiles(cacheRoot);
-        var options = new FashionMnistExternalDatasetOptions(cacheRoot, QueryCount: 2, TruthDepth: 2, DownloadRawFiles: false);
+        var options = new FashionMnistExternalDatasetOptions(cacheRoot, QueryCount: 2, TruthDepth: 2, DownloadRawFiles: false, metric);
         return FashionMnistExternalDatasetScenario.Run(options, ["external-fashion-mnist"], spec);
     }
 
@@ -200,7 +250,7 @@ public sealed class Vec026FashionMnistExternalExactBenchmarkTests
         string queryLabels = Path.Combine(rawDirectory, "t10k-labels-idx1-ubyte.gz");
 
         File.WriteAllBytes(trainImages, CreateImageIdxGzip(4, 2, 2, [
-            0, 0, 0, 0,
+            1, 0, 0, 0,
             1, 0, 0, 0,
             0, 1, 0, 0,
             9, 9, 9, 9

@@ -95,23 +95,25 @@ public static class FashionMnistExternalDurableHnswBenchmarkScenario
             finalSourceResults,
             options.TopK,
             dataset.Dimension,
-            VectorMetric.SquaredEuclidean);
+            options.Metric);
         ResultComparison openedComparison = ResultComparer.Compare(
             truth,
             finalOpenedResults,
             options.TopK,
             dataset.Dimension,
-            VectorMetric.SquaredEuclidean);
+            options.Metric);
         HnswReturnedResultIntegrityInfo sourceIntegrity = FashionMnistExternalHnswBenchmarkScenario.ValidateReturnedResults(
             dataset,
             finalSourceResults,
             options.QueryCount,
-            options.TopK);
+            options.TopK,
+            options.Metric);
         HnswReturnedResultIntegrityInfo openedIntegrity = FashionMnistExternalHnswBenchmarkScenario.ValidateReturnedResults(
             dataset,
             finalOpenedResults,
             options.QueryCount,
-            options.TopK);
+            options.TopK,
+            options.Metric);
         DurableHnswParityInfo parity = CompareSourceOpenedParity(finalSourceResults, finalOpenedResults);
         DurableHnswReadOnlyMutationInfo readOnlyMutation = ValidateOpenedReadOnlyMutation(finalOpenedIndex);
         DurableHnswSnapshotOutputInfo snapshotOutput = InspectSnapshotOutput(finalSnapshotDirectory, dataset.BaseCount);
@@ -193,7 +195,7 @@ public static class FashionMnistExternalDurableHnswBenchmarkScenario
                 dataset.Truth.TruthDepth,
                 options.TopK,
                 dataset.Truth.TiePolicy,
-                "VecNet canonical squared distances for the external Euclidean ranking convention",
+                FashionMnistExactTruth.DistanceSemantics(options.Metric),
                 dataset.Truth.SourceRawSha256),
             new ScenarioInfo(
                 FashionMnistExternalDurableHnswBenchmarkOptions.ScenarioName,
@@ -216,7 +218,7 @@ public static class FashionMnistExternalDurableHnswBenchmarkScenario
                 options.EfSearch,
                 FormatHex(options.HnswSeed),
                 "admitted base matrix row order, external ids 0..baseCount-1",
-                "SquaredEuclidean only"),
+                $"{options.Metric} only"),
             new DurableHnswWorkloadInfo(
                 options.Metric.ToString(),
                 dataset.Dimension,
@@ -366,7 +368,7 @@ public static class FashionMnistExternalDurableHnswBenchmarkScenario
         var hnswOptions = new HnswIndexOptions(options.M, options.EfConstruction, options.EfSearch, options.HnswSeed);
         long allocationStart = GC.GetAllocatedBytesForCurrentThread();
         long start = Stopwatch.GetTimestamp();
-        var index = new HnswIndex(dataset.Dimension, VectorMetric.SquaredEuclidean, hnswOptions);
+        var index = new HnswIndex(dataset.Dimension, options.Metric, hnswOptions);
         for (int row = 0; row < dataset.BaseCount; row++)
         {
             index.Add((ulong)row, dataset.GetBaseVector(row));
@@ -600,7 +602,7 @@ public static class FashionMnistExternalDurableHnswBenchmarkScenario
             integrity.DistanceMismatchCount,
             integrity,
             "set recall@k = returned IDs intersect loaded exact truth top-k IDs divided by min(k, truth depth), summed across measured queries",
-            "Every returned external durable-HNSW result is checked for finite distance, no duplicate ID within its query, admitted base-row ID membership and squared-L2 distance matching recomputation for that returned ID/query within the accepted D-026 tolerance; exact top-k recall/order are recorded but not required.");
+            "Every returned external durable-HNSW result is checked for finite distance, no duplicate ID within its query, admitted base-row ID membership and selected-metric distance matching recomputation for that returned ID/query within the accepted ResultComparer tolerance; exact top-k recall/order are recorded but not required.");
 
     private static DurableHnswOperationMeasurementInfo CreateOperationMeasurement(
         string name,
@@ -874,9 +876,9 @@ public static class FashionMnistExternalDurableHnswBenchmarkScenario
             throw new ArgumentException("Snapshot directory must not be empty.", nameof(options));
         }
 
-        if (options.Metric != VectorMetric.SquaredEuclidean)
+        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.Cosine))
         {
-            throw new ArgumentException("external-fashion-mnist-hnsw-durable supports only SquaredEuclidean.", nameof(options));
+            throw new ArgumentException("external-fashion-mnist-hnsw-durable supports only SquaredEuclidean and Cosine.", nameof(options));
         }
 
         if (options.QueryCount <= 0)

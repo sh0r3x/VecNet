@@ -117,7 +117,7 @@ public static class FashionMnistExternalExactBenchmarkScenario
                 dataset.Truth.TruthDepth,
                 options.TopK,
                 dataset.Truth.TiePolicy,
-                "VecNet canonical squared distances for the external Euclidean ranking convention",
+                FashionMnistExactTruth.DistanceSemantics(options.Metric),
                 dataset.Truth.SourceRawSha256),
             new ScenarioInfo(
                 FashionMnistExternalExactBenchmarkOptions.ScenarioName,
@@ -215,7 +215,7 @@ public static class FashionMnistExternalExactBenchmarkScenario
     private static LoadedExternalDataset LoadAndValidateDataset(FashionMnistExternalExactBenchmarkOptions options)
     {
         ValidateOptions(options);
-        DatasetPaths paths = DatasetPaths.Create(options.CacheRoot, FashionMnistDatasetSpecification.Official.DatasetId);
+        DatasetPaths paths = DatasetPaths.Create(options.CacheRoot, FashionMnistDatasetSpecification.GetDatasetId(options.Metric));
         string manifestPath = paths.ManifestPath;
         if (!File.Exists(manifestPath))
         {
@@ -226,7 +226,7 @@ public static class FashionMnistExternalExactBenchmarkScenario
         ExternalDatasetManifest manifest = ReportWriter.Deserialize<ExternalDatasetManifest>(manifestJson)
             ?? throw new InvalidDataException("External dataset manifest JSON could not be deserialized.");
         string manifestSha256 = FileChecksum.ComputeSha256(manifestPath);
-        ValidateManifest(manifest);
+        ValidateManifest(manifest, options.Metric);
 
         string conversionManifestPath = ResolveCacheRelativePath(options.CacheRoot, manifest.Conversion.ManifestRelativePath);
         RequireExistingFile(conversionManifestPath, "conversion manifest");
@@ -247,6 +247,7 @@ public static class FashionMnistExternalExactBenchmarkScenario
 
         float[] baseVectors = DenseFloat32Matrix.Read(baseMatrixPath, (ulong)baseEntry.RowCount, (uint)baseEntry.Dimension);
         float[] queryVectors = DenseFloat32Matrix.Read(queryMatrixPath, (ulong)queryEntry.RowCount, (uint)queryEntry.Dimension);
+        ValidateCosineSelectedRows(options.Metric, baseVectors, queryVectors, baseEntry.RowCount, queryEntry.RowCount, baseEntry.Dimension, options.QueryCount, options.WarmupQueries);
 
         string truthPath = ResolveCacheRelativePath(options.CacheRoot, manifest.Truth.RelativePath);
         ValidateFileSha256(truthPath, manifest.Truth.Sha256, "truth artifact");
@@ -299,18 +300,19 @@ public static class FashionMnistExternalExactBenchmarkScenario
             throw new ArgumentException("warmup queries must be non-negative.", nameof(options));
         }
 
-        if (options.Metric != VectorMetric.SquaredEuclidean)
+        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.Cosine))
         {
-            throw new ArgumentException("The Fashion-MNIST external exact benchmark supports only squared-euclidean metric mapping.", nameof(options));
+            throw new ArgumentException("The Fashion-MNIST external exact benchmark supports only squared-euclidean and cosine metric mapping.", nameof(options));
         }
     }
 
-    private static void ValidateManifest(ExternalDatasetManifest manifest)
+    private static void ValidateManifest(ExternalDatasetManifest manifest, VectorMetric metric)
     {
         Require(manifest.SchemaName == "VecNet.ExternalDatasetManifest", "External dataset manifest schemaName must be VecNet.ExternalDatasetManifest.");
         Require(manifest.SchemaVersion == "0.1", "External dataset manifest schemaVersion must be 0.1.");
-        Require(manifest.DatasetId == FashionMnistDatasetSpecification.Official.DatasetId, "External dataset manifest datasetId must be fashion-mnist-784-euclidean.");
-        Require(manifest.Metric.VecNetMetric == nameof(VectorMetric.SquaredEuclidean), "External dataset manifest VecNet metric must be SquaredEuclidean.");
+        string expectedDatasetId = FashionMnistDatasetSpecification.GetDatasetId(metric);
+        Require(manifest.DatasetId == expectedDatasetId, $"External dataset manifest datasetId must be {expectedDatasetId}.");
+        Require(manifest.Metric.VecNetMetric == metric.ToString(), $"External dataset manifest VecNet metric must be {metric}.");
         Require(!manifest.Privacy.PublicClaimEligible, "External dataset manifest public-claim eligibility must be false.");
         Require(!manifest.Privacy.BaselineCandidateEligible, "External dataset manifest baseline-candidate eligibility must be false.");
         Require(!manifest.Privacy.RegressionGateEligible, "External dataset manifest regression-gate eligibility must be false.");
@@ -357,7 +359,7 @@ public static class FashionMnistExternalExactBenchmarkScenario
         Require(truth.DatasetId == manifest.DatasetId, "External truth datasetId must match the manifest.");
         Require(truth.BaseCount == manifest.Shape.BaseCount, "External truth base count must match the manifest shape.");
         Require(truth.Dimension == manifest.Shape.Dimension, "External truth dimension must match the manifest shape.");
-        Require(truth.Metric == nameof(VectorMetric.SquaredEuclidean), "External truth metric must be SquaredEuclidean.");
+        Require(truth.Metric == options.Metric.ToString(), $"External truth metric must be {options.Metric}.");
         Require(truth.QuerySubsetCount == manifest.Truth.QuerySubsetCount, "External truth query subset count must match the manifest truth summary.");
         Require(truth.TruthDepth == manifest.Truth.TruthDepth, "External truth depth must match the manifest truth summary.");
         Require(options.QueryCount <= manifest.Shape.QueryCount, "Requested query count must not exceed the admitted query matrix count.");
@@ -377,9 +379,30 @@ public static class FashionMnistExternalExactBenchmarkScenario
         }
     }
 
+    private static void ValidateCosineSelectedRows(
+        VectorMetric metric,
+        ReadOnlySpan<float> baseVectors,
+        ReadOnlySpan<float> queryVectors,
+        int baseCount,
+        int queryMatrixCount,
+        int dimension,
+        int queryCount,
+        int warmupQueries)
+    {
+        if (metric != VectorMetric.Cosine)
+        {
+            return;
+        }
+
+        int warmupSelectedQueryCount = warmupQueries == 0 ? 0 : Math.Min(warmupQueries, queryMatrixCount);
+        int selectedQueryCount = Math.Max(queryCount, warmupSelectedQueryCount);
+        FashionMnistExactTruth.ValidateNonZeroRows(baseVectors, baseCount, dimension, "base");
+        FashionMnistExactTruth.ValidateNonZeroRows(queryVectors, selectedQueryCount, dimension, "query");
+    }
+
     private static ExactFlatIndex BuildIndex(LoadedExternalDataset dataset)
     {
-        var index = new ExactFlatIndex(dataset.Dimension, VectorMetric.SquaredEuclidean);
+        var index = new ExactFlatIndex(dataset.Dimension, dataset.Manifest.Metric.VecNetMetric == nameof(VectorMetric.Cosine) ? VectorMetric.Cosine : VectorMetric.SquaredEuclidean);
         for (int row = 0; row < dataset.BaseCount; row++)
         {
             index.Add((ulong)row, dataset.GetBaseVector(row));

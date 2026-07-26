@@ -1073,9 +1073,9 @@ public static class CommandLine
             efSearch,
             hnswSeed);
 
-        if (metric != VectorMetric.SquaredEuclidean)
+        if (!IsSupportedGeneratedHnswMetric(metric))
         {
-            throw new ArgumentException("generated-hnsw-allowlist-filtered supports only SquaredEuclidean.");
+            throw new ArgumentException("generated-hnsw-allowlist-filtered supports SquaredEuclidean and Cosine only.");
         }
 
         if (topK > efSearch)
@@ -1159,6 +1159,12 @@ public static class CommandLine
             ? 3
             : 1;
         int warmupQueries = GetNonNegativeInt(values, "warmup-queries", defaultWarmupQueries);
+        VectorMetric metric = GetEnum(values, "metric", VectorMetric.SquaredEuclidean);
+        if (!IsSupportedGeneratedHnswMetric(metric))
+        {
+            throw new ArgumentException("generated-hnsw-allowlist-filtered-matrix supports SquaredEuclidean and Cosine only.");
+        }
+
         uint seed = GetSeed(values, "seed", 0x5EED2148);
         int duplicateInsertAttempts = GetNonNegativeInt(values, "duplicate-inserts", 1);
         int unknownDeleteAttempts = GetNonNegativeInt(values, "unknown-deletes", 1);
@@ -1191,7 +1197,8 @@ public static class CommandLine
             unknownDeleteAttempts,
             repeatedDeleteAttempts,
             outputDirectory,
-            manifestPath);
+            manifestPath,
+            metric);
     }
 
     public static HnswMemorySmokeOptions ParseHnswMemorySmoke(IReadOnlyList<string> args)
@@ -1990,9 +1997,9 @@ public static class CommandLine
             throw new ArgumentException("Option --checkpoint-directory must not be empty.");
         }
 
-        if (metric != VectorMetric.SquaredEuclidean)
+        if (!IsSupportedGeneratedHnswMetric(metric))
         {
-            throw new ArgumentException("generated-hnsw-base-plus-exact-delta-checkpoint supports only SquaredEuclidean.");
+            throw new ArgumentException("generated-hnsw-base-plus-exact-delta-checkpoint supports SquaredEuclidean and Cosine only.");
         }
 
         if (deletedBaseCount > baseVectorCount)
@@ -2155,6 +2162,12 @@ public static class CommandLine
         }
 
         int warmupQueries = GetNonNegativeInt(values, "warmup-queries", 1);
+        VectorMetric metric = GetEnum(values, "metric", VectorMetric.SquaredEuclidean);
+        if (!IsSupportedGeneratedHnswMetric(metric))
+        {
+            throw new ArgumentException("generated-hnsw-base-plus-exact-delta-checkpoint-matrix supports SquaredEuclidean and Cosine only.");
+        }
+
         uint seed = GetSeed(values, "seed", 0x5EED2136);
         int duplicateInsertAttempts = GetNonNegativeInt(values, "duplicate-inserts", 1);
         int unknownDeleteAttempts = GetNonNegativeInt(values, "unknown-deletes", 1);
@@ -2197,7 +2210,8 @@ public static class CommandLine
             unknownDeleteAttempts,
             repeatedDeleteAttempts,
             outputDirectory,
-            manifestPath);
+            manifestPath,
+            metric);
     }
 
     public static FashionMnistExternalDatasetOptions ParseExternalFashionMnist(IReadOnlyList<string> args)
@@ -2474,9 +2488,9 @@ public static class CommandLine
         int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
         ulong hnswSeed = GetUInt64Seed(values, "hnsw-seed", defaults.HnswSeed);
 
-        if (metric != VectorMetric.SquaredEuclidean)
+        if (!IsSupportedGeneratedHnswMetric(metric))
         {
-            throw new ArgumentException("external-fashion-mnist-hnsw-base-plus-exact-delta supports only SquaredEuclidean.");
+            throw new ArgumentException("external-fashion-mnist-hnsw-base-plus-exact-delta supports SquaredEuclidean and Cosine only.");
         }
 
         if (deletedBaseCount > baseVectorCount)
@@ -2594,9 +2608,9 @@ public static class CommandLine
         int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
         ulong hnswSeed = GetUInt64Seed(values, "hnsw-seed", defaults.HnswSeed);
 
-        if (metric != VectorMetric.SquaredEuclidean)
+        if (!IsSupportedGeneratedHnswMetric(metric))
         {
-            throw new ArgumentException("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint supports only SquaredEuclidean.");
+            throw new ArgumentException("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint supports SquaredEuclidean and Cosine only.");
         }
 
         if (deletedBaseCount > baseVectorCount)
@@ -2794,12 +2808,19 @@ public static class CommandLine
             throw new ArgumentException("Option --sample-interval-ms must be in the range 1..1000.");
         }
 
+        VectorMetric metric = GetExternalFashionMnistMetric(values, "metric", defaults.Metric);
+        if (!IsSupportedGeneratedHnswMetric(metric))
+        {
+            throw new ArgumentException("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-memory-smoke supports SquaredEuclidean and Cosine only.");
+        }
+
         return defaults with
         {
             CacheRoot = cacheRoot,
             OutputPath = outputPath,
             CheckpointDirectory = checkpointDirectory,
-            SampleIntervalMilliseconds = sampleIntervalMilliseconds
+            SampleIntervalMilliseconds = sampleIntervalMilliseconds,
+            Metric = metric
         };
     }
 
@@ -2831,9 +2852,9 @@ public static class CommandLine
 
         int warmupQueries = GetNonNegativeInt(values, "warmup-queries", 3);
         VectorMetric metric = GetExternalFashionMnistMetric(values, "metric", VectorMetric.SquaredEuclidean);
-        if (metric != VectorMetric.SquaredEuclidean)
+        if (!IsSupportedGeneratedHnswMetric(metric))
         {
-            throw new ArgumentException("external-fashion-mnist-hnsw-base-plus-exact-delta-matrix supports only SquaredEuclidean.");
+            throw new ArgumentException("external-fashion-mnist-hnsw-base-plus-exact-delta-matrix supports SquaredEuclidean and Cosine only.");
         }
 
         uint seed = GetSeed(values, "seed", 0x5EED2128);
@@ -2884,6 +2905,12 @@ public static class CommandLine
         Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedExternalFashionMnistHnswBasePlusExactDeltaCheckpointMatrixOption);
         string presetName = FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixOptions.NormalizePresetName(
             GetOptionalNonWhiteSpace(values, "preset") ?? FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixOptions.DefaultPresetName);
+        VectorMetric metric = GetExternalFashionMnistMetric(values, "metric", VectorMetric.SquaredEuclidean);
+        if (!IsSupportedGeneratedHnswMetric(metric))
+        {
+            throw new ArgumentException("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-matrix supports SquaredEuclidean and Cosine only.");
+        }
+
         string cacheRoot = values.TryGetValue("cache-root", out string? cacheRootValue)
             ? cacheRootValue
             : FashionMnistExternalHnswBasePlusExactDeltaCheckpointOptions.Default.CacheRoot;
@@ -2914,7 +2941,8 @@ public static class CommandLine
             presetName,
             cacheRoot,
             outputDirectory,
-            manifestPath);
+            manifestPath,
+            metric);
     }
 
     private static Dictionary<string, string> ParseOptionValues(
@@ -3359,6 +3387,7 @@ public static class CommandLine
         string.Equals(name, "cache-root", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "output", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "checkpoint-directory", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "sample-interval-ms", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedExternalFashionMnistHnswBasePlusExactDeltaMatrixOption(string name) =>
@@ -3379,6 +3408,7 @@ public static class CommandLine
         string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "cache-root", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "output-dir", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "manifest", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedHnswEstablishedComparisonMatrixOption(string name) =>
@@ -3469,6 +3499,7 @@ public static class CommandLine
         string.Equals(name, "queries", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "duplicate-inserts", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "unknown-deletes", StringComparison.OrdinalIgnoreCase) ||
@@ -3538,6 +3569,7 @@ public static class CommandLine
         string.Equals(name, "queries", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "warmup-queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "duplicate-inserts", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "unknown-deletes", StringComparison.OrdinalIgnoreCase) ||

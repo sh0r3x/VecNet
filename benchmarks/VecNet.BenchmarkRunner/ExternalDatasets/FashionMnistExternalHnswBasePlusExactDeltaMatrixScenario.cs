@@ -7,7 +7,6 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaMatrixScenario
     private const string TaskId = "VEC-129";
     private const string SchemaName = "VecNet.ExternalHnswBasePlusExactDeltaMatrixManifest";
     private const string SchemaVersion = "0.1";
-    private const string DatasetId = "fashion-mnist-784-euclidean";
     private const int Dimension = 784;
     private const ulong HnswSeedBase = 0x484E535700012800UL;
 
@@ -227,7 +226,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaMatrixScenario
         "--repeated-deletes", options.RepeatedDeleteAttempts.ToString(CultureInfo.InvariantCulture),
         "--runs", options.Runs.ToString(CultureInfo.InvariantCulture),
         "--warmup-queries", options.WarmupQueries.ToString(CultureInfo.InvariantCulture),
-        "--metric", "squared-euclidean",
+        "--metric", ToCommandLineMetric(options.Metric),
         "--seed", string.Create(CultureInfo.InvariantCulture, $"0x{options.Seed:X8}"),
         "--m", options.M.ToString(CultureInfo.InvariantCulture),
         "--ef-construction", options.EfConstruction.ToString(CultureInfo.InvariantCulture),
@@ -250,7 +249,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaMatrixScenario
                         GetMaxTopK(options.PresetName),
                         options.Runs,
                         options.WarmupQueries,
-                        VectorMetric.SquaredEuclidean,
+                        options.Metric,
                         M: 16,
                         EfConstruction: 128,
                         EfSearch: Math.Max(192, GetMaxTopK(options.PresetName)),
@@ -267,7 +266,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaMatrixScenario
                 options.CacheRoot,
                 dataset.Manifest.DatasetId,
                 Dimension,
-                VectorMetric.SquaredEuclidean.ToString(),
+                options.Metric.ToString(),
                 "Loaded existing admitted Fashion-MNIST cache only; no download, conversion, admission, refresh or truth regeneration path is used by VEC-129.",
                 "Loaded existing exact truth artifact only as cache/readiness guard; linked VEC-127 reports generate exact updated truth from live post-update views.",
                 dataset.Paths.RelativeManifestPath,
@@ -286,9 +285,9 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaMatrixScenario
             return new ExternalHnswBasePlusExactDeltaMatrixCacheTruthInfo(
                 "unavailable",
                 options.CacheRoot,
-                DatasetId,
+                FashionMnistDatasetSpecification.GetDatasetId(options.Metric),
                 Dimension,
-                VectorMetric.SquaredEuclidean.ToString(),
+                options.Metric.ToString(),
                 "Admitted local Fashion-MNIST cache is required; VEC-129 must not download, convert, admit, refresh or regenerate data.",
                 "Existing exact truth artifact with sufficient query subset and truth depth is required; VEC-129 must not refresh truth.",
                 AdmissionManifestPath: null,
@@ -318,7 +317,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaMatrixScenario
             matrixCase.CaseId,
             matrixCase.UpdateProfileName,
             matrixCase.HnswProfileName,
-            DatasetId,
+            FashionMnistDatasetSpecification.GetDatasetId(options.Metric),
             options.Metric.ToString(),
             Dimension,
             options.QueryCount,
@@ -517,9 +516,9 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaMatrixScenario
         FashionMnistExternalHnswBasePlusExactDeltaMatrixOptions options,
         string presetName) =>
         new(
-            DatasetId,
+            FashionMnistDatasetSpecification.GetDatasetId(options.Metric),
             Dimension,
-            VectorMetric.SquaredEuclidean.ToString(),
+            options.Metric.ToString(),
             options.QueryCount,
             GetTopKValues(presetName),
             GetUpdateProfiles(presetName)
@@ -544,7 +543,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaMatrixScenario
             "per-case workload seed = matrix seed + zero-based case index; contiguous Fashion-MNIST row policy remains deterministic",
             "per-case HNSW seed = 0x484E535700012800 + one-based case number",
             "Immutable base rows start at row 0, exact delta rows immediately follow the base rows, base tombstones delete from the start of selected base rows and delta tombstones delete from the start of selected delta rows.",
-            "Linked VEC-127 reports compute exact updated truth in memory from the post-update live view using scalar-reference squared-L2 distance and ascending external ID ties.",
+            "Linked VEC-127 reports compute exact updated truth in memory from the post-update live view using scalar-reference selected-metric distance and ascending external ID ties.",
             "Measured search samples include only internal HnswBasePlusExactDeltaIndex.Search(query, results, workspace) with caller-owned buffers/workspace; cache checks, loading, build, mutations, exact truth, warmup, comparison and manifest writing are excluded.",
             "Private/local external matrix evidence only; no public mutable/update HNSW API, durable mutable overlay persistence, checkpoint/rebuild, filtering, hnswlib/FAISS comparison, memory/concurrency evidence or public claim.");
 
@@ -721,6 +720,9 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaMatrixScenario
 
     private static string CreateCaseId(int caseNumber, int topK, string updateProfileName, string hnswProfileName) =>
         string.Create(CultureInfo.InvariantCulture, $"case-{caseNumber:D3}-{topK}k-{updateProfileName}-{hnswProfileName}");
+
+    private static string ToCommandLineMetric(VectorMetric metric) =>
+        metric == VectorMetric.Cosine ? "cosine" : "squared-euclidean";
 
     private static double? MinOrNull(double[] values) => values.Length == 0 ? null : values.Min();
 

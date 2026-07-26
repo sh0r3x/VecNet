@@ -41,7 +41,7 @@ public sealed class Vec134HnswBasePlusExactDeltaCheckpointTests
 
     [Theory]
     [InlineData("unexpected")]
-    [InlineData("generated-hnsw-base-plus-exact-delta-checkpoint", "--metric", "Cosine")]
+    [InlineData("generated-hnsw-base-plus-exact-delta-checkpoint", "--metric", "InnerProduct")]
     [InlineData("generated-hnsw-base-plus-exact-delta-checkpoint", "--dimension", "0")]
     [InlineData("generated-hnsw-base-plus-exact-delta-checkpoint", "--vectors", "0")]
     [InlineData("generated-hnsw-base-plus-exact-delta-checkpoint", "--queries", "0")]
@@ -78,6 +78,18 @@ public sealed class Vec134HnswBasePlusExactDeltaCheckpointTests
             () => CommandLine.ParseHnswBasePlusExactDeltaCheckpoint(args));
 
         Assert.NotEmpty(exception.Message);
+    }
+
+    [Theory]
+    [InlineData("Cosine")]
+    [InlineData("cosine")]
+    public void ParseHnswBasePlusExactDeltaCheckpoint_AcceptsCosine(string metric)
+    {
+        HnswBasePlusExactDeltaCheckpointOptions options =
+            CommandLine.ParseHnswBasePlusExactDeltaCheckpoint(
+                [HnswBasePlusExactDeltaCheckpointOptions.ScenarioName, "--metric", metric]);
+
+        Assert.Equal(VectorMetric.Cosine, options.Metric);
     }
 
     [Fact]

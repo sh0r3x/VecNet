@@ -7,7 +7,6 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixSc
     private const string TaskId = "VEC-140";
     private const string SchemaName = "VecNet.ExternalHnswBasePlusExactDeltaCheckpointMatrixManifest";
     private const string SchemaVersion = "0.1";
-    private const string DatasetId = "fashion-mnist-784-euclidean";
     private const int Dimension = 784;
     private const int AdmittedBaseMatrixRowCount = 60_000;
     private const int QueryCount = 50;
@@ -168,7 +167,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixSc
                 "external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-matrix",
                 "Private/local external Fashion-MNIST checkpoint matrix evidence only; no public mutable/update HNSW claim."),
             cacheTruth,
-            CreateDesign(presetName, cases),
+            CreateDesign(presetName, cases, options.Metric),
             cases.Length,
             failed == 0 && blocked == 0 ? "passed" : "failed",
             caseManifests,
@@ -217,7 +216,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixSc
                 RepeatedDeleteAttempts,
                 CheckpointRuns,
                 WarmupQueries,
-                VectorMetric.SquaredEuclidean,
+                options.Metric,
                 workloadSeed,
                 M,
                 EfConstruction,
@@ -262,7 +261,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixSc
         "--repeated-deletes", options.RepeatedDeleteAttempts.ToString(CultureInfo.InvariantCulture),
         "--runs", options.Runs.ToString(CultureInfo.InvariantCulture),
         "--warmup-queries", options.WarmupQueries.ToString(CultureInfo.InvariantCulture),
-        "--metric", "squared-euclidean",
+        "--metric", ToCommandLineMetric(options.Metric),
         "--seed", FormatHex(options.Seed),
         "--m", options.M.ToString(CultureInfo.InvariantCulture),
         "--ef-construction", options.EfConstruction.ToString(CultureInfo.InvariantCulture),
@@ -285,7 +284,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixSc
                         GetMaxTopK(options.PresetName),
                         Runs: 1,
                         WarmupQueries,
-                        VectorMetric.SquaredEuclidean,
+                        options.Metric,
                         M,
                         EfConstruction,
                         EfSearch,
@@ -302,7 +301,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixSc
                 options.CacheRoot,
                 dataset.Manifest.DatasetId,
                 Dimension,
-                VectorMetric.SquaredEuclidean.ToString(),
+                options.Metric.ToString(),
                 "Loaded existing admitted Fashion-MNIST cache only; no download, conversion, admission, refresh or truth regeneration path is used by VEC-140.",
                 "Loaded existing exact truth artifact only as cache/readiness guard; linked VEC-138 reports generate exact updated truth from live post-update views.",
                 dataset.Paths.RelativeManifestPath,
@@ -324,9 +323,9 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixSc
             return new ExternalHnswBasePlusExactDeltaCheckpointMatrixCacheTruthInfo(
                 "unavailable",
                 options.CacheRoot,
-                DatasetId,
+                FashionMnistDatasetSpecification.GetDatasetId(options.Metric),
                 Dimension,
-                VectorMetric.SquaredEuclidean.ToString(),
+                options.Metric.ToString(),
                 "Admitted local Fashion-MNIST cache is required; VEC-140 must not download, convert, admit, refresh or regenerate data.",
                 "Existing exact truth artifact with sufficient query subset and truth depth is required; VEC-140 must not refresh truth.",
                 AdmissionManifestPath: null,
@@ -364,7 +363,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixSc
             matrixCase.CaseId,
             matrixCase.UpdateProfileName,
             matrixCase.HnswProfileName,
-            DatasetId,
+            FashionMnistDatasetSpecification.GetDatasetId(options.Metric),
             options.Metric.ToString(),
             Dimension,
             options.QueryCount,
@@ -1012,13 +1011,14 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixSc
 
     private static ExternalHnswBasePlusExactDeltaCheckpointMatrixDesignInfo CreateDesign(
         string presetName,
-        MatrixCase[] cases)
+        MatrixCase[] cases,
+        VectorMetric metric)
     {
         CaseDefinition[] definitions = GetCaseDefinitions(presetName);
         return new ExternalHnswBasePlusExactDeltaCheckpointMatrixDesignInfo(
-            DatasetId,
+            FashionMnistDatasetSpecification.GetDatasetId(metric),
             Dimension,
-            VectorMetric.SquaredEuclidean.ToString(),
+            metric.ToString(),
             QueryCount,
             WarmupQueries,
             CheckpointRuns,
@@ -1055,7 +1055,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixSc
                 FormatHex(item.Options.Seed),
                 FormatHex(item.Options.HnswSeed))).ToArray(),
             "Immutable base rows start at row 0, exact delta rows immediately follow base rows, unused rows remain outside the live candidate set and Fashion-MNIST row ordinals are external IDs.",
-            "Linked VEC-138 reports compute exact updated truth in memory from the post-update live view and use it for pre-checkpoint, rebuilt and opened search validation.",
+            "Linked VEC-138 reports compute exact updated truth in memory from the post-update live view with the selected metric and use it for pre-checkpoint, rebuilt and opened search validation.",
             "Each case writes checkpoint-output/checkpoint-run-001 and checkpoint-run-002 beneath its case directory.",
             "Checkpoint timing/allocation and search timings are copied from linked VEC-138 reports; output-byte scanning is outside checkpoint duration.",
             "Private/local external checkpoint matrix evidence only; no public API, package, public claim, memory, concurrency, filtering or competitor comparison evidence.");
@@ -1098,6 +1098,9 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixSc
 
     private static string CreateCaseId(int caseNumber, int topK, string updateProfileName) =>
         string.Create(CultureInfo.InvariantCulture, $"case-{caseNumber:D3}-{topK}k-{updateProfileName}-{HnswProfileName}");
+
+    private static string ToCommandLineMetric(VectorMetric metric) =>
+        metric == VectorMetric.Cosine ? "cosine" : "squared-euclidean";
 
     private static bool AllMeasured(HnswBasePlusExactDeltaCheckpointPhaseSetInfo phases) =>
         phases.LiveSnapshot.Status == "Measured" &&

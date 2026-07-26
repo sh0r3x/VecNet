@@ -19,6 +19,7 @@ public sealed class Vec140FashionMnistExternalHnswBasePlusExactDeltaCheckpointMa
 
         Assert.Equal("smoke", options.PresetName);
         Assert.Equal("VecNet.DatasetCache", options.CacheRoot);
+        Assert.Equal(VectorMetric.SquaredEuclidean, options.Metric);
         Assert.StartsWith("VecNet.BenchmarkRunner.Artifacts", options.OutputDirectory, StringComparison.OrdinalIgnoreCase);
         Assert.False(Path.IsPathRooted(options.OutputDirectory));
         Assert.EndsWith("fashion-mnist-external-hnsw-base-plus-exact-delta-checkpoint-matrix-manifest.json", options.ManifestPath, StringComparison.OrdinalIgnoreCase);
@@ -34,7 +35,7 @@ public sealed class Vec140FashionMnistExternalHnswBasePlusExactDeltaCheckpointMa
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-matrix", "--query-count", "50")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-matrix", "--runs", "2")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-matrix", "--warmup-queries", "3")]
-    [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-matrix", "--metric", "squared-euclidean")]
+    [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-matrix", "--metric", "InnerProduct")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-matrix", "--seed", "0x5EED2139")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-matrix", "--top-k", "10")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-matrix", "--base-vectors", "59000")]
@@ -55,6 +56,19 @@ public sealed class Vec140FashionMnistExternalHnswBasePlusExactDeltaCheckpointMa
         Assert.NotEmpty(exception.Message);
     }
 
+    [Theory]
+    [InlineData("Cosine")]
+    [InlineData("cosine")]
+    public void ParseExternalFashionMnistHnswBasePlusExactDeltaCheckpointMatrix_AcceptsCosine(string metric)
+    {
+        FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixOptions options =
+            CommandLine.ParseExternalFashionMnistHnswBasePlusExactDeltaCheckpointMatrix(
+                [FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixOptions.ScenarioName, "--metric", metric]);
+
+        Assert.Equal(VectorMetric.Cosine, options.Metric);
+        Assert.Equal("fashion-mnist-784-cosine", FashionMnistDatasetSpecification.GetDatasetId(options.Metric));
+    }
+
     [Fact]
     public void ExpandCases_SmokeAndStandardPresetsMatchAcceptedOrderProfilesAndSeeds()
     {
@@ -63,7 +77,8 @@ public sealed class Vec140FashionMnistExternalHnswBasePlusExactDeltaCheckpointMa
             "smoke",
             "VecNet.DatasetCache",
             outputDirectory,
-            Path.Combine(outputDirectory, "manifest.json"));
+            Path.Combine(outputDirectory, "manifest.json"),
+            VectorMetric.Cosine);
         FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixScenario.MatrixCase[] smokeCases =
             FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixScenario.ExpandCases(smokeOptions);
         FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixScenario.MatrixCase[] standardCases =
@@ -87,7 +102,7 @@ public sealed class Vec140FashionMnistExternalHnswBasePlusExactDeltaCheckpointMa
             Assert.Equal(50, matrixCase.Options.QueryCount);
             Assert.Equal(2, matrixCase.Options.Runs);
             Assert.Equal(3, matrixCase.Options.WarmupQueries);
-            Assert.Equal(VectorMetric.SquaredEuclidean, matrixCase.Options.Metric);
+            Assert.Equal(VectorMetric.Cosine, matrixCase.Options.Metric);
             Assert.Equal(16, matrixCase.Options.M);
             Assert.Equal(128, matrixCase.Options.EfConstruction);
             Assert.Equal(192, matrixCase.Options.EfSearch);

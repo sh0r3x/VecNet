@@ -41,7 +41,7 @@ public sealed class Vec129FashionMnistExternalHnswBasePlusExactDeltaMatrixTests
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-matrix", "--runs", "0")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-matrix", "--runs", "6")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-matrix", "--warmup-queries", "-1")]
-    [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-matrix", "--metric", "Cosine")]
+    [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-matrix", "--metric", "InnerProduct")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-matrix", "--seed", "0xNOTHEX")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-matrix", "--duplicate-inserts", "-1")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-matrix", "--unknown-deletes", "-1")]
@@ -68,6 +68,19 @@ public sealed class Vec129FashionMnistExternalHnswBasePlusExactDeltaMatrixTests
         Assert.NotEmpty(exception.Message);
     }
 
+    [Theory]
+    [InlineData("Cosine")]
+    [InlineData("cosine")]
+    public void ParseExternalFashionMnistHnswBasePlusExactDeltaMatrix_AcceptsCosine(string metric)
+    {
+        FashionMnistExternalHnswBasePlusExactDeltaMatrixOptions options =
+            CommandLine.ParseExternalFashionMnistHnswBasePlusExactDeltaMatrix(
+                [FashionMnistExternalHnswBasePlusExactDeltaMatrixOptions.ScenarioName, "--metric", metric]);
+
+        Assert.Equal(VectorMetric.Cosine, options.Metric);
+        Assert.Equal("fashion-mnist-784-cosine", FashionMnistDatasetSpecification.GetDatasetId(options.Metric));
+    }
+
     [Fact]
     public void ExpandCases_StandardPresetMatchesAcceptedEightCaseOrderAndSeeds()
     {
@@ -78,7 +91,7 @@ public sealed class Vec129FashionMnistExternalHnswBasePlusExactDeltaMatrixTests
             QueryCount: 50,
             Runs: 1,
             WarmupQueries: 3,
-            VectorMetric.SquaredEuclidean,
+            VectorMetric.Cosine,
             Seed: 0x5EED2128,
             DuplicateInsertAttempts: 1,
             UnknownDeleteAttempts: 1,
@@ -109,7 +122,7 @@ public sealed class Vec129FashionMnistExternalHnswBasePlusExactDeltaMatrixTests
             Assert.Equal(50, matrixCase.Options.QueryCount);
             Assert.Equal(1, matrixCase.Options.Runs);
             Assert.Equal(3, matrixCase.Options.WarmupQueries);
-            Assert.Equal(VectorMetric.SquaredEuclidean, matrixCase.Options.Metric);
+            Assert.Equal(VectorMetric.Cosine, matrixCase.Options.Metric);
             Assert.Equal(16, matrixCase.Options.M);
             Assert.Equal(128, matrixCase.Options.EfConstruction);
             Assert.True(matrixCase.Options.EfSearch >= matrixCase.Options.TopK);

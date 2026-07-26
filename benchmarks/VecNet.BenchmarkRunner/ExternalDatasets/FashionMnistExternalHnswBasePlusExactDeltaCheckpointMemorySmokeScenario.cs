@@ -312,8 +312,8 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointMemorySm
                 options.QueryCount,
                 truth.Depth,
                 liveIds.Length,
-                "ascending scalar-reference squared-L2 distance, then ascending external ID for exact equal distances",
-                "VecNet canonical squared-L2 over admitted converted Fashion-MNIST float32 vectors",
+                FashionMnistExactTruth.TiePolicy(options.Metric),
+                FashionMnistExactTruth.DistanceSemantics(options.Metric),
                 "existing admitted truth artifact validates cache/truth readiness only and is not final updated truth",
                 "live candidate IDs are selected immutable base rows and committed exact delta rows after tombstone suppression"),
             new ScenarioInfo(
@@ -325,7 +325,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointMemorySm
             new IndexInfo(
                 "InternalExternalHnswBasePlusExactDeltaCheckpointMemorySmoke",
                 nameof(HnswBasePlusExactDeltaIndex),
-                VectorMetric.SquaredEuclidean.ToString(),
+                options.Metric.ToString(),
                 dataset.Dimension,
                 postCounts.LiveVectorCount,
                 "internal HnswBasePlusExactDeltaIndex checkpoint/rebuild memory smoke over admitted Fashion-MNIST cache; no public mutable/update HNSW API, memory/capacity claim, package change or regression gate"),
@@ -337,7 +337,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointMemorySm
                 options.EfSearch,
                 FormatHex(options.HnswSeed),
                 "admitted Fashion-MNIST base matrix row order, immutable base rows first, original row ordinals as external IDs",
-                "SquaredEuclidean only"),
+                $"{options.Metric} only"),
             new ExternalHnswCheckpointMemorySmokeMeasuredPhasesInfo(
                 loadPhase.Phase,
                 buildPhase.Phase,
@@ -479,7 +479,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointMemorySm
             options.QueryCount,
             options.TopK,
             dataset.Dimension,
-            VectorMetric.SquaredEuclidean.ToString(),
+            options.Metric.ToString(),
             ImmutableBaseStartRow: 0,
             options.BaseVectorCount - 1,
             options.BaseVectorCount,

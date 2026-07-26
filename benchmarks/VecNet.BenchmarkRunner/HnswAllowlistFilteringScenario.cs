@@ -105,14 +105,14 @@ public static class HnswAllowlistFilteringScenario
                 "generated-no-external-source",
                 GeneratedDataset.Distribution,
                 dataset.SeedText,
-                VectorMetric.SquaredEuclidean.ToString(),
+                options.Metric.ToString(),
                 options.Dimension,
                 options.PhysicalVectorCount,
                 options.QueryCount),
             new TruthInfo(
                 "scalar-reference-generated-hnsw-allowlist-live-view",
                 options.TopK,
-                "allowlist is coalesced to known live generated IDs after base/delta tombstones, then ordered by ascending scalar-reference squared-L2 distance and ascending external ID"),
+                "allowlist is coalesced to known live generated IDs after base/delta tombstones, then ordered by ascending scalar-reference canonical distance and ascending external ID"),
             new ScenarioInfo(
                 HnswAllowlistFilteringOptions.ScenarioName,
                 options.TopK,
@@ -122,7 +122,7 @@ public static class HnswAllowlistFilteringScenario
             new IndexInfo(
                 "InternalHnswAllowlistFiltering",
                 "HnswIndex and HnswBasePlusExactDeltaIndex",
-                VectorMetric.SquaredEuclidean.ToString(),
+                options.Metric.ToString(),
                 options.Dimension,
                 state.LiveIds.Length,
                 "private generated allowlist filtering smoke over immutable/opened HNSW plus source/rebuilt/checkpoint-opened HNSW base-plus-exact-delta; no matrix, external dataset, public docs or public claims"),
@@ -134,7 +134,7 @@ public static class HnswAllowlistFilteringScenario
                 options.EfSearch,
                 FormatHex(options.HnswSeed),
                 "generated live-view ID order after base tombstones and live delta rows",
-                "SquaredEuclidean only"),
+                $"{options.Metric} only"),
             new HnswAllowlistFilteringWorkloadInfo(
                 options.BaseVectorCount,
                 options.InsertedDeltaCount,
@@ -276,7 +276,7 @@ public static class HnswAllowlistFilteringScenario
     private static HnswIndex BuildBaseHnsw(HnswAllowlistFilteringOptions options, GeneratedDataset dataset)
     {
         var hnswOptions = new HnswIndexOptions(options.M, options.EfConstruction, options.EfSearch, options.HnswSeed);
-        var index = new HnswIndex(options.Dimension, VectorMetric.SquaredEuclidean, hnswOptions);
+        var index = new HnswIndex(options.Dimension, options.Metric, hnswOptions);
         for (int row = 0; row < options.BaseVectorCount; row++)
         {
             index.Add((ulong)row, dataset.GetVector(row));
@@ -288,7 +288,7 @@ public static class HnswAllowlistFilteringScenario
     private static HnswIndex BuildLiveHnsw(HnswAllowlistFilteringOptions options, GeneratedDataset dataset, ulong[] liveIds)
     {
         var hnswOptions = new HnswIndexOptions(options.M, options.EfConstruction, options.EfSearch, options.HnswSeed);
-        var index = new HnswIndex(options.Dimension, VectorMetric.SquaredEuclidean, hnswOptions);
+        var index = new HnswIndex(options.Dimension, options.Metric, hnswOptions);
         foreach (ulong id in liveIds)
         {
             index.Add(id, dataset.GetVector(checked((int)id)));
@@ -494,7 +494,7 @@ public static class HnswAllowlistFilteringScenario
             for (int i = 0; i < allowed.Length; i++)
             {
                 ulong id = allowed[i];
-                candidates[i] = new TruthItem(id, SquaredEuclideanDistance(query, dataset.GetVector(checked((int)id))));
+                candidates[i] = new TruthItem(id, ScalarGroundTruth.CalculateDistance(query, dataset.GetVector(checked((int)id)), options.Metric));
             }
 
             Array.Sort(candidates, CompareTruthItems);
@@ -517,7 +517,7 @@ public static class HnswAllowlistFilteringScenario
         bool postCheckpointDeltaScan)
     {
         HnswAllowlistExactFallbackValidationInfo exactFallback = ValidateExactFallback(options, truth, measurement.Results, allowlists.Branches);
-        ResultComparison comparison = ResultComparer.Compare(truth, measurement.Results, options.TopK, options.Dimension, VectorMetric.SquaredEuclidean);
+        ResultComparison comparison = ResultComparer.Compare(truth, measurement.Results, options.TopK, options.Dimension, options.Metric);
         HnswAllowlistReturnedResultIntegrityInfo integrity = ValidateReturnedResults(dataset, options, allowlists, measurement.Results);
         int extra = CountExtraResults(truth, measurement.Results, options.TopK);
         HnswAllowlistBroadEmissionValidationInfo broad = new(
@@ -566,7 +566,7 @@ public static class HnswAllowlistFilteringScenario
                     idOrOrderMismatch++;
                 }
 
-                if (!DistanceMatches(expected[i].Distance, returned[i].Distance, options.Dimension))
+                if (!ResultComparer.DistanceMatches(expected[i].Distance, returned[i].Distance, options.Dimension, options.Metric))
                 {
                     distanceMismatch++;
                 }
@@ -643,8 +643,8 @@ public static class HnswAllowlistFilteringScenario
                     continue;
                 }
 
-                float expectedDistance = SquaredEuclideanDistance(dataset.GetQuery(query), dataset.GetVector(checked((int)result.Id)));
-                if (!DistanceMatches(expectedDistance, result.Distance, options.Dimension))
+                float expectedDistance = ScalarGroundTruth.CalculateDistance(dataset.GetQuery(query), dataset.GetVector(checked((int)result.Id)), options.Metric);
+                if (!ResultComparer.DistanceMatches(expectedDistance, result.Distance, options.Dimension, options.Metric))
                 {
                     distanceMismatch++;
                 }
@@ -1148,7 +1148,7 @@ public static class HnswAllowlistFilteringScenario
             "No generated HNSW filtering baseline-candidate policy is accepted.",
             "No generated HNSW filtering regression-gate policy, threshold, comparison artifact or hard gate is accepted.",
             [
-                "Generated squared-L2 HNSW allowlist filtering smoke evidence only; no external dataset source, license, version or checksum applies.",
+                "Generated squared-L2/cosine HNSW allowlist filtering smoke evidence only; no external dataset source, license, version or checksum applies.",
                 "Exact fallback parity, broad emission integrity, tombstone suppression and underfill are private methodology evidence.",
                 "Managed allocations are measured only for filtered search-call boundaries.",
                 "Memory is explicitly not measured.",
@@ -1168,7 +1168,7 @@ public static class HnswAllowlistFilteringScenario
 
     private static GeneratedExactSearchOptions ToGeneratedOptions(HnswAllowlistFilteringOptions options) =>
         new(
-            VectorMetric.SquaredEuclidean,
+            options.Metric,
             options.Dimension,
             options.PhysicalVectorCount,
             options.QueryCount,
@@ -1181,9 +1181,9 @@ public static class HnswAllowlistFilteringScenario
 
     private static void ValidateOptions(HnswAllowlistFilteringOptions options)
     {
-        if (options.Metric != VectorMetric.SquaredEuclidean)
+        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.Cosine))
         {
-            throw new ArgumentException("generated-hnsw-allowlist-filtered supports only SquaredEuclidean.", nameof(options));
+            throw new ArgumentException("generated-hnsw-allowlist-filtered supports only SquaredEuclidean and Cosine.", nameof(options));
         }
 
         if (options.InsertedDeltaCount <= 0)

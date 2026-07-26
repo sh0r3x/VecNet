@@ -48,7 +48,7 @@ public sealed class Vec151FashionMnistExternalHnswAllowlistFilteringTests
     [InlineData("external-fashion-mnist-hnsw-allowlist-filtered", "--manifest", "manifest.json")]
     [InlineData("external-fashion-mnist-hnsw-allowlist-filtered", "--snapshot-directory", "snapshot")]
     [InlineData("external-fashion-mnist-hnsw-allowlist-filtered", "--hnswlib-python", "python")]
-    [InlineData("external-fashion-mnist-hnsw-allowlist-filtered", "--metric", "Cosine")]
+    [InlineData("external-fashion-mnist-hnsw-allowlist-filtered", "--metric", "InnerProduct")]
     [InlineData("external-fashion-mnist-hnsw-allowlist-filtered", "--filter", "all")]
     [InlineData("external-fashion-mnist-hnsw-allowlist-filtered", "--query-count", "0")]
     [InlineData("external-fashion-mnist-hnsw-allowlist-filtered", "--top-k", "0")]
@@ -76,6 +76,19 @@ public sealed class Vec151FashionMnistExternalHnswAllowlistFilteringTests
             () => CommandLine.ParseExternalFashionMnistHnswAllowlistFiltering(args));
 
         Assert.NotEmpty(exception.Message);
+    }
+
+    [Theory]
+    [InlineData("Cosine")]
+    [InlineData("cosine")]
+    public void ParseExternalFashionMnistHnswAllowlistFiltering_AcceptsCosine(string metric)
+    {
+        FashionMnistExternalHnswAllowlistFilteringOptions options =
+            CommandLine.ParseExternalFashionMnistHnswAllowlistFiltering(
+                [FashionMnistExternalHnswAllowlistFilteringOptions.ScenarioName, "--metric", metric]);
+
+        Assert.Equal(VectorMetric.Cosine, options.Metric);
+        Assert.Equal("fashion-mnist-784-cosine", FashionMnistDatasetSpecification.GetDatasetId(options.Metric));
     }
 
     [Fact]

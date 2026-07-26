@@ -191,7 +191,7 @@ public static class FashionMnistExternalHnswAllowlistFilteringScenario
             new IndexInfo(
                 "InternalExternalHnswAllowlistFiltering",
                 "HnswIndex and HnswBasePlusExactDeltaIndex",
-                VectorMetric.SquaredEuclidean.ToString(),
+                options.Metric.ToString(),
                 dataset.Dimension,
                 postCounts.LiveVectorCount,
                 "private Fashion-MNIST allowlist filtering smoke over immutable/opened HNSW plus source/rebuilt/checkpoint-opened HNSW base-plus-exact-delta; no public docs, matrix, package change or public claim"),
@@ -203,7 +203,7 @@ public static class FashionMnistExternalHnswAllowlistFilteringScenario
                 options.EfSearch,
                 FormatHex(options.HnswSeed),
                 "admitted Fashion-MNIST live-view row order, immutable base rows first, original row ordinals as external IDs",
-                "SquaredEuclidean only"),
+                $"{options.Metric} only"),
             FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario.CreateBuildInfo(state.Build, checkpointOptions, dataset),
             state.PreCounts,
             FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario.CreateMutationInfo(
@@ -294,7 +294,7 @@ public static class FashionMnistExternalHnswAllowlistFilteringScenario
         ulong[] liveIds)
     {
         var hnswOptions = new HnswIndexOptions(options.M, options.EfConstruction, options.EfSearch, options.HnswSeed);
-        var index = new HnswIndex(dataset.Dimension, VectorMetric.SquaredEuclidean, hnswOptions);
+        var index = new HnswIndex(dataset.Dimension, options.Metric, hnswOptions);
         foreach (ulong id in liveIds)
         {
             index.Add(id, dataset.GetBaseVector(checked((int)id)));
@@ -447,7 +447,7 @@ public static class FashionMnistExternalHnswAllowlistFilteringScenario
             for (int i = 0; i < allowed.Length; i++)
             {
                 ulong id = allowed[i];
-                candidates[i] = new TruthItem(id, SquaredEuclideanDistance(query, dataset.GetBaseVector(checked((int)id))));
+                candidates[i] = new TruthItem(id, ScalarGroundTruth.CalculateDistance(query, dataset.GetBaseVector(checked((int)id)), options.Metric));
             }
 
             Array.Sort(candidates, CompareTruthItems);
@@ -532,7 +532,7 @@ public static class FashionMnistExternalHnswAllowlistFilteringScenario
         bool postCheckpointDeltaScan)
     {
         HnswAllowlistExactFallbackValidationInfo exactFallback = ValidateExactFallback(options, dataset.Dimension, truth, measurement.Results, allowlists.Branches);
-        ResultComparison comparison = ResultComparer.Compare(truth, measurement.Results, options.TopK, dataset.Dimension, VectorMetric.SquaredEuclidean);
+        ResultComparison comparison = ResultComparer.Compare(truth, measurement.Results, options.TopK, dataset.Dimension, options.Metric);
         HnswAllowlistReturnedResultIntegrityInfo integrity = ValidateReturnedResults(dataset, options, allowlists, measurement.Results);
         int extra = CountExtraResults(truth, measurement.Results, options.TopK);
         HnswAllowlistBroadEmissionValidationInfo broad = new(
@@ -586,7 +586,7 @@ public static class FashionMnistExternalHnswAllowlistFilteringScenario
                     idOrOrderMismatch++;
                 }
 
-                if (!DistanceMatches(expected[i].Distance, returned[i].Distance, dimension))
+                if (!ResultComparer.DistanceMatches(expected[i].Distance, returned[i].Distance, dimension, options.Metric))
                 {
                     distanceMismatch++;
                 }
@@ -663,8 +663,8 @@ public static class FashionMnistExternalHnswAllowlistFilteringScenario
                     continue;
                 }
 
-                float expectedDistance = SquaredEuclideanDistance(dataset.GetQueryVector(query), dataset.GetBaseVector(checked((int)result.Id)));
-                if (!DistanceMatches(expectedDistance, result.Distance, dataset.Dimension))
+                float expectedDistance = ScalarGroundTruth.CalculateDistance(dataset.GetQueryVector(query), dataset.GetBaseVector(checked((int)result.Id)), options.Metric);
+                if (!ResultComparer.DistanceMatches(expectedDistance, result.Distance, dataset.Dimension, options.Metric))
                 {
                     distanceMismatch++;
                 }
@@ -975,8 +975,8 @@ public static class FashionMnistExternalHnswAllowlistFilteringScenario
             options.QueryCount,
             truth.Depth,
             liveVectorCount,
-            "ascending scalar-reference squared-L2 distance, then ascending external ID for exact equal distances",
-            "VecNet canonical squared-L2 over admitted converted Fashion-MNIST float32 vectors",
+            FashionMnistExactTruth.TiePolicy(options.Metric),
+            FashionMnistExactTruth.DistanceSemantics(options.Metric),
             "existing admitted truth artifact validates cache/truth readiness only and is not filtered truth",
             "live candidate IDs are selected immutable base rows and committed exact delta rows after tombstone suppression; allowlists are caller-owned external-ID sets",
             queries);
@@ -1211,9 +1211,9 @@ public static class FashionMnistExternalHnswAllowlistFilteringScenario
             throw new ArgumentException("warmup queries must be non-negative.", nameof(options));
         }
 
-        if (options.Metric != VectorMetric.SquaredEuclidean)
+        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.Cosine))
         {
-            throw new ArgumentException("external-fashion-mnist-hnsw-allowlist-filtered supports only SquaredEuclidean.", nameof(options));
+            throw new ArgumentException("external-fashion-mnist-hnsw-allowlist-filtered supports only SquaredEuclidean and Cosine.", nameof(options));
         }
 
         if (options.FilterProfile is not "fallback-boundary" and not "broad")

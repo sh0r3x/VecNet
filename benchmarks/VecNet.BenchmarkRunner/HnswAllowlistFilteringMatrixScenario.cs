@@ -108,7 +108,7 @@ public static class HnswAllowlistFilteringMatrixScenario
             new RunnerInfo("VecNet.BenchmarkRunner", "0.1", commandArguments.ToArray()),
             new CommandInfo(HnswAllowlistFilteringMatrixOptions.ScenarioName, commandArguments.ToArray()),
             options.OutputDirectory,
-            CreateDesign(presetName, options.Seed),
+            CreateDesign(presetName, options.Seed, options.Metric),
             caseManifests.Length,
             validationStatus,
             caseManifests,
@@ -139,7 +139,7 @@ public static class HnswAllowlistFilteringMatrixScenario
             string openedIndexDirectory = Path.Combine(caseDirectory, "opened-index");
             string checkpointDirectory = Path.Combine(caseDirectory, "checkpoint-output");
             var caseOptions = new HnswAllowlistFilteringOptions(
-                VectorMetric.SquaredEuclidean,
+                options.Metric,
                 presetCase.Dimension,
                 presetCase.BaseVectorCount,
                 options.QueryCount,
@@ -720,12 +720,12 @@ public static class HnswAllowlistFilteringMatrixScenario
             AllEligibilityFlagsFalse: allReportsInspected && !publicClaimEligible && !baselineCandidateEligible && !comparisonArtifactEligible && !regressionGateEligible);
     }
 
-    private static HnswAllowlistFilteringMatrixDesignInfo CreateDesign(string presetName, uint seed)
+    private static HnswAllowlistFilteringMatrixDesignInfo CreateDesign(string presetName, uint seed, VectorMetric metric)
     {
         AllowlistMatrixPresetCase[] presetCases = GetPresetCases(presetName);
         AllowlistMatrixPresetCase first = presetCases[0];
         return new HnswAllowlistFilteringMatrixDesignInfo(
-            VectorMetric.SquaredEuclidean.ToString(),
+            metric.ToString(),
             presetCases.Select(item => item.Dimension).Distinct().Order().ToArray(),
             presetCases.Select(item => item.TopK).Distinct().Order().ToArray(),
             presetCases.Select(item => item.FilterProfile).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(),

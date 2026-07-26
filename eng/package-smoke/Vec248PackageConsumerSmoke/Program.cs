@@ -8,6 +8,7 @@ string artifactRoot = args.Length > 0
 Directory.CreateDirectory(artifactRoot);
 
 RunHnswCosinePackageSmoke(Path.Combine(artifactRoot, "hnsw-cosine"));
+RunMutableHnswCosinePackageSmoke(Path.Combine(artifactRoot, "hnsw-mutable-cosine"));
 await RunVectorDataAdapterSmoke();
 
 Console.WriteLine("VEC248_PACKAGE_CONSUMER_SMOKE_PASSED");
@@ -71,6 +72,76 @@ static void RunHnswCosinePackageSmoke(string artifactRoot)
     }
 }
 
+static void RunMutableHnswCosinePackageSmoke(string artifactRoot)
+{
+    ResetDirectory(artifactRoot);
+
+    var options = new HnswIndexOptions(M: 8, EfConstruction: 24, EfSearch: 24, RandomSeed: 0x564543_254UL);
+    var baseIndex = new HnswIndex(dimension: 3, VectorMetric.Cosine, options, initialCapacity: 6);
+
+    baseIndex.Add(40, [10f, 0f, 0f]);
+    baseIndex.Add(10, [1f, 1f, 0f]);
+    baseIndex.Add(30, [0f, 2f, 0f]);
+    baseIndex.Add(20, [-1f, 0f, 0f]);
+    baseIndex.Add(50, [0f, 0f, 5f]);
+    baseIndex.Add(60, [1f, 1f, 1f]);
+
+    var mutable = new HnswMutableIndex(baseIndex);
+    Require(mutable.Metric == VectorMetric.Cosine, "Mutable HNSW wrapper should preserve cosine metric.");
+
+    VectorMutationResult add = mutable.TryAdd(15, [2f, 2f, 0f]);
+    Require(add.Status == VectorMutationStatus.Committed, "Mutable HNSW cosine should accept nonzero delta vectors.");
+    Require(mutable.DeltaLiveVectorCount == 1, "Mutable HNSW cosine should expose the live delta row.");
+
+    var staleAfterAdd = new HnswMutableSearchWorkspace(mutable, maxResults: 4);
+    VectorMutationResult delete = mutable.TryDelete(10);
+    Require(delete.Status == VectorMutationStatus.Committed, "Mutable HNSW cosine should tombstone a base ID.");
+    ExpectThrows<InvalidOperationException>(
+        () => mutable.Search([1f, 1f, 0f], new SearchResult[4], staleAfterAdd),
+        "Mutable HNSW cosine should reject stale workspaces after mutation.");
+
+    SearchResult[] liveResults = SearchMutableHnsw(mutable, [1f, 1f, 0f], 4);
+    Require(liveResults.Length == 4, "Mutable HNSW cosine search should return live results.");
+    Require(
+        liveResults.All(static result => float.IsFinite(result.Distance)),
+        "Mutable HNSW cosine search should return finite distances.");
+    Require(
+        !liveResults.Any(static result => result.Id == 10),
+        "Mutable HNSW cosine search should not return tombstoned base IDs.");
+
+    ulong[] allowed = [999, 10, 15, 30, 15, 20, 777];
+    SearchResult[] allowedResults = SearchMutableHnswAllowed(mutable, [1f, 1f, 0f], allowed, 4);
+    Require(
+        allowedResults.Select(static result => result.Id).SequenceEqual([15UL, 30UL, 20UL]),
+        "Mutable HNSW cosine allowlist search should exclude tombstones and rank live allowed IDs.");
+
+    string checkpointPath = Path.Combine(artifactRoot, "checkpoint");
+    SearchResult[] beforeCheckpoint = SearchMutableHnsw(mutable, [1f, 1f, 0f], 4);
+    HnswMutableCheckpointResult checkpoint = mutable.Checkpoint(checkpointPath);
+    Require(
+        checkpoint.Status == HnswMutableCheckpointStatus.Published,
+        "Mutable HNSW cosine checkpoint should publish a rebuilt immutable HNSW output.");
+    Require(
+        Directory.Exists(checkpointPath),
+        "Mutable HNSW cosine checkpoint should write the checkpoint directory.");
+    Require(
+        checkpoint.RebuiltBaseVectorCount == mutable.LiveVectorCount,
+        "Mutable HNSW cosine checkpoint should fold live rows into the rebuilt base.");
+
+    HnswIndex opened = HnswIndex.OpenReadOnly(checkpointPath);
+    Require(opened.Metric == VectorMetric.Cosine, "Opened mutable HNSW cosine checkpoint should preserve cosine metric.");
+
+    SearchResult[] openedResults = SearchHnsw(opened, [1f, 1f, 0f], beforeCheckpoint.Length);
+    Require(openedResults.Length == beforeCheckpoint.Length, "Opened mutable HNSW cosine checkpoint should preserve result count.");
+    for (int i = 0; i < openedResults.Length; i++)
+    {
+        Require(openedResults[i].Id == beforeCheckpoint[i].Id, "Opened mutable HNSW cosine checkpoint should preserve result IDs.");
+        Require(
+            Math.Abs(openedResults[i].Distance - beforeCheckpoint[i].Distance) <= 0.000001f,
+            "Opened mutable HNSW cosine checkpoint should preserve distances.");
+    }
+}
+
 static async Task RunVectorDataAdapterSmoke()
 {
     var store = new VecNetVectorStore();
@@ -125,6 +196,27 @@ static Task<List<VectorSearchResult<SmokeRecord>>> Search(
     int top,
     VectorSearchOptions<SmokeRecord>? options = null) =>
     ToListAsync(collection.SearchAsync(query, top, options));
+
+static SearchResult[] SearchMutableHnsw(HnswMutableIndex index, float[] query, int top)
+{
+    var results = new SearchResult[top];
+    int written = index.Search(query, results, new HnswMutableSearchWorkspace(index, top));
+    return results[..written];
+}
+
+static SearchResult[] SearchMutableHnswAllowed(HnswMutableIndex index, float[] query, ulong[] allowedIds, int top)
+{
+    var results = new SearchResult[top];
+    int written = index.Search(query, allowedIds, results, new HnswMutableSearchWorkspace(index, top));
+    return results[..written];
+}
+
+static SearchResult[] SearchHnsw(HnswIndex index, float[] query, int top)
+{
+    var results = new SearchResult[top];
+    int written = index.Search(query, results, index.CreateSearchWorkspace());
+    return results[..written];
+}
 
 static async Task<List<T>> ToListAsync<T>(IAsyncEnumerable<T> source)
 {

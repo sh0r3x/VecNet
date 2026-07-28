@@ -59,6 +59,32 @@ jobs:
           $packageDir = Join-Path $env:RUNNER_TEMP "vecnet-packages"
           dotnet pack src/VecNet.Integration.VectorData/VecNet.Integration.VectorData.csproj -c Release --no-build --no-restore --output $packageDir
 
+      - name: Validate package compatibility against 1.0.0
+        shell: pwsh
+        run: |
+          $baselinePackageDir = Join-Path $env:RUNNER_TEMP "vecnet-packages-baseline-1-0-0"
+          $baselineValidationDir = Join-Path $env:RUNNER_TEMP "vecnet-package-validation-baseline-1-0-0"
+          New-Item -ItemType Directory -Force -Path $baselinePackageDir | Out-Null
+          New-Item -ItemType Directory -Force -Path $baselineValidationDir | Out-Null
+          $coreValidationMarker = Join-Path $baselineValidationDir "VecNet.Microsoft.NET.ApiCompat.ValidatePackage.semaphore"
+          $adapterValidationMarker = Join-Path $baselineValidationDir "VecNet.Integration.VectorData.Microsoft.NET.ApiCompat.ValidatePackage.semaphore"
+          dotnet pack src/VecNet/VecNet.csproj `
+            -c Release `
+            --no-build `
+            --no-restore `
+            --output $baselinePackageDir `
+            -p:EnablePackageValidation=true `
+            -p:PackageValidationBaselineVersion=1.0.0 `
+            -p:_ApiCompatValidatePackageSemaphoreFile=$coreValidationMarker
+          dotnet pack src/VecNet.Integration.VectorData/VecNet.Integration.VectorData.csproj `
+            -c Release `
+            --no-build `
+            --no-restore `
+            --output $baselinePackageDir `
+            -p:EnablePackageValidation=true `
+            -p:PackageValidationBaselineVersion=1.0.0 `
+            -p:_ApiCompatValidatePackageSemaphoreFile=$adapterValidationMarker
+
       - name: Inspect generated packages
         shell: pwsh
         run: |
@@ -85,5 +111,14 @@ jobs:
           $packageDir = Join-Path $env:RUNNER_TEMP "vecnet-packages"
           $artifactRoot = Join-Path $env:RUNNER_TEMP "vecnet-package-consumer-smoke"
           ./eng/package-smoke/Vec248PackageConsumerSmoke/Invoke-Vec248PackageConsumerSmoke.ps1 `
+            -PackageSource $packageDir `
+            -ArtifactRoot $artifactRoot
+
+      - name: Durable compatibility smoke
+        shell: pwsh
+        run: |
+          $packageDir = Join-Path $env:RUNNER_TEMP "vecnet-packages"
+          $artifactRoot = Join-Path $env:RUNNER_TEMP "vecnet-durable-compatibility-smoke"
+          ./eng/package-smoke/Vec281CompatibilitySmoke/Invoke-Vec281CompatibilitySmoke.ps1 `
             -PackageSource $packageDir `
             -ArtifactRoot $artifactRoot

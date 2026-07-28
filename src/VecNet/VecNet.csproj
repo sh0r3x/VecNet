@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackageId>VecNet</PackageId>
-    <Version>1.2.0</Version>
+    <Version>1.2.1</Version>
     <Title>VecNet</Title>
     <Authors>VecNet Contributors</Authors>
     <Description>Pure-managed embedded .NET vector indexing library for exact vector search, durable snapshots, filtering, updates, and HNSW approximate search for squared-L2 and cosine distance. The core package is dependency-free and this metadata makes no public performance or platform claim.</Description>
@@ -17,7 +17,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <EnablePackageValidation>true</EnablePackageValidation>
-    <PackageValidationBaselineVersion>1.1.0</PackageValidationBaselineVersion>
+    <PackageValidationBaselineVersion>1.2.0</PackageValidationBaselineVersion>
   </PropertyGroup>
 
   <ItemGroup>

@@ -11,14 +11,14 @@ and durable application storage.
 Use VecNet from a `.NET 10` project. Add the core package:
 
 ```bash
-dotnet add package VecNet --version 1.2.0
+dotnet add package VecNet --version 1.2.1
 ```
 
 For `Microsoft.Extensions.VectorData` applications, add the separate optional
 exact-flat adapter package in addition to the core package:
 
 ```bash
-dotnet add package VecNet.Integration.VectorData --version 1.2.0
+dotnet add package VecNet.Integration.VectorData --version 1.2.1
 ```
 
 The core `VecNet` package intentionally has no runtime package dependencies
@@ -115,15 +115,16 @@ or semantic-relevance claims.
   durable HNSW output.
 - Immutable HNSW durable files are the current round-trip format for `Save`
   and `OpenReadOnly`. Squared-L2 and cosine mutable checkpoint output use the same
-  current format. These files are not a cross-version or long-term stable
-  file-format promise.
+  current format. The `1.x` compatibility policy covers supported earlier
+  `1.x` snapshots, but future major package lines are not guaranteed to read
+  every durable directory forever.
 - The optional VectorData adapter follows `IncludeVectors`: null/default
   options and `IncludeVectors = false` omit vectors, while
   `IncludeVectors = true` includes vectors. Omitting vectors may require a
   projectable class record shape; unsupported projection shapes throw a clear
   `NotSupportedException`.
 
-## Supported 1.2.0 Feature List
+## Supported 1.2.1 Feature List
 
 - Target framework: `net10.0`.
 - The core `VecNet` package is dependency-free and ships managed `lib/net10.0`
@@ -199,8 +200,18 @@ or semantic-relevance claims.
   are exact in-memory rows, deletes are tombstones, checkpoint/rebuild writes a
   new immutable HNSW snapshot after validation, and mutable overlay state is
   not durably reopened.
-- HNSW durable files are a current round-trip format and do not carry a
-  cross-version compatibility promise.
+- Stable `1.x` releases follow semantic versioning. Patch and minor releases
+  preserve public API/package compatibility while allowing additive APIs,
+  diagnostics, documentation, validation hardening and bug fixes.
+- Current `1.x` packages should open and search durable exact-flat and
+  immutable HNSW snapshots written by earlier stable `1.x` packages for the
+  same supported surface and metric. Future major package lines are not
+  guaranteed to read every `1.x` durable directory forever. Keep source
+  vectors and application records so you can rebuild or export indexes when
+  adopting a future major line.
+- HNSW durable files are a current `1.x` round-trip format. Mutable HNSW
+  durable compatibility is represented by checkpoint output; mutable overlay
+  state itself is not reopened as a durable mutable index.
 - The optional VectorData adapter does not support HNSW VectorData indexes,
   durable VectorData collection open/reopen, durable record or key-map
   storage, embedding generation, hybrid search, multiple vector properties,
@@ -212,7 +223,7 @@ or semantic-relevance claims.
 - The package-smoke evidence is functional package-consumer evidence. It is
   not a public performance, platform support, NativeAOT, trimming, or
   universal deployment claim.
-- `1.2.0` is the stable package version for the supported public API surfaces
+- `1.2.1` is the stable package version for the supported public API surfaces
   described here. Except for the dedicated benchmark documents linked above,
   this README does not make public HNSW recall, latency, throughput,
   allocation, memory, capacity, storage-size, update-profile, concurrency,

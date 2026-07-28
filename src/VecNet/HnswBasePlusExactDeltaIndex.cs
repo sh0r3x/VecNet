@@ -229,6 +229,18 @@ internal sealed class HnswBasePlusExactDeltaIndex
 
         int baseCandidateCount = SearchBaseCandidates(query, workspace, efSearch);
         int deltaCandidateCount = SearchDeltaCandidates(query, queryMagnitude, results.Length, workspace);
+        int written = MergeCandidates(
+            workspace.BaseCandidates.AsSpan(0, baseCandidateCount),
+            workspace.DeltaCandidates.AsSpan(0, deltaCandidateCount),
+            results);
+
+        int retryEfSearch = GetAdaptiveRetryEfSearch(efSearch, workspace);
+        if (!ShouldRetry(written, results.Length, LiveVectorCount, retryEfSearch, efSearch, BaseTombstoneCount > 0))
+        {
+            return written;
+        }
+
+        baseCandidateCount = SearchBaseCandidates(query, workspace, retryEfSearch);
         return MergeCandidates(
             workspace.BaseCandidates.AsSpan(0, baseCandidateCount),
             workspace.DeltaCandidates.AsSpan(0, deltaCandidateCount),
@@ -287,11 +299,44 @@ internal sealed class HnswBasePlusExactDeltaIndex
 
         int baseCandidateCount = SearchBaseAllowedCandidates(query, workspace, baseFilterMark, efSearch);
         int deltaCandidateCount = SearchDeltaAllowedCandidates(query, queryMagnitude, results.Length, workspace, deltaFilterMark);
+        int written = MergeCandidates(
+            workspace.BaseCandidates.AsSpan(0, baseCandidateCount),
+            workspace.DeltaCandidates.AsSpan(0, deltaCandidateCount),
+            results);
+
+        int retryEfSearch = GetAdaptiveRetryEfSearch(efSearch, workspace);
+        if (!ShouldRetry(written, results.Length, allowedCount, retryEfSearch, efSearch, BaseTombstoneCount > 0))
+        {
+            return written;
+        }
+
+        baseCandidateCount = SearchBaseAllowedCandidates(query, workspace, baseFilterMark, retryEfSearch);
         return MergeCandidates(
             workspace.BaseCandidates.AsSpan(0, baseCandidateCount),
             workspace.DeltaCandidates.AsSpan(0, deltaCandidateCount),
             results);
     }
+
+    private int GetAdaptiveRetryEfSearch(
+        int firstEfSearch,
+        HnswBasePlusExactDeltaSearchWorkspace workspace)
+    {
+        int maxCandidateWidth = Math.Min(workspace.HnswWorkspace.MaxEf, workspace.BaseCandidates.Length);
+        int maxEffectiveWidth = Math.Min(_basePhysicalVectorCount, maxCandidateWidth);
+        return maxEffectiveWidth > firstEfSearch ? maxEffectiveWidth : firstEfSearch;
+    }
+
+    private static bool ShouldRetry(
+        int written,
+        int requestedResultCount,
+        int visibleResultCount,
+        int retryEfSearch,
+        int firstEfSearch,
+        bool hasBaseTombstones) =>
+        hasBaseTombstones &&
+        written < requestedResultCount &&
+        written < visibleResultCount &&
+        retryEfSearch > firstEfSearch;
 
     private int SearchBaseCandidates(
         ReadOnlySpan<float> query,

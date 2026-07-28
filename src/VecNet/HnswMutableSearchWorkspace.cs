@@ -18,6 +18,20 @@ public sealed class HnswMutableSearchWorkspace
     /// <param name="index">The mutable HNSW index this workspace will be used with.</param>
     /// <param name="maxResults">The maximum result buffer length this workspace can support.</param>
     public HnswMutableSearchWorkspace(HnswMutableIndex index, int maxResults)
+        : this(index, maxResults, index?.Options.EfSearch ?? 0, nameof(index))
+    {
+    }
+
+    internal HnswMutableSearchWorkspace(HnswMutableIndex index, int maxResults, int maxEfSearch)
+        : this(index, maxResults, maxEfSearch, nameof(maxEfSearch))
+    {
+    }
+
+    private HnswMutableSearchWorkspace(
+        HnswMutableIndex index,
+        int maxResults,
+        int maxEfSearch,
+        string maxEfSearchParameterName)
     {
         ArgumentNullException.ThrowIfNull(index);
         if (maxResults < 0)
@@ -25,10 +39,15 @@ public sealed class HnswMutableSearchWorkspace
             throw new ArgumentOutOfRangeException(nameof(maxResults), "Workspace result capacity must not be negative.");
         }
 
+        if (maxEfSearch is < 1 or > 4096)
+        {
+            throw new ArgumentOutOfRangeException(maxEfSearchParameterName, "EfSearch must be in the range [1, 4096].");
+        }
+
         Generation = index.Generation;
         MaxBaseElements = index.BasePhysicalVectorCount;
-        MaxEfSearch = index.Options.EfSearch;
-        MaxBaseCandidates = Math.Min(index.BasePhysicalVectorCount, index.Options.EfSearch);
+        MaxEfSearch = maxEfSearch;
+        MaxBaseCandidates = Math.Min(index.BasePhysicalVectorCount, maxEfSearch);
         MaxDeltaCandidates = maxResults;
         MaxDeltaFilterElements = index.DeltaPhysicalVectorCount;
         Inner = new HnswBasePlusExactDeltaSearchWorkspace(

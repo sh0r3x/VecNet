@@ -155,7 +155,7 @@ public sealed partial class HnswIndex
     /// <remarks>
     /// Immutable HNSW has no tombstone overlay, so this value is both the stored row count and
     /// the searchable vector count. It is useful for sizing caller-owned
-    /// <see cref="HnswSearchWorkspace"/> instances; <see cref="CreateSearchWorkspace"/> performs
+    /// <see cref="HnswSearchWorkspace"/> instances; <see cref="CreateSearchWorkspace()"/> performs
     /// that sizing for the current index shape.
     /// </remarks>
     public int Count => _count;
@@ -370,6 +370,27 @@ public sealed partial class HnswIndex
         new(Count, Options.EfSearch);
 
     /// <summary>
+    /// Creates an HNSW search workspace sized for this index and a caller-selected maximum search width.
+    /// </summary>
+    /// <param name="maxEfSearch">The maximum per-search HNSW candidate width this workspace can support.</param>
+    /// <returns>
+    /// A caller-owned workspace whose <see cref="HnswSearchWorkspace.MaxElements"/> is at least
+    /// the current <see cref="Count"/> and whose <see cref="HnswSearchWorkspace.MaxEf"/> is at
+    /// least <paramref name="maxEfSearch"/>.
+    /// </returns>
+    /// <remarks>
+    /// <paramref name="maxEfSearch"/> must be in the range [1, 4096]. Recreate the workspace after
+    /// this index grows beyond the workspace's recorded capacities or when using a per-search width
+    /// greater than <see cref="HnswSearchWorkspace.MaxEf"/>. Do not share one workspace between
+    /// overlapping searches.
+    /// </remarks>
+    public HnswSearchWorkspace CreateSearchWorkspace(int maxEfSearch)
+    {
+        ValidateEfSearch(maxEfSearch, nameof(maxEfSearch));
+        return new HnswSearchWorkspace(Count, maxEfSearch);
+    }
+
+    /// <summary>
     /// Searches this HNSW index and writes approximate nearest results in ascending distance order.
     /// </summary>
     /// <remarks>
@@ -391,18 +412,52 @@ public sealed partial class HnswIndex
     /// <returns>The number of results written.</returns>
     public int Search(ReadOnlySpan<float> query, Span<SearchResult> results, HnswSearchWorkspace workspace)
     {
+        return SearchCore(query, results, workspace, _options.EfSearch);
+    }
+
+    /// <summary>
+    /// Searches this HNSW index with a caller-selected search width and writes approximate nearest results in ascending distance order.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="efSearch"/> must be in the range [1, 4096] and must be at least the
+    /// requested result count. This per-search width controls only the current query and does not
+    /// change <see cref="Options"/>. The caller-owned workspace must have
+    /// <see cref="HnswSearchWorkspace.MaxElements"/> at least <see cref="Count"/> and
+    /// <see cref="HnswSearchWorkspace.MaxEf"/> at least <paramref name="efSearch"/>.
+    /// </remarks>
+    /// <param name="query">The finite query vector. Cosine queries are normalized during search.</param>
+    /// <param name="results">The caller-owned destination buffer. Its length specifies the requested result count.</param>
+    /// <param name="workspace">The caller-owned reusable HNSW workspace.</param>
+    /// <param name="efSearch">The HNSW candidate width for this search.</param>
+    /// <returns>The number of results written.</returns>
+    public int Search(
+        ReadOnlySpan<float> query,
+        Span<SearchResult> results,
+        HnswSearchWorkspace workspace,
+        int efSearch)
+    {
+        ValidateEfSearch(efSearch, nameof(efSearch));
+        return SearchCore(query, results, workspace, efSearch);
+    }
+
+    private int SearchCore(
+        ReadOnlySpan<float> query,
+        Span<SearchResult> results,
+        HnswSearchWorkspace workspace,
+        int effectiveEfSearch)
+    {
         ArgumentNullException.ThrowIfNull(workspace);
         double queryMagnitude = ValidateVector(query, nameof(query));
-        ValidateWorkspace(workspace);
+        ValidateWorkspace(workspace, effectiveEfSearch);
+
+        if (effectiveEfSearch < results.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(results), "EfSearch must be at least the requested result count.");
+        }
 
         if (results.IsEmpty || _count == 0)
         {
             return 0;
-        }
-
-        if (_options.EfSearch < results.Length)
-        {
-            throw new ArgumentOutOfRangeException(nameof(results), "EfSearch must be at least the requested result count.");
         }
 
         int entryPoint = _entryPoint;
@@ -415,7 +470,7 @@ public sealed partial class HnswIndex
             }
         }
 
-        int candidateCount = SearchLayer(query, queryMagnitude, entryPoint, _options.EfSearch, 0, workspace, _count);
+        int candidateCount = SearchLayer(query, queryMagnitude, entryPoint, effectiveEfSearch, 0, workspace, _count);
         int written = Math.Min(results.Length, candidateCount);
         for (int i = 0; i < written; i++)
         {
@@ -452,18 +507,56 @@ public sealed partial class HnswIndex
         Span<SearchResult> results,
         HnswSearchWorkspace workspace)
     {
+        return SearchCore(query, allowedIds, results, workspace, _options.EfSearch);
+    }
+
+    /// <summary>
+    /// Searches this HNSW index with a caller-selected search width while emitting only allowed external identifiers.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="efSearch"/> must be in the range [1, 4096] and must be at least the
+    /// requested result count. Unknown identifiers are ignored and duplicates are coalesced. When
+    /// the known allowed count is no greater than <paramref name="efSearch"/>, this method uses an
+    /// exact filtered scan over the known allowed vectors. For broader allowlists, HNSW traversal
+    /// remains unfiltered and non-allowed candidates are suppressed at emission, so the result may
+    /// underfill even when exact filtered truth has at least the requested number of results.
+    /// </remarks>
+    /// <param name="query">The finite query vector. Cosine queries are normalized during search.</param>
+    /// <param name="allowedIds">Caller-supplied external identifiers allowed for this search.</param>
+    /// <param name="results">The caller-owned destination buffer. Its length specifies the requested result count.</param>
+    /// <param name="workspace">The caller-owned reusable HNSW workspace.</param>
+    /// <param name="efSearch">The HNSW candidate width for this search.</param>
+    /// <returns>The number of filtered results written.</returns>
+    public int Search(
+        ReadOnlySpan<float> query,
+        ReadOnlySpan<ulong> allowedIds,
+        Span<SearchResult> results,
+        HnswSearchWorkspace workspace,
+        int efSearch)
+    {
+        ValidateEfSearch(efSearch, nameof(efSearch));
+        return SearchCore(query, allowedIds, results, workspace, efSearch);
+    }
+
+    private int SearchCore(
+        ReadOnlySpan<float> query,
+        ReadOnlySpan<ulong> allowedIds,
+        Span<SearchResult> results,
+        HnswSearchWorkspace workspace,
+        int effectiveEfSearch)
+    {
         ArgumentNullException.ThrowIfNull(workspace);
         double queryMagnitude = ValidateVector(query, nameof(query));
-        ValidateWorkspace(workspace);
+        ValidateWorkspace(workspace, effectiveEfSearch);
+
+        if (effectiveEfSearch < results.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(results), "EfSearch must be at least the requested result count.");
+        }
 
         if (results.IsEmpty || _count == 0 || allowedIds.IsEmpty)
         {
             return 0;
-        }
-
-        if (_options.EfSearch < results.Length)
-        {
-            throw new ArgumentOutOfRangeException(nameof(results), "EfSearch must be at least the requested result count.");
         }
 
         int filterMark = workspace.BeginFilter();
@@ -473,12 +566,12 @@ public sealed partial class HnswIndex
             return 0;
         }
 
-        if (allowedCount <= _options.EfSearch)
+        if (allowedCount <= effectiveEfSearch)
         {
             return SearchAllowedExact(query, queryMagnitude, results, workspace.FilterMarks, filterMark);
         }
 
-        return SearchAllowedByEmission(query, queryMagnitude, results, workspace, filterMark);
+        return SearchAllowedByEmission(query, queryMagnitude, results, workspace, filterMark, effectiveEfSearch);
     }
 
     internal int DebugGetLevel(int ordinal)
@@ -594,14 +687,22 @@ public sealed partial class HnswIndex
         }
     }
 
-    private void ValidateWorkspace(HnswSearchWorkspace workspace)
+    private static void ValidateEfSearch(int efSearch, string parameterName)
+    {
+        if (efSearch is < 1 or > MaxEf)
+        {
+            throw new ArgumentOutOfRangeException(parameterName, "EfSearch must be in the range [1, 4096].");
+        }
+    }
+
+    private void ValidateWorkspace(HnswSearchWorkspace workspace, int effectiveEfSearch)
     {
         if (workspace.MaxElements < _count)
         {
             throw new ArgumentException("Workspace element capacity is smaller than the index count.", nameof(workspace));
         }
 
-        if (workspace.MaxEf < _options.EfSearch)
+        if (workspace.MaxEf < effectiveEfSearch)
         {
             throw new ArgumentException("Workspace ef capacity is smaller than EfSearch.", nameof(workspace));
         }
@@ -966,7 +1067,8 @@ public sealed partial class HnswIndex
         double queryMagnitude,
         Span<SearchResult> results,
         HnswSearchWorkspace workspace,
-        int filterMark)
+        int filterMark,
+        int effectiveEfSearch)
     {
         int entryPoint = _entryPoint;
         for (int layer = _maxLayer; layer > 0; layer--)
@@ -978,7 +1080,7 @@ public sealed partial class HnswIndex
             }
         }
 
-        int candidateCount = SearchLayer(query, queryMagnitude, entryPoint, _options.EfSearch, 0, workspace, _count);
+        int candidateCount = SearchLayer(query, queryMagnitude, entryPoint, effectiveEfSearch, 0, workspace, _count);
         int written = 0;
         for (int i = 0; i < candidateCount && written < results.Length; i++)
         {

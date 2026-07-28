@@ -9,7 +9,7 @@ namespace VecNet;
 /// overlapping searches; sharing a workspace between overlapping searches is not supported.
 /// Size workspaces from the current HNSW index count and configured
 /// <see cref="HnswIndexOptions.EfSearch"/>; prefer
-/// <see cref="HnswIndex.CreateSearchWorkspace"/> when the workspace is tied to a specific
+/// <see cref="HnswIndex.CreateSearchWorkspace()"/> when the workspace is tied to a specific
 /// immutable index instance. Recreate the workspace when the searched generation changes.
 /// </remarks>
 public sealed class HnswSearchWorkspace

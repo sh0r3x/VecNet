@@ -19,7 +19,17 @@ public sealed class HnswMutableIndexPublicPreviewApiTests
         Assert.True(typeof(HnswBasePlusExactDeltaCheckpointPhaseStatus).IsNotPublic);
 
         Assert.Equal(
-            ["Checkpoint", "Search", "Search", "TryAdd", "TryDelete"],
+            [
+                "Checkpoint",
+                "CreateSearchWorkspace",
+                "CreateSearchWorkspace",
+                "Search",
+                "Search",
+                "Search",
+                "Search",
+                "TryAdd",
+                "TryDelete"
+            ],
             typeof(HnswMutableIndex)
                 .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
                 .Where(static method => !method.IsSpecialName)

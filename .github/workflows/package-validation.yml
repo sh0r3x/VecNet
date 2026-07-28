@@ -68,6 +68,12 @@ jobs:
           New-Item -ItemType Directory -Force -Path $baselineValidationDir | Out-Null
           $coreValidationMarker = Join-Path $baselineValidationDir "VecNet.Microsoft.NET.ApiCompat.ValidatePackage.semaphore"
           $adapterValidationMarker = Join-Path $baselineValidationDir "VecNet.Integration.VectorData.Microsoft.NET.ApiCompat.ValidatePackage.semaphore"
+          dotnet restore src/VecNet/VecNet.csproj `
+            -p:EnablePackageValidation=true `
+            -p:PackageValidationBaselineVersion=1.0.0
+          dotnet restore src/VecNet.Integration.VectorData/VecNet.Integration.VectorData.csproj `
+            -p:EnablePackageValidation=true `
+            -p:PackageValidationBaselineVersion=1.0.0
           dotnet pack src/VecNet/VecNet.csproj `
             -c Release `
             --no-build `

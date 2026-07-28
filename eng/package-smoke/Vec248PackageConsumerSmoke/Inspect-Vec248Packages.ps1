@@ -3,11 +3,12 @@ param(
     [string] $CorePackagePath,
 
     [Parameter(Mandatory = $true)]
-    [string] $AdapterPackagePath
+    [string] $AdapterPackagePath,
+
+    [string] $ExpectedPackageVersion
 )
 
 $ErrorActionPreference = "Stop"
-$expectedVersion = "1.2.0"
 
 function Expand-Package {
     param(
@@ -142,6 +143,13 @@ $core = Get-PackageInfo -PackagePath $CorePackagePath
 $adapter = Get-PackageInfo -PackagePath $AdapterPackagePath
 
 try {
+    $expectedVersion = if ([string]::IsNullOrWhiteSpace($ExpectedPackageVersion)) {
+        $core.Version
+    }
+    else {
+        $ExpectedPackageVersion
+    }
+
     if ($core.Id -ne "VecNet") {
         throw "Unexpected core package ID: $($core.Id)"
     }

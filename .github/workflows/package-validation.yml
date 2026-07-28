@@ -12,9 +12,16 @@ permissions:
 
 jobs:
   package-validation:
-    name: Build, test, and validate packages
-    runs-on: ubuntu-latest
+    name: Build, test, and validate packages (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 45
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
 
     steps:
       - name: Check out repository
@@ -34,8 +41,49 @@ jobs:
       - name: Test solution
         run: dotnet test VecNet.slnx -c Release --no-build --no-restore
 
-      - name: Pack and validate VecNet
-        run: dotnet pack src/VecNet/VecNet.csproj -c Release --no-build --no-restore
+      - name: Create package output directory
+        shell: pwsh
+        run: |
+          $packageDir = Join-Path $env:RUNNER_TEMP "vecnet-packages"
+          New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
 
-      - name: Pack and validate VecNet.Integration.VectorData
-        run: dotnet pack src/VecNet.Integration.VectorData/VecNet.Integration.VectorData.csproj -c Release --no-build --no-restore
+      - name: Pack VecNet
+        shell: pwsh
+        run: |
+          $packageDir = Join-Path $env:RUNNER_TEMP "vecnet-packages"
+          dotnet pack src/VecNet/VecNet.csproj -c Release --no-build --no-restore --output $packageDir
+
+      - name: Pack VecNet.Integration.VectorData
+        shell: pwsh
+        run: |
+          $packageDir = Join-Path $env:RUNNER_TEMP "vecnet-packages"
+          dotnet pack src/VecNet.Integration.VectorData/VecNet.Integration.VectorData.csproj -c Release --no-build --no-restore --output $packageDir
+
+      - name: Inspect generated packages
+        shell: pwsh
+        run: |
+          $packageDir = Join-Path $env:RUNNER_TEMP "vecnet-packages"
+          $corePackages = @(Get-ChildItem -LiteralPath $packageDir -Filter "VecNet.*.nupkg" |
+            Where-Object { $_.Name -notlike "VecNet.Integration.VectorData.*" -and $_.Name -notlike "*.snupkg" } |
+            Sort-Object Name)
+          $adapterPackages = @(Get-ChildItem -LiteralPath $packageDir -Filter "VecNet.Integration.VectorData.*.nupkg" |
+            Where-Object { $_.Name -notlike "*.snupkg" } |
+            Sort-Object Name)
+          if ($corePackages.Count -ne 1) {
+            throw "Expected exactly one VecNet package in $packageDir, but found $($corePackages.Count)."
+          }
+          if ($adapterPackages.Count -ne 1) {
+            throw "Expected exactly one VecNet.Integration.VectorData package in $packageDir, but found $($adapterPackages.Count)."
+          }
+          ./eng/package-smoke/Vec248PackageConsumerSmoke/Inspect-Vec248Packages.ps1 `
+            -CorePackagePath $corePackages[0].FullName `
+            -AdapterPackagePath $adapterPackages[0].FullName
+
+      - name: Clean package consumer smoke
+        shell: pwsh
+        run: |
+          $packageDir = Join-Path $env:RUNNER_TEMP "vecnet-packages"
+          $artifactRoot = Join-Path $env:RUNNER_TEMP "vecnet-package-consumer-smoke"
+          ./eng/package-smoke/Vec248PackageConsumerSmoke/Invoke-Vec248PackageConsumerSmoke.ps1 `
+            -PackageSource $packageDir `
+            -ArtifactRoot $artifactRoot

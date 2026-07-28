@@ -5,11 +5,11 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <VecNetPackageVersion Condition="'$(VecNetPackageVersion)' == ''">0.0.0-local</VecNetPackageVersion>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="VecNet" Version="0.0.0-local" />
-    <PackageReference Include="VecNet.Integration.VectorData" Version="0.0.0-local" />
+    <PackageReference Include="VecNet" Version="$(VecNetPackageVersion)" />
   </ItemGroup>
 
 </Project>

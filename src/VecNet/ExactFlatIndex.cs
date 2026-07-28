@@ -848,10 +848,10 @@ public sealed partial class ExactFlatIndex
         double dotProduct = 0;
         for (int i = 0; i < Dimension; i++)
         {
-            dotProduct += _vectors[offset + i] * (query[i] / queryMagnitude);
+            dotProduct += (double)query[i] * _vectors[offset + i];
         }
 
-        return (float)(1 - dotProduct);
+        return (float)(1 - (dotProduct / queryMagnitude));
     }
 
     private static int FindInsertionIndex(ReadOnlySpan<SearchResult> results, SearchResult candidate)

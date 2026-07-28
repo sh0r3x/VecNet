@@ -11,14 +11,14 @@ and durable application storage.
 Use VecNet from a `.NET 10` project. Add the core package:
 
 ```bash
-dotnet add package VecNet --version 1.2.0
+dotnet add package VecNet --version 1.2.1
 ```
 
 For `Microsoft.Extensions.VectorData` applications, add the separate optional
 exact-flat adapter package in addition to the core package:
 
 ```bash
-dotnet add package VecNet.Integration.VectorData --version 1.2.0
+dotnet add package VecNet.Integration.VectorData --version 1.2.1
 ```
 
 The core `VecNet` package intentionally has no runtime package dependencies
@@ -115,15 +115,16 @@ or semantic-relevance claims.
   durable HNSW output.
 - Immutable HNSW durable files are the current round-trip format for `Save`
   and `OpenReadOnly`. Squared-L2 and cosine mutable checkpoint output use the same
-  current format. These files are not a cross-version or long-term stable
-  file-format promise.
+  current format. The `1.x` compatibility policy covers supported earlier
+  `1.x` snapshots, but future major package lines are not guaranteed to read
+  every durable directory forever.
 - The optional VectorData adapter follows `IncludeVectors`: null/default
   options and `IncludeVectors = false` omit vectors, while
   `IncludeVectors = true` includes vectors. Omitting vectors may require a
   projectable class record shape; unsupported projection shapes throw a clear
   `NotSupportedException`.
 
-## Supported 1.2.0 Feature List
+## Supported 1.2.1 Feature List
 
 - Target framework: `net10.0`.
 - The core `VecNet` package is dependency-free and ships managed `lib/net10.0`
@@ -150,7 +151,9 @@ or semantic-relevance claims.
   buffers and workspaces.
 - HNSW approximate indexing for `VectorMetric.Cosine` with immutable
   `HnswIndex` build/search, durable `Save`/`OpenReadOnly`, opened read-only
-  search, and update-oriented mutable functional support.
+  search, opened read-only concurrent unfiltered and caller-owned allowlist
+  search when each overlapping call uses its own result buffer and
+  `HnswSearchWorkspace`, and update-oriented mutable functional support.
 - Update-oriented HNSW mode for squared L2 and cosine using an immutable HNSW
   base plus exact in-memory delta rows, tombstones, search merge/rerank,
   allowlist search, and caller-initiated checkpoint/rebuild into a new
@@ -187,17 +190,28 @@ or semantic-relevance claims.
   HNSW traversal remains approximate and unfiltered; non-allowed candidates are
   suppressed at emission and fewer than the requested number of results may be
   returned.
-- Read-only overlap is documented for squared-L2 HNSW only, over a logically
-  frozen index or generation with independent caller-owned result buffers and
-  independent workspaces. Concurrent mutation/search, concurrent
-  checkpoint/search, shared scratch, and HNSW cosine concurrency are not
-  supported.
+- Read-only overlap is documented for squared-L2 HNSW over a logically frozen
+  index or generation, and for opened immutable cosine `HnswIndex` instances.
+  Each overlapping unfiltered or caller-owned allowlist search must use its
+  own result buffer and its own `HnswSearchWorkspace`. Shared result buffers,
+  shared search workspaces, shared scratch, concurrent mutation/search,
+  concurrent checkpoint/search, and mutable HNSW concurrency are not supported.
 - The update-oriented HNSW mode does not mutate the graph in place. Delta rows
   are exact in-memory rows, deletes are tombstones, checkpoint/rebuild writes a
   new immutable HNSW snapshot after validation, and mutable overlay state is
   not durably reopened.
-- HNSW durable files are a current round-trip format and do not carry a
-  cross-version compatibility promise.
+- Stable `1.x` releases follow semantic versioning. Patch and minor releases
+  preserve public API/package compatibility while allowing additive APIs,
+  diagnostics, documentation, validation hardening and bug fixes.
+- Current `1.x` packages should open and search durable exact-flat and
+  immutable HNSW snapshots written by earlier stable `1.x` packages for the
+  same supported surface and metric. Future major package lines are not
+  guaranteed to read every `1.x` durable directory forever. Keep source
+  vectors and application records so you can rebuild or export indexes when
+  adopting a future major line.
+- HNSW durable files are a current `1.x` round-trip format. Mutable HNSW
+  durable compatibility is represented by checkpoint output; mutable overlay
+  state itself is not reopened as a durable mutable index.
 - The optional VectorData adapter does not support HNSW VectorData indexes,
   durable VectorData collection open/reopen, durable record or key-map
   storage, embedding generation, hybrid search, multiple vector properties,
@@ -209,7 +223,7 @@ or semantic-relevance claims.
 - The package-smoke evidence is functional package-consumer evidence. It is
   not a public performance, platform support, NativeAOT, trimming, or
   universal deployment claim.
-- `1.2.0` is the stable package version for the supported public API surfaces
+- `1.2.1` is the stable package version for the supported public API surfaces
   described here. Except for the dedicated benchmark documents linked above,
   this README does not make public HNSW recall, latency, throughput,
   allocation, memory, capacity, storage-size, update-profile, concurrency,
@@ -352,8 +366,10 @@ int openedWritten = opened.Search([0.9f, 0.1f, 0.0f], results, openedWorkspace);
 
 Opened HNSW indexes reject `Add`. HNSW callers own result buffers and
 workspaces. Do not share a result buffer or workspace between overlapping
-squared-L2 searches; this README does not claim overlapping-search support
-for cosine.
+squared-L2 searches. For cosine, overlapping read-only search is supported
+only on indexes opened with `HnswIndex.OpenReadOnly`, and each overlapping
+unfiltered or allowlist search must use its own result buffer and
+`HnswSearchWorkspace`.
 
 ### HNSW Capacity, Workspace, And Scratch Guidance
 
@@ -368,12 +384,13 @@ operations can continue without a separate seal step. Applications that want
 to serve a logically frozen HNSW generation without build scratch
 should save the generation and open it with `OpenReadOnly`.
 
-Create one `HnswSearchWorkspace` per overlapping squared-L2 search. Size
-immutable HNSW workspaces from the current `Count` and the configured
-`EfSearch`; recreate a workspace when either value can exceed the workspace's
-recorded capacity. High `EfSearch` values and high concurrent squared-L2
-reader counts increase caller-owned workspace memory that the application must
-budget.
+Create one `HnswSearchWorkspace` per overlapping squared-L2 search. For
+cosine, create one workspace per overlapping read-only search only after the
+index has been opened with `OpenReadOnly`. Size immutable HNSW workspaces from
+the current `Count` and the configured `EfSearch`; recreate a workspace when
+either value can exceed the workspace's recorded capacity. High `EfSearch`
+values and high concurrent squared-L2 reader counts increase caller-owned
+workspace memory that the application must budget.
 
 Squared-L2 and cosine `Save`, `OpenReadOnly`, and mutable checkpoint/rebuild operate
 over the index state and may need temporary memory and disk space while
@@ -576,6 +593,10 @@ its own coordination. Caller-owned result buffers and workspaces must not be
 shared by overlapping calls. Candidate sets and mutable HNSW workspaces are
 transient handles for one owner index and generation; rebuild rather than
 sharing stale handles across mutation boundaries.
+
+Opened immutable cosine `HnswIndex` read-only searches may overlap for
+unfiltered and caller-owned allowlist search when each overlapping call uses
+its own result buffer and its own `HnswSearchWorkspace`.
 
 ## Floating-Point Comparisons
 

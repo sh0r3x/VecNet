@@ -890,10 +890,10 @@ internal sealed class HnswBasePlusExactDeltaIndex
         double dotProduct = 0;
         for (int i = 0; i < Dimension; i++)
         {
-            dotProduct += _deltaVectors[offset + i] * (query[i] / queryMagnitude);
+            dotProduct += (double)query[i] * _deltaVectors[offset + i];
         }
 
-        return (float)(1 - dotProduct);
+        return (float)(1 - (dotProduct / queryMagnitude));
     }
 
     private static int InsertCandidate(Span<SearchResult> results, int written, SearchResult candidate)

@@ -14,7 +14,6 @@ $consumerRoot = Join-Path $ArtifactRoot "consumer"
 $packagesRoot = Join-Path $ArtifactRoot "packages-cache"
 $runRoot = Join-Path $ArtifactRoot "run"
 $nugetConfig = Join-Path $ArtifactRoot "NuGet.local.config"
-$expectedVersion = "1.2.0"
 
 New-Item -ItemType Directory -Force -Path $ArtifactRoot, $consumerRoot, $packagesRoot, $runRoot | Out-Null
 Copy-Item -Path (Join-Path $consumerSource "*") -Destination $consumerRoot -Recurse -Force
@@ -31,6 +30,97 @@ Remove-Item -LiteralPath (Join-Path $consumerRoot "Invoke-Vec248PackageConsumerS
   </packageSources>
 </configuration>
 "@ | Set-Content -LiteralPath $nugetConfig -Encoding UTF8
+
+function Expand-Package {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $PackagePath
+    )
+
+    if (-not (Test-Path -LiteralPath $PackagePath -PathType Leaf)) {
+        throw "Package file not found: $PackagePath"
+    }
+
+    $expanded = Join-Path ([System.IO.Path]::GetTempPath()) ("vec248-package-smoke-" + [Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Force -Path $expanded | Out-Null
+    $zipPath = Join-Path $expanded "package.zip"
+    Copy-Item -LiteralPath $PackagePath -Destination $zipPath
+    Expand-Archive -LiteralPath $zipPath -DestinationPath $expanded -Force
+
+    return $expanded
+}
+
+function Get-LocalPackageInfo {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $PackagePath
+    )
+
+    $expanded = Expand-Package -PackagePath $PackagePath
+
+    try {
+        $nuspecPath = Get-ChildItem -LiteralPath $expanded -Filter "*.nuspec" | Select-Object -First 1
+        if ($null -eq $nuspecPath) {
+            throw "No nuspec found in package: $PackagePath"
+        }
+
+        [xml] $nuspec = Get-Content -LiteralPath $nuspecPath.FullName -Raw
+        $namespace = New-Object System.Xml.XmlNamespaceManager($nuspec.NameTable)
+        $namespace.AddNamespace("n", $nuspec.DocumentElement.NamespaceURI)
+        $metadata = $nuspec.SelectSingleNode("/n:package/n:metadata", $namespace)
+        if ($null -eq $metadata) {
+            throw "Nuspec metadata not found in package: $PackagePath"
+        }
+
+        return [pscustomobject]@{
+            Id = $metadata.SelectSingleNode("n:id", $namespace).InnerText
+            Version = $metadata.SelectSingleNode("n:version", $namespace).InnerText
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $expanded -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Get-RequiredPackageInfo {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $PackageId
+    )
+
+    $packages = @(Get-ChildItem -LiteralPath $PackageSource -Filter "$PackageId.*.nupkg" |
+        Where-Object { $_.Name -notlike "*.snupkg" } |
+        ForEach-Object { Get-LocalPackageInfo -PackagePath $_.FullName } |
+        Where-Object { $_.Id -eq $PackageId })
+
+    if ($packages.Count -ne 1) {
+        throw "Expected exactly one $PackageId package in package source '$PackageSource', but found $($packages.Count)."
+    }
+
+    return $packages[0]
+}
+
+function Set-PackageReferenceVersion {
+    param(
+        [Parameter(Mandatory = $true)]
+        [xml] $Project,
+
+        [Parameter(Mandatory = $true)]
+        [string] $PackageId,
+
+        [Parameter(Mandatory = $true)]
+        [string] $Version
+    )
+
+    $packageReference = @($Project.Project.ItemGroup.PackageReference) |
+        Where-Object { $_.Include -eq $PackageId } |
+        Select-Object -First 1
+    if ($null -eq $packageReference) {
+        throw "Consumer project is missing PackageReference to $PackageId."
+    }
+
+    $packageReference.Version = $Version
+}
 
 function Invoke-Checked {
     param(
@@ -49,6 +139,14 @@ function Invoke-Checked {
 }
 
 function Assert-PackageReferenceRestore {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $CorePackageVersion,
+
+        [Parameter(Mandatory = $true)]
+        [string] $AdapterPackageVersion
+    )
+
     $projectPath = Join-Path $consumerRoot "Vec248PackageConsumer.csproj"
     [xml] $project = Get-Content -LiteralPath $projectPath -Raw
     if ($project.Project.ItemGroup.ProjectReference) {
@@ -69,12 +167,17 @@ function Assert-PackageReferenceRestore {
     }
 
     $assets = Get-Content -LiteralPath $assetsPath -Raw | ConvertFrom-Json
-    foreach ($requiredPackageId in @("VecNet", "VecNet.Integration.VectorData")) {
+    $requiredPackages = @(
+        [pscustomobject]@{ Id = "VecNet"; Version = $CorePackageVersion },
+        [pscustomobject]@{ Id = "VecNet.Integration.VectorData"; Version = $AdapterPackageVersion }
+    )
+
+    foreach ($requiredPackage in $requiredPackages) {
         $library = $assets.libraries.PSObject.Properties |
-            Where-Object { $_.Name -eq "$requiredPackageId/$expectedVersion" } |
+            Where-Object { $_.Name -eq "$($requiredPackage.Id)/$($requiredPackage.Version)" } |
             Select-Object -First 1
         if ($null -eq $library -or $library.Value.type -ne "package") {
-            throw "$requiredPackageId $expectedVersion was not resolved as a NuGet package."
+            throw "$($requiredPackage.Id) $($requiredPackage.Version) was not resolved as a NuGet package."
         }
     }
 
@@ -89,7 +192,18 @@ function Assert-PackageReferenceRestore {
 }
 
 $projectPath = Join-Path $consumerRoot "Vec248PackageConsumer.csproj"
+$corePackage = Get-RequiredPackageInfo -PackageId "VecNet"
+$adapterPackage = Get-RequiredPackageInfo -PackageId "VecNet.Integration.VectorData"
+if ($adapterPackage.Version -ne $corePackage.Version) {
+    throw "Consumer smoke expects matching VecNet package versions, but found VecNet $($corePackage.Version) and VecNet.Integration.VectorData $($adapterPackage.Version)."
+}
+
+[xml] $project = Get-Content -LiteralPath $projectPath -Raw
+Set-PackageReferenceVersion -Project $project -PackageId "VecNet" -Version $corePackage.Version
+Set-PackageReferenceVersion -Project $project -PackageId "VecNet.Integration.VectorData" -Version $adapterPackage.Version
+$project.Save($projectPath)
+
 Invoke-Checked "dotnet" @("restore", $projectPath, "--configfile", $nugetConfig, "--packages", $packagesRoot)
-Assert-PackageReferenceRestore
+Assert-PackageReferenceRestore -CorePackageVersion $corePackage.Version -AdapterPackageVersion $adapterPackage.Version
 Invoke-Checked "dotnet" @("build", $projectPath, "--configuration", "Release", "--no-restore")
 Invoke-Checked "dotnet" @("run", "--project", $projectPath, "--configuration", "Release", "--no-build", "--", $runRoot)

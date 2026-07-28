@@ -6,7 +6,8 @@ namespace VecNet;
 /// <remarks>
 /// A workspace stores transient visited-set and candidate/result queue state for one search at a
 /// time. The caller owns its lifetime and must provide separate workspace instances for
-/// overlapping searches. Size workspaces from the current HNSW index count and configured
+/// overlapping searches; sharing a workspace between overlapping searches is not supported.
+/// Size workspaces from the current HNSW index count and configured
 /// <see cref="HnswIndexOptions.EfSearch"/>; prefer
 /// <see cref="HnswIndex.CreateSearchWorkspace"/> when the workspace is tied to a specific
 /// immutable index instance. Recreate the workspace when the searched generation changes.

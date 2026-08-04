@@ -81,7 +81,11 @@ public sealed class HnswIndexStorageIndependentTests
         AssertManifestMutationRejected(root => root["semantics"]!["mutationPolicy"] = "append-delta");
         AssertManifestMutationRejected(root => root["semantics"]!["workspacePolicy"] = "shared-workspace");
         AssertManifestMutationRejected(root => root["hnsw"]!["graph"]!["adjacencyLayout"] = "compressed-postings");
-        AssertManifestMutationRejected(root => root["evidence"]!["publicClaimEligible"] = true);
+        AssertManifestMutationRejected(root =>
+        {
+            root["evidence"] = CreateLegacyEvidence();
+            root["evidence"]!["publicClaimEligible"] = true;
+        });
 
         using TempIndexDirectory temp = SavedIndependentIndex();
         string tempIds = HnswIndexStorage.IdsFileName + ".tmp-independent";
@@ -230,6 +234,17 @@ public sealed class HnswIndexStorageIndependentTests
         mutate(root);
         File.WriteAllText(manifestPath, root.ToJsonString());
     }
+
+    private static JsonObject CreateLegacyEvidence() =>
+        new()
+        {
+            ["privacyClass"] = "private-raw",
+            ["claimClass"] = "local-evidence",
+            ["publicClaimEligible"] = false,
+            ["baselineCandidateEligible"] = false,
+            ["regressionGateEligible"] = false,
+            ["previewReadinessEligible"] = false
+        };
 
     private static (int Stride, int CountsOffset, int NeighborsOffset) Layer(byte[] graphBytes, int layer)
     {

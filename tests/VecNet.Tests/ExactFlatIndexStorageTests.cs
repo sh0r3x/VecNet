@@ -166,7 +166,6 @@ public sealed class ExactFlatIndexStorageTests
                 "schemaVersion",
                 "formatFamily",
                 "createdUtc",
-                "createdByTask",
                 "writer",
                 "index",
                 "semantics",
@@ -178,7 +177,7 @@ public sealed class ExactFlatIndexStorageTests
         Assert.Equal(ExactFlatIndexStorage.ManifestSchemaName, document.RootElement.GetProperty("schemaName").GetString());
         Assert.Equal("1.0", document.RootElement.GetProperty("schemaVersion").GetString());
         Assert.Equal("exact-flat", document.RootElement.GetProperty("formatFamily").GetString());
-        Assert.Equal("VEC-031", document.RootElement.GetProperty("createdByTask").GetString());
+        Assert.False(document.RootElement.TryGetProperty("createdByTask", out _));
 
         JsonElement indexJson = document.RootElement.GetProperty("index");
         Assert.Equal(JsonValueKind.Number, indexJson.GetProperty("dimension").ValueKind);
@@ -224,6 +223,19 @@ public sealed class ExactFlatIndexStorageTests
         Assert.Equal(ExactFlatIndexStorage.NoNormalizationCode, BinaryPrimitives.ReadUInt32LittleEndian(vectorBytes.AsSpan(32)));
         Assert.Equal(0U, BinaryPrimitives.ReadUInt32LittleEndian(vectorBytes.AsSpan(36)));
         Assert.Equal(0UL, BinaryPrimitives.ReadUInt64LittleEndian(vectorBytes.AsSpan(40)));
+    }
+
+    [Fact]
+    public void OpenReadOnly_AcceptsLegacyCreatedByTaskMetadata()
+    {
+        using TempIndexDirectory temp = CreateSavedSquaredEuclideanIndex();
+        MutateManifest(temp.Path, root => root["createdByTask"] = "VEC-031");
+
+        ExactFlatIndex loaded = ExactFlatIndex.OpenReadOnly(temp.Path);
+
+        Assert.Equal(3, loaded.Dimension);
+        Assert.Equal(VectorMetric.SquaredEuclidean, loaded.Metric);
+        Assert.Equal(2, loaded.VectorCount);
     }
 
     [Fact]

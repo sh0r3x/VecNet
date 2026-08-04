@@ -251,7 +251,6 @@ public sealed class ExactFlatIndexCandidateSetIndependentTests
                 "schemaVersion",
                 "formatFamily",
                 "createdUtc",
-                "createdByTask",
                 "writer",
                 "index",
                 "semantics",
@@ -261,7 +260,7 @@ public sealed class ExactFlatIndexCandidateSetIndependentTests
             manifest.RootElement.EnumerateObject().Select(static property => property.Name).ToArray());
         Assert.Equal(ExactFlatIndexStorage.ManifestSchemaName, manifest.RootElement.GetProperty("schemaName").GetString());
         Assert.Equal(ExactFlatIndexStorage.ManifestSchemaVersion, manifest.RootElement.GetProperty("schemaVersion").GetString());
-        Assert.Equal("VEC-031", manifest.RootElement.GetProperty("createdByTask").GetString());
+        Assert.False(manifest.RootElement.TryGetProperty("createdByTask", out _));
     }
 
     private static (ExactFlatIndex Index, List<Row> Rows) CreateFixture(

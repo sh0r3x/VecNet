@@ -258,7 +258,7 @@ public sealed class ExactFlatIndexBoundedPersistenceTestsIndependent
         Assert.Equal("VecNet.ExactFlatIndexManifest", root.GetProperty("schemaName").GetString());
         Assert.Equal("1.0", root.GetProperty("schemaVersion").GetString());
         Assert.Equal("exact-flat", root.GetProperty("formatFamily").GetString());
-        Assert.Equal("VEC-031", root.GetProperty("createdByTask").GetString());
+        Assert.False(root.TryGetProperty("createdByTask", out _));
         Assert.Equal(expectedDimension, root.GetProperty("index").GetProperty("dimension").GetInt32());
         Assert.Equal(expectedMetric, root.GetProperty("index").GetProperty("metric").GetString());
         Assert.Equal(expectedCount, root.GetProperty("index").GetProperty("vectorCount").GetInt32());

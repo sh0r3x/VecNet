@@ -39,10 +39,11 @@ public sealed class HnswIndexStorageTests
         Assert.Equal(HnswIndexStorage.ManifestSchemaName, root.GetProperty("schemaName").GetString());
         Assert.Equal("1.0", root.GetProperty("schemaVersion").GetString());
         Assert.Equal("hnsw", root.GetProperty("formatFamily").GetString());
-        Assert.Equal("VEC-176", root.GetProperty("createdByTask").GetString());
+        Assert.False(root.TryGetProperty("createdByTask", out _));
+        Assert.False(root.TryGetProperty("evidence", out _));
         Assert.Equal("squared-euclidean", root.GetProperty("index").GetProperty("metric").GetString());
+        Assert.Equal("SplitMix64", root.GetProperty("hnsw").GetProperty("graph").GetProperty("levelGenerator").GetString());
         Assert.Equal("read-only", root.GetProperty("semantics").GetProperty("openedLifecycle").GetString());
-        Assert.False(root.GetProperty("evidence").GetProperty("publicClaimEligible").GetBoolean());
 
         AssertFileHeader(temp.Path, HnswIndexStorage.IdsFileName, "VNETHI01"u8.ToArray(), HnswIndexStorage.IdsHeaderLength);
         AssertFileHeader(temp.Path, HnswIndexStorage.VectorsFileName, "VNETHV01"u8.ToArray(), HnswIndexStorage.VectorsHeaderLength);
@@ -54,6 +55,24 @@ public sealed class HnswIndexStorageTests
         Assert.Equal(HnswIndexStorage.VectorsFileName, files.GetProperty("vectors").GetProperty("path").GetString());
         Assert.Equal(HnswIndexStorage.LevelsFileName, files.GetProperty("levels").GetProperty("path").GetString());
         Assert.Equal(HnswIndexStorage.GraphFileName, files.GetProperty("graph").GetProperty("path").GetString());
+    }
+
+    [Fact]
+    public void OpenReadOnly_AcceptsLegacyTaskLevelGeneratorAndEvidenceMetadata()
+    {
+        using TempIndexDirectory temp = SavedIndex();
+        MutateManifest(temp.Path, root =>
+        {
+            root["createdByTask"] = "VEC-176";
+            root["hnsw"]!["graph"]!["levelGenerator"] = "SplitMix64.VEC-034";
+            root["evidence"] = CreateLegacyEvidence();
+        });
+
+        HnswIndex opened = HnswIndex.OpenReadOnly(temp.Path);
+
+        Assert.Equal(2, opened.Dimension);
+        Assert.Equal(VectorMetric.SquaredEuclidean, opened.Metric);
+        Assert.Equal(5, opened.Count);
     }
 
     [Fact]
@@ -370,6 +389,17 @@ public sealed class HnswIndexStorageTests
         mutate(root);
         File.WriteAllText(manifestPath, root.ToJsonString());
     }
+
+    private static JsonObject CreateLegacyEvidence() =>
+        new()
+        {
+            ["privacyClass"] = "private-raw",
+            ["claimClass"] = "local-evidence",
+            ["publicClaimEligible"] = false,
+            ["baselineCandidateEligible"] = false,
+            ["regressionGateEligible"] = false,
+            ["previewReadinessEligible"] = false
+        };
 
     private static (int Stride, int CountsOffset, int NeighborsOffset) Layer(byte[] graphBytes, int layer)
     {

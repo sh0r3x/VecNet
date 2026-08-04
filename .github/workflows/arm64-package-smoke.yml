@@ -34,7 +34,7 @@ jobs:
       - name: Record runner and .NET context
         shell: pwsh
         run: |
-          "## VEC-159 ${{ matrix.platform }} runner context" >> $env:GITHUB_STEP_SUMMARY
+          "## ${{ matrix.platform }} package smoke context" >> $env:GITHUB_STEP_SUMMARY
           "" >> $env:GITHUB_STEP_SUMMARY
           "| Field | Value |" >> $env:GITHUB_STEP_SUMMARY
           "| --- | --- |" >> $env:GITHUB_STEP_SUMMARY

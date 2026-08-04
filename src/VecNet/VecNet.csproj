@@ -8,11 +8,11 @@
     <Version>1.2.1</Version>
     <Title>VecNet</Title>
     <Authors>VecNet Contributors</Authors>
-    <Description>Pure-managed embedded .NET vector indexing library for exact vector search, durable snapshots, filtering, updates, and HNSW approximate search for squared-L2 and cosine distance. The core package is dependency-free and this metadata makes no public performance or platform claim.</Description>
+    <Description>Embedded vector indexing for .NET applications, with exact search, filtering, durable snapshots, mutable updates, and HNSW approximate search for squared-L2 and cosine workloads.</Description>
     <RepositoryUrl>https://github.com/sh0r3x/VecNet.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://github.com/sh0r3x/VecNet</PackageProjectUrl>
-    <PackageTags>vector-search;vector-indexing;dotnet;embedded;managed</PackageTags>
+    <PackageTags>vector-search;vector-indexing;similarity-search;nearest-neighbor;ann;hnsw;exact-search;cosine-similarity;dotnet;embedded;managed</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>

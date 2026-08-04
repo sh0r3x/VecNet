@@ -10,7 +10,7 @@
     <RepositoryUrl>https://github.com/sh0r3x/VecNet.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://github.com/sh0r3x/VecNet</PackageProjectUrl>
-    <PackageTags>vector-search;vector-indexing;dotnet;vectordata;adapter;embedded;managed</PackageTags>
+    <PackageTags>vector-search;vector-indexing;similarity-search;nearest-neighbor;exact-search;dotnet;vectordata;adapter;embedded;managed</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>

@@ -72,14 +72,14 @@ jobs:
       - name: Inspect produced package
         shell: pwsh
         run: >
-          pwsh -NoProfile -ExecutionPolicy Bypass -File ./eng/package-smoke/Vec159Arm64Probe/Inspect-VecNetPackage.ps1
+          pwsh -NoProfile -ExecutionPolicy Bypass -File ./eng/package-smoke/Arm64PackageSmokeProbe/Inspect-VecNetPackage.ps1
           -PackagePath "$env:VECNET_PACKAGE"
           -ExpectedVersion "$env:VECNET_PACKAGE_VERSION"
 
       - name: Run Arm64 package smoke probe
         shell: pwsh
         run: >
-          pwsh -NoProfile -ExecutionPolicy Bypass -File ./eng/package-smoke/Vec159Arm64Probe/Invoke-Vec159Arm64Probe.ps1
+          pwsh -NoProfile -ExecutionPolicy Bypass -File ./eng/package-smoke/Arm64PackageSmokeProbe/Invoke-Arm64PackageSmokeProbe.ps1
           -PackagePath "$env:VECNET_PACKAGE"
           -Rid "${{ matrix.rid }}"
           -PlatformName "${{ matrix.platform }}"

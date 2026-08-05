@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 using VecNet;
 
 string mode = GetOption(args, "--mode") ?? "jit";
-string artifactRoot = Path.GetFullPath(GetOption(args, "--artifact-root") ?? Path.Combine(Path.GetTempPath(), "vec159 arm64 smoke"));
+string artifactRoot = Path.GetFullPath(GetOption(args, "--artifact-root") ?? Path.Combine(Path.GetTempPath(), "arm64 package smoke"));
 string runnerLabel = GetOption(args, "--runner-label") ?? Environment.GetEnvironmentVariable("RUNNER_NAME") ?? "unknown";
 bool requireArm64 = args.Contains("--require-arm64", StringComparer.Ordinal);
 
@@ -24,7 +24,7 @@ RunMutableHnswSmoke(artifactRoot);
 AssertNoTempFiles(artifactRoot);
 AssertNoEmbeddedArtifactRoot(artifactRoot);
 
-Console.WriteLine($"VEC159_SMOKE_PASSED mode={mode}");
+Console.WriteLine($"ARM64_PACKAGE_SMOKE_PASSED mode={mode}");
 
 static void RunExactSmoke(string artifactRoot)
 {
@@ -134,7 +134,7 @@ static void RunMutableHnswSmoke(string artifactRoot)
 
 static HnswIndex BuildHnsw()
 {
-    var options = new HnswIndexOptions(M: 4, EfConstruction: 16, EfSearch: 16, RandomSeed: 0x159UL);
+    var options = new HnswIndexOptions(M: 4, EfConstruction: 16, EfSearch: 16, RandomSeed: 345UL);
     var index = new HnswIndex(2, VectorMetric.SquaredEuclidean, options);
     index.Add(100, [0f, 0f]);
     index.Add(101, [1f, 0f]);
@@ -149,7 +149,7 @@ static HnswIndex BuildHnsw()
 
 static void PrintMetadata(string mode, string artifactRoot, string runnerLabel)
 {
-    Console.WriteLine("VEC159_METADATA_BEGIN");
+    Console.WriteLine("ARM64_PACKAGE_SMOKE_METADATA_BEGIN");
     Console.WriteLine($"mode={mode}");
     Console.WriteLine($"artifactRoot={artifactRoot}");
     Console.WriteLine($"runnerLabel={runnerLabel}");
@@ -162,7 +162,7 @@ static void PrintMetadata(string mode, string artifactRoot, string runnerLabel)
     Console.WriteLine($"vectorFloatCount={Vector<float>.Count}");
     Console.WriteLine($"serverGc={GCSettings.IsServerGC}");
     Console.WriteLine($"processorCount={Environment.ProcessorCount.ToString(CultureInfo.InvariantCulture)}");
-    Console.WriteLine("VEC159_METADATA_END");
+    Console.WriteLine("ARM64_PACKAGE_SMOKE_METADATA_END");
 }
 
 static string? GetOption(string[] args, string name)

@@ -19,8 +19,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "../../..")
-$consumerSource = Join-Path $repoRoot "eng/package-smoke/Vec159Arm64Consumer"
-$probeRoot = Join-Path $env:RUNNER_TEMP "vec159-arm64-probe"
+$consumerSource = Join-Path $repoRoot "eng/package-smoke/Arm64PackageSmokeConsumer"
+$probeRoot = Join-Path $env:RUNNER_TEMP "arm64-package-smoke"
 $consumerRoot = Join-Path $probeRoot "consumer"
 $packageSource = Split-Path -Parent (Resolve-Path -LiteralPath $PackagePath)
 $packagesRoot = Join-Path $probeRoot "packages"
@@ -32,13 +32,13 @@ $statuses = [ordered]@{}
 
 New-Item -ItemType Directory -Force -Path $probeRoot, $consumerRoot, $packagesRoot, $resultsRoot | Out-Null
 Copy-Item -Path (Join-Path $consumerSource "*") -Destination $consumerRoot -Recurse -Force
-$consumerProjectPath = Join-Path $consumerRoot "Vec159Arm64Consumer.csproj"
+$consumerProjectPath = Join-Path $consumerRoot "Arm64PackageSmokeConsumer.csproj"
 [xml] $consumerProject = Get-Content -LiteralPath $consumerProjectPath -Raw
 $vecNetReference = $consumerProject.Project.ItemGroup.PackageReference |
     Where-Object { $_.Include -eq "VecNet" } |
     Select-Object -First 1
 if ($null -eq $vecNetReference) {
-    throw "Vec159Arm64Consumer.csproj does not contain a VecNet PackageReference."
+    throw "Arm64 package-smoke consumer project does not contain a VecNet PackageReference."
 }
 $vecNetReference.Version = $PackageVersion
 $consumerProject.Save($consumerProjectPath)
@@ -93,12 +93,12 @@ function Invoke-ProbeStep {
     try {
         & $Body
         $statuses[$Name] = "passed"
-        Write-Host "VEC159_DISPOSITION platform=$PlatformName row=`"$Name`" status=passed"
+        Write-Host "ARM64_PACKAGE_SMOKE_DISPOSITION platform=$PlatformName row=`"$Name`" status=passed"
     }
     catch {
         $message = $_.Exception.Message
         $statuses[$Name] = "failed: $message"
-        Write-Host "VEC159_DISPOSITION platform=$PlatformName row=`"$Name`" status=failed reason=`"$message`""
+        Write-Host "ARM64_PACKAGE_SMOKE_DISPOSITION platform=$PlatformName row=`"$Name`" status=failed reason=`"$message`""
         Write-Warning $message
     }
     finally {
@@ -129,8 +129,8 @@ function Invoke-Consumer {
 function Get-AppHostPath {
     param([Parameter(Mandatory = $true)][string] $Directory)
 
-    $windowsPath = Join-Path $Directory "Vec159Arm64Consumer.exe"
-    $unixPath = Join-Path $Directory "Vec159Arm64Consumer"
+    $windowsPath = Join-Path $Directory "Arm64PackageSmokeConsumer.exe"
+    $unixPath = Join-Path $Directory "Arm64PackageSmokeConsumer"
     if (Test-Path -LiteralPath $windowsPath -PathType Leaf) {
         return $windowsPath
     }
@@ -138,7 +138,7 @@ function Get-AppHostPath {
         return $unixPath
     }
 
-    return Join-Path $Directory "Vec159Arm64Consumer.dll"
+    return Join-Path $Directory "Arm64PackageSmokeConsumer.dll"
 }
 
 function Assert-PackageReferenceRestore {
@@ -237,7 +237,7 @@ Invoke-ProbeStep -Name "$PlatformName NativeAOT" -Body {
     Invoke-Consumer -ExecutablePath $appHost -Mode "nativeaot" -ArtifactRoot (Join-Path $resultsRoot "nativeaot durable path with spaces")
 }
 
-Add-Content -LiteralPath $summaryPath -Value "## VEC-159 $PlatformName"
+Add-Content -LiteralPath $summaryPath -Value "## Arm64 package smoke - $PlatformName"
 Add-Content -LiteralPath $summaryPath -Value ""
 Add-Content -LiteralPath $summaryPath -Value "| Row | Disposition |"
 Add-Content -LiteralPath $summaryPath -Value "| --- | --- |"
@@ -247,5 +247,5 @@ foreach ($entry in $statuses.GetEnumerator()) {
 
 $failed = $statuses.GetEnumerator() | Where-Object { $_.Value -ne "passed" }
 if ($failed) {
-    throw "One or more VEC-159 $PlatformName rows failed or were blocked. See dispositions above."
+    throw "One or more Arm64 package-smoke $PlatformName rows failed or were blocked. See dispositions above."
 }

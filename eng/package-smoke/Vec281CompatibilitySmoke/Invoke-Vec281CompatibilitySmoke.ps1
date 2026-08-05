@@ -96,7 +96,7 @@ function Invoke-Checked {
 }
 
 $currentVersion = Get-LocalPackageVersion -PackageId "VecNet"
-foreach ($baselineVersion in @("1.0.0", "1.2.0")) {
+foreach ($baselineVersion in @("1.0.0", "1.2.1")) {
     Invoke-Checked "dotnet" @(
         "restore",
         $baselineProject,

@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.3.0 - 2026-08-05
+
+### Added
+
+- Added HNSW per-search `efSearch` overloads so callers can choose search
+  width per query while keeping the configured `EfSearch` default.
+- Added `HnswMutableIndex` search-workspace factory overloads so mutable HNSW
+  callers can size caller-owned workspaces from the current index shape.
+- Added SourceLink repository metadata and `.snupkg` symbol package output for
+  both distributable packages.
+- Added a short README example for building, searching, saving and reopening a
+  cosine HNSW index.
+
+### Changed
+
+- Mutable HNSW search can retry base HNSW candidate search with wider
+  caller-owned workspace capacity when base tombstones would otherwise
+  underfill results. This applies to squared-L2 and cosine mutable HNSW search
+  and does not change the existing result ordering contract.
+- Package validation now uses the previous stable package line as the rolling
+  default baseline while retaining broader `1.x` compatibility validation.
+- Durable exact-flat and HNSW manifests use product-neutral metadata for new
+  snapshots while preserving supported stable `1.x` read compatibility.
+
 ## 1.2.1 - 2026-07-28
 
 ### Changed
@@ -30,14 +54,6 @@
   repeated per-component query division while preserving the public distance
   contract.
 
-### Known limitations
-
-- The optional VectorData adapter remains exact-flat and in-memory. It does
-  not add HNSW VectorData collections, durable VectorData storage, embedding
-  generation, hybrid search or multiple vector properties.
-- Mutable HNSW durable compatibility is represented through checkpoint output.
-  The mutable overlay state itself is not reopened as a durable mutable index.
-
 ## 1.2.0
 
 ### Added
@@ -50,13 +66,7 @@
 
 ### Compatibility
 
-- The adapter package was version-aligned with the core package. The adapter
-  remained exact-flat-only and did not add HNSW VectorData support.
-
-### Known limitations
-
-- HNSW inner product remained unsupported. Use exact-flat indexes for
-  inner-product retrieval.
+- The adapter package was version-aligned with the core package.
 
 ## 1.1.0
 
@@ -110,10 +120,3 @@
   HNSW snapshot.
 - Exact-flat VectorData adapter for in-memory collections over pregenerated
   vectors.
-
-### Known limitations
-
-- VecNet is an embedded vector indexing library, not a vector database,
-  metadata store, authorization system, embedding host, full-text engine,
-  distributed service or GPU library.
-- The optional VectorData adapter is exact-flat and in-memory only.

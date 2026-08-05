@@ -12,7 +12,7 @@ if (-not (Test-Path -LiteralPath $PackagePath -PathType Leaf)) {
     throw "Package file not found: $PackagePath"
 }
 
-$expanded = Join-Path ([System.IO.Path]::GetTempPath()) ("vec159-package-inspect-" + [Guid]::NewGuid().ToString("N"))
+$expanded = Join-Path ([System.IO.Path]::GetTempPath()) ("arm64-package-inspect-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $expanded | Out-Null
 
 try {
@@ -91,8 +91,8 @@ try {
 
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $PackagePath).Hash
     $size = (Get-Item -LiteralPath $PackagePath).Length
-    Write-Host "VEC159_PACKAGE id=$id version=$version size=$size sha256=$hash"
-    Write-Host "VEC159_PACKAGE_FILES"
+    Write-Host "ARM64_PACKAGE_SMOKE_PACKAGE id=$id version=$version size=$size sha256=$hash"
+    Write-Host "ARM64_PACKAGE_SMOKE_PACKAGE_FILES"
     $files | ForEach-Object { Write-Host "  $_" }
 }
 finally {

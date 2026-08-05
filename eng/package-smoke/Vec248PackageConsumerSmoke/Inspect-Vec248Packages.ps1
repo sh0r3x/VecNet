@@ -158,7 +158,7 @@ try {
         throw "Unexpected core package version: $($core.Version)"
     }
 
-    if ($core.Description -notmatch "HNSW approximate search for squared-L2 and cosine distance") {
+    if ($core.Description -notmatch "HNSW approximate search for squared-L2 and cosine workloads") {
         throw "Core package description does not mention the admitted HNSW cosine package capability."
     }
 

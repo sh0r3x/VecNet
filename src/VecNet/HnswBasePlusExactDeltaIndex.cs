@@ -202,24 +202,45 @@ internal sealed class HnswBasePlusExactDeltaIndex
         Span<SearchResult> results,
         HnswBasePlusExactDeltaSearchWorkspace workspace)
     {
+        return Search(query, results, workspace, Options.EfSearch);
+    }
+
+    internal int Search(
+        ReadOnlySpan<float> query,
+        Span<SearchResult> results,
+        HnswBasePlusExactDeltaSearchWorkspace workspace,
+        int efSearch)
+    {
         ArgumentNullException.ThrowIfNull(workspace);
         ValidateBaseUnchanged();
         double queryMagnitude = ValidateVector(query, nameof(query));
-        ValidateWorkspace(results.Length, workspace);
+        ValidateWorkspace(results.Length, workspace, efSearch);
         workspace.ObservedGeneration = _generation;
+
+        if (efSearch < results.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(results), "EfSearch must be at least the requested result count.");
+        }
 
         if (results.IsEmpty || LiveVectorCount == 0)
         {
             return 0;
         }
 
-        if (Options.EfSearch < results.Length)
+        int baseCandidateCount = SearchBaseCandidates(query, workspace, efSearch);
+        int deltaCandidateCount = SearchDeltaCandidates(query, queryMagnitude, results.Length, workspace);
+        int written = MergeCandidates(
+            workspace.BaseCandidates.AsSpan(0, baseCandidateCount),
+            workspace.DeltaCandidates.AsSpan(0, deltaCandidateCount),
+            results);
+
+        int retryEfSearch = GetAdaptiveRetryEfSearch(efSearch, workspace);
+        if (!ShouldRetry(written, results.Length, LiveVectorCount, retryEfSearch, efSearch, BaseTombstoneCount > 0))
         {
-            throw new ArgumentOutOfRangeException(nameof(results), "EfSearch must be at least the requested result count.");
+            return written;
         }
 
-        int baseCandidateCount = SearchBaseCandidates(query, workspace);
-        int deltaCandidateCount = SearchDeltaCandidates(query, queryMagnitude, results.Length, workspace);
+        baseCandidateCount = SearchBaseCandidates(query, workspace, retryEfSearch);
         return MergeCandidates(
             workspace.BaseCandidates.AsSpan(0, baseCandidateCount),
             workspace.DeltaCandidates.AsSpan(0, deltaCandidateCount),
@@ -232,20 +253,30 @@ internal sealed class HnswBasePlusExactDeltaIndex
         Span<SearchResult> results,
         HnswBasePlusExactDeltaSearchWorkspace workspace)
     {
+        return Search(query, allowedIds, results, workspace, Options.EfSearch);
+    }
+
+    internal int Search(
+        ReadOnlySpan<float> query,
+        ReadOnlySpan<ulong> allowedIds,
+        Span<SearchResult> results,
+        HnswBasePlusExactDeltaSearchWorkspace workspace,
+        int efSearch)
+    {
         ArgumentNullException.ThrowIfNull(workspace);
         ValidateBaseUnchanged();
         double queryMagnitude = ValidateVector(query, nameof(query));
-        ValidateFilteredWorkspace(results.Length, workspace);
+        ValidateFilteredWorkspace(results.Length, workspace, efSearch);
         workspace.ObservedGeneration = _generation;
+
+        if (efSearch < results.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(results), "EfSearch must be at least the requested result count.");
+        }
 
         if (results.IsEmpty || LiveVectorCount == 0 || allowedIds.IsEmpty)
         {
             return 0;
-        }
-
-        if (Options.EfSearch < results.Length)
-        {
-            throw new ArgumentOutOfRangeException(nameof(results), "EfSearch must be at least the requested result count.");
         }
 
         int baseFilterMark = workspace.HnswWorkspace.BeginFilter();
@@ -261,29 +292,65 @@ internal sealed class HnswBasePlusExactDeltaIndex
             return 0;
         }
 
-        if (allowedCount <= Options.EfSearch)
+        if (allowedCount <= efSearch)
         {
             return SearchAllowedExact(query, queryMagnitude, results, workspace, baseFilterMark, deltaFilterMark);
         }
 
-        int baseCandidateCount = SearchBaseAllowedCandidates(query, workspace, baseFilterMark);
+        int baseCandidateCount = SearchBaseAllowedCandidates(query, workspace, baseFilterMark, efSearch);
         int deltaCandidateCount = SearchDeltaAllowedCandidates(query, queryMagnitude, results.Length, workspace, deltaFilterMark);
+        int written = MergeCandidates(
+            workspace.BaseCandidates.AsSpan(0, baseCandidateCount),
+            workspace.DeltaCandidates.AsSpan(0, deltaCandidateCount),
+            results);
+
+        int retryEfSearch = GetAdaptiveRetryEfSearch(efSearch, workspace);
+        if (!ShouldRetry(written, results.Length, allowedCount, retryEfSearch, efSearch, BaseTombstoneCount > 0))
+        {
+            return written;
+        }
+
+        baseCandidateCount = SearchBaseAllowedCandidates(query, workspace, baseFilterMark, retryEfSearch);
         return MergeCandidates(
             workspace.BaseCandidates.AsSpan(0, baseCandidateCount),
             workspace.DeltaCandidates.AsSpan(0, deltaCandidateCount),
             results);
     }
 
-    private int SearchBaseCandidates(ReadOnlySpan<float> query, HnswBasePlusExactDeltaSearchWorkspace workspace)
+    private int GetAdaptiveRetryEfSearch(
+        int firstEfSearch,
+        HnswBasePlusExactDeltaSearchWorkspace workspace)
+    {
+        int maxCandidateWidth = Math.Min(workspace.HnswWorkspace.MaxEf, workspace.BaseCandidates.Length);
+        int maxEffectiveWidth = Math.Min(_basePhysicalVectorCount, maxCandidateWidth);
+        return maxEffectiveWidth > firstEfSearch ? maxEffectiveWidth : firstEfSearch;
+    }
+
+    private static bool ShouldRetry(
+        int written,
+        int requestedResultCount,
+        int visibleResultCount,
+        int retryEfSearch,
+        int firstEfSearch,
+        bool hasBaseTombstones) =>
+        hasBaseTombstones &&
+        written < requestedResultCount &&
+        written < visibleResultCount &&
+        retryEfSearch > firstEfSearch;
+
+    private int SearchBaseCandidates(
+        ReadOnlySpan<float> query,
+        HnswBasePlusExactDeltaSearchWorkspace workspace,
+        int effectiveEfSearch)
     {
         if (_basePhysicalVectorCount == 0 || BaseLiveVectorCount == 0)
         {
             return 0;
         }
 
-        int requestedBaseCandidates = Math.Min(_basePhysicalVectorCount, Options.EfSearch);
+        int requestedBaseCandidates = Math.Min(_basePhysicalVectorCount, effectiveEfSearch);
         Span<SearchResult> baseCandidates = workspace.BaseCandidates.AsSpan(0, requestedBaseCandidates);
-        int rawCount = _baseIndex.Search(query, baseCandidates, workspace.HnswWorkspace);
+        int rawCount = _baseIndex.Search(query, baseCandidates, workspace.HnswWorkspace, effectiveEfSearch);
 
         int liveCount = 0;
         for (int i = 0; i < rawCount; i++)
@@ -430,16 +497,17 @@ internal sealed class HnswBasePlusExactDeltaIndex
     private int SearchBaseAllowedCandidates(
         ReadOnlySpan<float> query,
         HnswBasePlusExactDeltaSearchWorkspace workspace,
-        int baseFilterMark)
+        int baseFilterMark,
+        int effectiveEfSearch)
     {
         if (_basePhysicalVectorCount == 0 || BaseLiveVectorCount == 0)
         {
             return 0;
         }
 
-        int requestedBaseCandidates = Math.Min(_basePhysicalVectorCount, Options.EfSearch);
+        int requestedBaseCandidates = Math.Min(_basePhysicalVectorCount, effectiveEfSearch);
         Span<SearchResult> baseCandidates = workspace.BaseCandidates.AsSpan(0, requestedBaseCandidates);
-        int rawCount = _baseIndex.Search(query, baseCandidates, workspace.HnswWorkspace);
+        int rawCount = _baseIndex.Search(query, baseCandidates, workspace.HnswWorkspace, effectiveEfSearch);
 
         int liveCount = 0;
         for (int i = 0; i < rawCount; i++)
@@ -528,20 +596,23 @@ internal sealed class HnswBasePlusExactDeltaIndex
         return written;
     }
 
-    private void ValidateWorkspace(int requestedResultCount, HnswBasePlusExactDeltaSearchWorkspace workspace)
+    private void ValidateWorkspace(
+        int requestedResultCount,
+        HnswBasePlusExactDeltaSearchWorkspace workspace,
+        int effectiveEfSearch)
     {
         if (workspace.ObservedGeneration != long.MinValue && workspace.ObservedGeneration != _generation)
         {
             throw new InvalidOperationException("Workspace generation is stale for this HNSW base-plus-exact-delta index.");
         }
 
-        int requestedBaseCandidates = Math.Min(_basePhysicalVectorCount, Options.EfSearch);
+        int requestedBaseCandidates = Math.Min(_basePhysicalVectorCount, effectiveEfSearch);
         if (workspace.HnswWorkspace.MaxElements < _basePhysicalVectorCount)
         {
             throw new ArgumentException("Workspace base element capacity is smaller than the immutable HNSW base count.", nameof(workspace));
         }
 
-        if (workspace.HnswWorkspace.MaxEf < Options.EfSearch)
+        if (workspace.HnswWorkspace.MaxEf < effectiveEfSearch)
         {
             throw new ArgumentException("Workspace HNSW ef capacity is smaller than EfSearch.", nameof(workspace));
         }
@@ -557,9 +628,12 @@ internal sealed class HnswBasePlusExactDeltaIndex
         }
     }
 
-    private void ValidateFilteredWorkspace(int requestedResultCount, HnswBasePlusExactDeltaSearchWorkspace workspace)
+    private void ValidateFilteredWorkspace(
+        int requestedResultCount,
+        HnswBasePlusExactDeltaSearchWorkspace workspace,
+        int effectiveEfSearch)
     {
-        ValidateWorkspace(requestedResultCount, workspace);
+        ValidateWorkspace(requestedResultCount, workspace, effectiveEfSearch);
 
         if (workspace.DeltaFilterMarks.Length < _deltaPhysicalVectorCount)
         {

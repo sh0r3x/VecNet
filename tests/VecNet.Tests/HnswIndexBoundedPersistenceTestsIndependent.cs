@@ -24,10 +24,14 @@ public sealed class HnswIndexBoundedPersistenceTestsIndependent
 
         using JsonDocument manifest = JsonDocument.Parse(
             File.ReadAllText(Path.Combine(saved.Path, HnswIndexStorage.ManifestFileName)));
-        Assert.Equal("VEC-176", manifest.RootElement.GetProperty("createdByTask").GetString());
+        Assert.False(manifest.RootElement.TryGetProperty("createdByTask", out _));
+        Assert.False(manifest.RootElement.TryGetProperty("evidence", out _));
         Assert.Equal(
             "dense-layer0-sparse-upper-v1",
             manifest.RootElement.GetProperty("hnsw").GetProperty("graph").GetProperty("adjacencyLayout").GetString());
+        Assert.Equal(
+            "SplitMix64",
+            manifest.RootElement.GetProperty("hnsw").GetProperty("graph").GetProperty("levelGenerator").GetString());
         AssertSparseUpperGraphDirectory(saved.Path, source.Count);
 
         HnswIndex opened = HnswIndex.OpenReadOnly(saved.Path);

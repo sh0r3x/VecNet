@@ -224,7 +224,6 @@ public sealed class ExactFlatIndexRetainedIdMapIndependentTests
                 "schemaVersion",
                 "formatFamily",
                 "createdUtc",
-                "createdByTask",
                 "writer",
                 "index",
                 "semantics",

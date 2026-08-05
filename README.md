@@ -11,14 +11,14 @@ and durable application storage.
 Use VecNet from a `.NET 10` project. Add the core package:
 
 ```bash
-dotnet add package VecNet --version 1.2.1
+dotnet add package VecNet --version 1.3.0
 ```
 
 For `Microsoft.Extensions.VectorData` applications, add the separate optional
 exact-flat adapter package in addition to the core package:
 
 ```bash
-dotnet add package VecNet.Integration.VectorData --version 1.2.1
+dotnet add package VecNet.Integration.VectorData --version 1.3.0
 ```
 
 The core `VecNet` package intentionally has no runtime package dependencies
@@ -53,6 +53,44 @@ for (int i = 0; i < written; i++)
 {
     Console.WriteLine($"{results[i].Id}: {results[i].Distance}");
 }
+```
+
+## HNSW Cosine Example
+
+For a batch-built approximate cosine index, create `HnswIndex` with
+`VectorMetric.Cosine`, add non-zero vectors, search with your own result buffer
+and workspace, then save and reopen the durable index as read-only.
+
+```csharp
+using VecNet;
+
+var options = new HnswIndexOptions(
+    M: 16,
+    EfConstruction: 200,
+    EfSearch: 50,
+    RandomSeed: 12345UL);
+
+var index = new HnswIndex(dimension: 3, VectorMetric.Cosine, options);
+
+index.Add(1001, [1.0f, 0.0f, 0.0f]);
+index.Add(1002, [0.0f, 1.0f, 0.0f]);
+index.Add(1003, [0.0f, 0.0f, 1.0f]);
+
+Span<SearchResult> results = stackalloc SearchResult[2];
+HnswSearchWorkspace workspace = index.CreateSearchWorkspace();
+
+int written = index.Search([0.9f, 0.1f, 0.0f], results, workspace);
+
+string path = Path.Combine(Environment.CurrentDirectory, "vecnet-hnsw-cosine");
+index.Save(path);
+
+HnswIndex opened = HnswIndex.OpenReadOnly(path);
+HnswSearchWorkspace openedWorkspace = opened.CreateSearchWorkspace();
+
+int openedWritten = opened.Search(
+    [0.9f, 0.1f, 0.0f],
+    results,
+    openedWorkspace);
 ```
 
 ## Where Next?
@@ -124,7 +162,7 @@ or semantic-relevance claims.
   projectable class record shape; unsupported projection shapes throw a clear
   `NotSupportedException`.
 
-## Supported 1.2.1 Feature List
+## Supported 1.3.0 Feature List
 
 - Target framework: `net10.0`.
 - The core `VecNet` package is dependency-free and ships managed `lib/net10.0`
@@ -223,7 +261,7 @@ or semantic-relevance claims.
 - The package-smoke evidence is functional package-consumer evidence. It is
   not a public performance, platform support, NativeAOT, trimming, or
   universal deployment claim.
-- `1.2.1` is the stable package version for the supported public API surfaces
+- `1.3.0` is the stable package version for the supported public API surfaces
   described here. Except for the dedicated benchmark documents linked above,
   this README does not make public HNSW recall, latency, throughput,
   allocation, memory, capacity, storage-size, update-profile, concurrency,
@@ -263,11 +301,11 @@ projects scores for Euclidean squared distance, Euclidean distance, cosine
 distance, cosine similarity, and dot-product similarity.
 
 Retrieval options follow VectorData `IncludeVectors` behavior. Null/default
-options and explicit `IncludeVectors = false` omit vectors from returned
-records. Explicit `IncludeVectors = true` includes vectors. When vectors are
-omitted, VecNet projects shallow record copies for supported class record
-shapes; if a record shape cannot be projected and vector omission is required,
-the adapter throws `NotSupportedException`.
+options and explicit `IncludeVectors = false` return records without vectors.
+Explicit `IncludeVectors = true` includes vectors. In the no-vector return
+mode, VecNet projects shallow record copies for supported class record shapes;
+if a record shape cannot be projected and that mode is required, the adapter
+throws `NotSupportedException`.
 
 The adapter is not a durable record store and does not add dependencies to the
 core `VecNet` package. It does not provide HNSW VectorData collections,

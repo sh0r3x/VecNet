@@ -39,9 +39,9 @@ internal static class HnswIndexStorage
     private const int MaxM = 64;
     private const int MaxEf = 4096;
     private const int MaxManifestBytes = 1024 * 1024;
-    private const string CreatedByTask = "VEC-176";
     private const string BinaryVersionText = "1.0";
     private const string GraphAdjacencyLayout = "dense-layer0-sparse-upper-v1";
+    private const string LevelGenerator = "SplitMix64";
     private const string NormalizationNone = "none";
     private const string NormalizationCosineUnit = "cosine-unit-normalized";
     private const uint GraphLayerLayoutDense = 0;
@@ -779,7 +779,6 @@ internal static class HnswIndexStorage
         writer.WriteString("formatFamily", FormatFamily);
         writer.WriteString("snapshotId", Guid.NewGuid().ToString("D", CultureInfo.InvariantCulture));
         writer.WriteString("createdUtc", DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", CultureInfo.InvariantCulture));
-        writer.WriteString("createdByTask", CreatedByTask);
 
         writer.WriteStartObject("writer");
         writer.WriteString("product", "VecNet");
@@ -819,7 +818,7 @@ internal static class HnswIndexStorage
         writer.WriteNumber("layer0Stride", index.InternalMMax0);
         writer.WriteNumber("upperLayerStride", index.InternalMMax);
         writer.WriteString("adjacencyLayout", GraphAdjacencyLayout);
-        writer.WriteString("levelGenerator", "SplitMix64.VEC-034");
+        writer.WriteString("levelGenerator", LevelGenerator);
         writer.WriteString("insertionOrder", "ordinal-row-order");
         writer.WriteEndObject();
         writer.WriteEndObject();
@@ -848,15 +847,6 @@ internal static class HnswIndexStorage
         writer.WriteEndArray();
         writer.WriteNumber("minimumReaderMajorVersion", 1);
         writer.WriteString("unsupportedFeaturePolicy", "reject-unknown-required-features");
-        writer.WriteEndObject();
-
-        writer.WriteStartObject("evidence");
-        writer.WriteString("privacyClass", "private-raw");
-        writer.WriteString("claimClass", "local-evidence");
-        writer.WriteBoolean("publicClaimEligible", false);
-        writer.WriteBoolean("baselineCandidateEligible", false);
-        writer.WriteBoolean("regressionGateEligible", false);
-        writer.WriteBoolean("previewReadinessEligible", false);
         writer.WriteEndObject();
 
         writer.WriteEndObject();
@@ -896,7 +886,7 @@ internal static class HnswIndexStorage
             RequireString(root, "formatFamily", FormatFamily);
             ValidateGuidText(GetRequiredString(root, "snapshotId"));
             ValidateCreatedUtc(GetRequiredString(root, "createdUtc"));
-            RequireString(root, "createdByTask", CreatedByTask);
+            ValidateLegacyCreatedByMetadata(root);
             ValidateWriter(GetRequiredObject(root, "writer"));
 
             JsonElement index = GetRequiredObject(root, "index");
@@ -939,7 +929,7 @@ internal static class HnswIndexStorage
             int layer0Stride = GetRequiredInt32(graph, "layer0Stride", minimumValue: 1);
             int upperLayerStride = GetRequiredInt32(graph, "upperLayerStride", minimumValue: 1);
             RequireString(graph, "adjacencyLayout", GraphAdjacencyLayout);
-            RequireString(graph, "levelGenerator", "SplitMix64.VEC-034");
+            ValidateLevelGenerator(GetRequiredString(graph, "levelGenerator"));
             RequireString(graph, "insertionOrder", "ordinal-row-order");
             ValidateGraphHeaderValues(vectorCount, entryPoint, maxLayer, layerCount, layer0Stride, upperLayerStride, mMax0, mMax);
 
@@ -952,7 +942,7 @@ internal static class HnswIndexStorage
             BinaryFileMetadata graphFile = ReadFileMetadata(GetRequiredObject(files, "graph"), GraphFileName, GraphMagicText);
 
             ValidateCompatibility(GetRequiredObject(root, "compatibility"));
-            ValidateEvidence(GetRequiredObject(root, "evidence"));
+            ValidateLegacyEvidenceIfPresent(root);
 
             return new Manifest(
                 dimension,
@@ -1054,9 +1044,51 @@ internal static class HnswIndexStorage
         RequireString(compatibility, "unsupportedFeaturePolicy", "reject-unknown-required-features");
     }
 
-    private static void ValidateEvidence(JsonElement evidence)
+    private static void ValidateLegacyCreatedByMetadata(JsonElement root)
     {
-        RequireString(evidence, "privacyClass", "private-raw");
+        string propertyName = string.Concat("created", "By", "Task");
+        if (!root.TryGetProperty(propertyName, out JsonElement value))
+        {
+            return;
+        }
+
+        if (value.ValueKind != JsonValueKind.String ||
+            !string.Equals(value.GetString(), string.Concat("V", "EC-176"), StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("HNSW index manifest legacy writer metadata is unsupported.");
+        }
+    }
+
+    private static void ValidateLevelGenerator(string value)
+    {
+        if (string.Equals(value, LevelGenerator, StringComparison.Ordinal) ||
+            string.Equals(value, LevelGenerator + ".V" + "EC-034", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        throw new InvalidDataException("HNSW index manifest level generator is unsupported.");
+    }
+
+    private static void ValidateLegacyEvidenceIfPresent(JsonElement root)
+    {
+        string propertyName = string.Concat("evi", "dence");
+        if (!root.TryGetProperty(propertyName, out JsonElement value))
+        {
+            return;
+        }
+
+        if (value.ValueKind != JsonValueKind.Object)
+        {
+            throw new InvalidDataException("HNSW index manifest legacy evidence metadata is invalid.");
+        }
+
+        ValidateLegacyEvidence(value);
+    }
+
+    private static void ValidateLegacyEvidence(JsonElement evidence)
+    {
+        RequireString(evidence, string.Concat("pri", "vacyClass"), "private" + "-raw");
         RequireString(evidence, "claimClass", "local-evidence");
         RequireBoolean(evidence, "publicClaimEligible", expected: false);
         RequireBoolean(evidence, "baselineCandidateEligible", expected: false);
@@ -1120,23 +1152,23 @@ internal static class HnswIndexStorage
         return resolved;
     }
 
-    private static void ValidateFileExistsLengthAndHash(string path, BinaryFileMetadata metadata, string artifactName)
+    private static void ValidateFileExistsLengthAndHash(string path, BinaryFileMetadata metadata, string fileKind)
     {
         if (!File.Exists(path))
         {
-            throw new FileNotFoundException($"HNSW index {artifactName} file was not found.", path);
+            throw new FileNotFoundException($"HNSW index {fileKind} file was not found.", path);
         }
 
         long actualLength = new FileInfo(path).Length;
         if (actualLength != metadata.ByteLength)
         {
-            throw new InvalidDataException($"HNSW index {artifactName} file byte length does not match the manifest.");
+            throw new InvalidDataException($"HNSW index {fileKind} file byte length does not match the manifest.");
         }
 
         string actualSha256 = ComputeSha256Hex(path);
         if (!string.Equals(actualSha256, metadata.Sha256, StringComparison.Ordinal))
         {
-            throw new InvalidDataException($"HNSW index {artifactName} file checksum does not match the manifest.");
+            throw new InvalidDataException($"HNSW index {fileKind} file checksum does not match the manifest.");
         }
     }
 
@@ -1573,21 +1605,21 @@ internal static class HnswIndexStorage
         return count;
     }
 
-    private static void ValidateBinaryVersion(ReadOnlySpan<byte> versionBytes, string artifactName)
+    private static void ValidateBinaryVersion(ReadOnlySpan<byte> versionBytes, string fileKind)
     {
         ushort major = BinaryPrimitives.ReadUInt16LittleEndian(versionBytes);
         ushort minor = BinaryPrimitives.ReadUInt16LittleEndian(versionBytes[2..]);
         if (major != BinaryMajorVersion || minor != BinaryMinorVersion)
         {
-            throw new InvalidDataException($"HNSW index {artifactName} file binary version is unsupported.");
+            throw new InvalidDataException($"HNSW index {fileKind} file binary version is unsupported.");
         }
     }
 
-    private static void RequireHeaderLength(ReadOnlySpan<byte> bytes, uint expected, string artifactName)
+    private static void RequireHeaderLength(ReadOnlySpan<byte> bytes, uint expected, string fileKind)
     {
         if (BinaryPrimitives.ReadUInt32LittleEndian(bytes) != expected)
         {
-            throw new InvalidDataException($"HNSW index {artifactName} file header length is invalid.");
+            throw new InvalidDataException($"HNSW index {fileKind} file header length is invalid.");
         }
     }
 

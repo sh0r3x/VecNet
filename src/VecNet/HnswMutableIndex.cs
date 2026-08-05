@@ -152,6 +152,31 @@ public sealed class HnswMutableIndex
     public VectorMutationResult TryDelete(ulong id) => _inner.TryDelete(id);
 
     /// <summary>
+    /// Creates a mutable HNSW search workspace sized for the current generation and configured search width.
+    /// </summary>
+    /// <param name="maxResults">The maximum result buffer length this workspace can support.</param>
+    /// <returns>A caller-owned mutable HNSW workspace for the current generation.</returns>
+    /// <remarks>
+    /// This factory is equivalent to <see cref="HnswMutableSearchWorkspace(HnswMutableIndex, int)"/>.
+    /// Recreate the workspace after a committed mutation or published checkpoint.
+    /// </remarks>
+    public HnswMutableSearchWorkspace CreateSearchWorkspace(int maxResults) =>
+        new(this, maxResults);
+
+    /// <summary>
+    /// Creates a mutable HNSW search workspace sized for the current generation and a caller-selected maximum search width.
+    /// </summary>
+    /// <param name="maxResults">The maximum result buffer length this workspace can support.</param>
+    /// <param name="maxEfSearch">The maximum per-search HNSW base candidate width this workspace can support.</param>
+    /// <returns>A caller-owned mutable HNSW workspace for the current generation.</returns>
+    /// <remarks>
+    /// <paramref name="maxEfSearch"/> must be in the range [1, 4096]. Recreate the workspace after
+    /// a committed mutation or published checkpoint.
+    /// </remarks>
+    public HnswMutableSearchWorkspace CreateSearchWorkspace(int maxResults, int maxEfSearch) =>
+        new(this, maxResults, maxEfSearch);
+
+    /// <summary>
     /// Searches the immutable HNSW base plus exact in-memory delta rows.
     /// </summary>
     /// <remarks>
@@ -167,6 +192,31 @@ public sealed class HnswMutableIndex
     {
         ValidateWorkspace(results.Length, workspace);
         return _inner.Search(query, results, workspace.Inner);
+    }
+
+    /// <summary>
+    /// Searches the immutable HNSW base plus exact in-memory delta rows with a caller-selected HNSW base search width.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="efSearch"/> must be in the range [1, 4096] and must be at least the
+    /// requested result count. This per-search width controls the HNSW base traversal for the
+    /// current query and does not change <see cref="Options"/>. Exact delta search remains bounded
+    /// by the requested result count.
+    /// </remarks>
+    /// <param name="query">The finite query vector. Cosine queries are normalized during search.</param>
+    /// <param name="results">The caller-owned destination buffer. Its length is the requested result count.</param>
+    /// <param name="workspace">The caller-owned mutable HNSW workspace for this generation.</param>
+    /// <param name="efSearch">The HNSW base candidate width for this search.</param>
+    /// <returns>The number of results written.</returns>
+    public int Search(
+        ReadOnlySpan<float> query,
+        Span<SearchResult> results,
+        HnswMutableSearchWorkspace workspace,
+        int efSearch)
+    {
+        ValidateEfSearch(efSearch, nameof(efSearch));
+        ValidateWorkspace(results.Length, workspace, efSearch, nameof(results), requireDeltaFilterCapacity: false);
+        return _inner.Search(query, results, workspace.Inner, efSearch);
     }
 
     /// <summary>
@@ -195,6 +245,35 @@ public sealed class HnswMutableIndex
     }
 
     /// <summary>
+    /// Searches the immutable HNSW base plus exact delta rows with a caller-selected HNSW base search width while emitting only allowed external IDs.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="efSearch"/> must be in the range [1, 4096] and must be at least the
+    /// requested result count. Unknown IDs, duplicates and tombstoned IDs are ignored. When the
+    /// known live allowed count is no greater than <paramref name="efSearch"/>, this method uses
+    /// exact filtered fallback over live base and delta rows. For broader allowlists, HNSW base
+    /// traversal remains unfiltered with emission suppression and may underfill; live allowed delta
+    /// rows are still searched exactly.
+    /// </remarks>
+    /// <param name="query">The finite query vector. Cosine queries are normalized during search.</param>
+    /// <param name="allowedIds">Caller-supplied external identifiers allowed for this search.</param>
+    /// <param name="results">The caller-owned destination buffer. Its length is the requested result count.</param>
+    /// <param name="workspace">The caller-owned mutable HNSW workspace for this generation.</param>
+    /// <param name="efSearch">The HNSW base candidate width for this search.</param>
+    /// <returns>The number of filtered results written.</returns>
+    public int Search(
+        ReadOnlySpan<float> query,
+        ReadOnlySpan<ulong> allowedIds,
+        Span<SearchResult> results,
+        HnswMutableSearchWorkspace workspace,
+        int efSearch)
+    {
+        ValidateEfSearch(efSearch, nameof(efSearch));
+        ValidateWorkspace(results.Length, workspace, efSearch, nameof(results), requireDeltaFilterCapacity: true);
+        return _inner.Search(query, allowedIds, results, workspace.Inner, efSearch);
+    }
+
+    /// <summary>
     /// Rebuilds the current live view into a new immutable HNSW snapshot.
     /// </summary>
     /// <remarks>
@@ -220,6 +299,58 @@ public sealed class HnswMutableIndex
         if (workspace.MaxDeltaCandidates < requestedResultCount)
         {
             throw new ArgumentException("Workspace result capacity is smaller than the requested result count.", nameof(workspace));
+        }
+    }
+
+    private void ValidateWorkspace(
+        int requestedResultCount,
+        HnswMutableSearchWorkspace workspace,
+        int effectiveEfSearch,
+        string resultsParameterName,
+        bool requireDeltaFilterCapacity)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+        if (workspace.Generation != Generation)
+        {
+            throw new InvalidOperationException("Workspace generation is stale for this mutable HNSW index.");
+        }
+
+        if (effectiveEfSearch < requestedResultCount)
+        {
+            throw new ArgumentOutOfRangeException(resultsParameterName, "EfSearch must be at least the requested result count.");
+        }
+
+        if (workspace.MaxDeltaCandidates < requestedResultCount)
+        {
+            throw new ArgumentException("Workspace result capacity is smaller than the requested result count.", nameof(workspace));
+        }
+
+        if (workspace.MaxBaseElements < BasePhysicalVectorCount)
+        {
+            throw new ArgumentException("Workspace base element capacity is smaller than the immutable HNSW base count.", nameof(workspace));
+        }
+
+        if (workspace.MaxEfSearch < effectiveEfSearch)
+        {
+            throw new ArgumentException("Workspace HNSW ef capacity is smaller than EfSearch.", nameof(workspace));
+        }
+
+        if (workspace.MaxBaseCandidates < Math.Min(BasePhysicalVectorCount, effectiveEfSearch))
+        {
+            throw new ArgumentException("Workspace base candidate capacity is smaller than the requested HNSW base overfetch count.", nameof(workspace));
+        }
+
+        if (requireDeltaFilterCapacity && workspace.MaxDeltaFilterElements < DeltaPhysicalVectorCount)
+        {
+            throw new ArgumentException("Workspace delta filter capacity is smaller than the physical delta count.", nameof(workspace));
+        }
+    }
+
+    private static void ValidateEfSearch(int efSearch, string parameterName)
+    {
+        if (efSearch is < 1 or > 4096)
+        {
+            throw new ArgumentOutOfRangeException(parameterName, "EfSearch must be in the range [1, 4096].");
         }
     }
 

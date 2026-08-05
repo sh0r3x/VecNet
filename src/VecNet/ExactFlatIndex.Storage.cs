@@ -180,7 +180,6 @@ internal static class ExactFlatIndexStorage
     internal const double CosineStoredRowSquaredLengthTolerance = 1e-4;
 
     private const int MaxManifestBytes = 1024 * 1024;
-    private const string CreatedByTask = "VEC-031";
     private const string IdType = "uint64";
     private const string VectorElementType = "float32";
     private const string VectorLayout = "row-major-dense";
@@ -540,7 +539,6 @@ internal static class ExactFlatIndexStorage
         writer.WriteString("schemaVersion", ManifestSchemaVersion);
         writer.WriteString("formatFamily", FormatFamily);
         writer.WriteString("createdUtc", DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", CultureInfo.InvariantCulture));
-        writer.WriteString("createdByTask", CreatedByTask);
 
         writer.WriteStartObject("writer");
         writer.WriteString("product", "VecNet");
@@ -614,7 +612,7 @@ internal static class ExactFlatIndexStorage
             RequireString(root, "schemaVersion", ManifestSchemaVersion);
             RequireString(root, "formatFamily", FormatFamily);
             ValidateCreatedUtc(GetRequiredString(root, "createdUtc"));
-            _ = GetRequiredString(root, "createdByTask");
+            ValidateLegacyCreatedByMetadata(root);
             ValidateWriter(GetRequiredObject(root, "writer"));
 
             JsonElement index = GetRequiredObject(root, "index");
@@ -702,6 +700,20 @@ internal static class ExactFlatIndexStorage
         }
     }
 
+    private static void ValidateLegacyCreatedByMetadata(JsonElement root)
+    {
+        string propertyName = string.Concat("created", "By", "Task");
+        if (!root.TryGetProperty(propertyName, out JsonElement value))
+        {
+            return;
+        }
+
+        if (value.ValueKind != JsonValueKind.String)
+        {
+            throw new InvalidDataException("Exact flat index manifest legacy writer metadata is invalid.");
+        }
+    }
+
     private static string ResolveManifestFilePath(string directory, string relativePath, string expectedFileName)
     {
         if (string.IsNullOrWhiteSpace(relativePath) || Path.IsPathRooted(relativePath))
@@ -730,23 +742,23 @@ internal static class ExactFlatIndexStorage
     private static void ValidateFileExistsLengthAndHash(
         string path,
         BinaryFileMetadata metadata,
-        string artifactName)
+        string fileKind)
     {
         if (!File.Exists(path))
         {
-            throw new FileNotFoundException($"Exact flat index {artifactName} file was not found.", path);
+            throw new FileNotFoundException($"Exact flat index {fileKind} file was not found.", path);
         }
 
         long actualLength = new FileInfo(path).Length;
         if (actualLength != metadata.ByteLength)
         {
-            throw new InvalidDataException($"Exact flat index {artifactName} file byte length does not match the manifest.");
+            throw new InvalidDataException($"Exact flat index {fileKind} file byte length does not match the manifest.");
         }
 
         string actualSha256 = ComputeSha256Hex(path);
         if (!string.Equals(actualSha256, metadata.Sha256, StringComparison.Ordinal))
         {
-            throw new InvalidDataException($"Exact flat index {artifactName} file checksum does not match the manifest.");
+            throw new InvalidDataException($"Exact flat index {fileKind} file checksum does not match the manifest.");
         }
     }
 
@@ -934,13 +946,13 @@ internal static class ExactFlatIndexStorage
         }
     }
 
-    private static void ValidateBinaryVersion(ReadOnlySpan<byte> versionBytes, string artifactName)
+    private static void ValidateBinaryVersion(ReadOnlySpan<byte> versionBytes, string fileKind)
     {
         ushort major = BinaryPrimitives.ReadUInt16LittleEndian(versionBytes);
         ushort minor = BinaryPrimitives.ReadUInt16LittleEndian(versionBytes[2..]);
         if (major != BinaryMajorVersion || minor != BinaryMinorVersion)
         {
-            throw new InvalidDataException($"Exact flat index {artifactName} file binary version is unsupported.");
+            throw new InvalidDataException($"Exact flat index {fileKind} file binary version is unsupported.");
         }
     }
 

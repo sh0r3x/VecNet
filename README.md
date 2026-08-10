@@ -151,11 +151,12 @@ or semantic-relevance claims.
   saved index read-only, wrap it in `HnswMutableIndex`, apply `TryAdd` and
   `TryDelete`, `Checkpoint` to a new or empty directory, then reopen the new
   durable HNSW output.
-- Immutable HNSW durable files are the current round-trip format for `Save`
-  and `OpenReadOnly`. Squared-L2 and cosine mutable checkpoint output use the same
-  current format. The `1.x` compatibility policy covers supported earlier
-  `1.x` snapshots, but future major package lines are not guaranteed to read
-  every durable directory forever.
+- Immutable HNSW durable files are the current `1.x` round-trip format for
+  `Save` and `OpenReadOnly`. Squared-L2 and cosine mutable checkpoint output
+  uses the same immutable snapshot format. Current stable `1.x` packages
+  should open supported earlier stable `1.x` snapshots for the same supported
+  surface and metric; unsupported, future, corrupt, or incompatible formats
+  fail closed. There is no cross-major durable-format promise.
 - The optional VectorData adapter follows `IncludeVectors`: null/default
   options and `IncludeVectors = false` omit vectors, while
   `IncludeVectors = true` includes vectors. Omitting vectors may require a
@@ -241,15 +242,17 @@ or semantic-relevance claims.
 - Stable `1.x` releases follow semantic versioning. Patch and minor releases
   preserve public API/package compatibility while allowing additive APIs,
   diagnostics, documentation, validation hardening and bug fixes.
-- Current `1.x` packages should open and search durable exact-flat and
+- Current stable `1.x` packages should open and search durable exact-flat and
   immutable HNSW snapshots written by earlier stable `1.x` packages for the
-  same supported surface and metric. Future major package lines are not
-  guaranteed to read every `1.x` durable directory forever. Keep source
-  vectors and application records so you can rebuild or export indexes when
-  adopting a future major line.
+  same supported surface and metric. Unsupported, future, corrupt, or
+  incompatible formats fail closed. There is no cross-major durable-format
+  promise unless a later release states one. Keep source vectors and
+  application records so you can rebuild or export indexes when adopting a
+  future major line.
 - HNSW durable files are a current `1.x` round-trip format. Mutable HNSW
-  durable compatibility is represented by checkpoint output; mutable overlay
-  state itself is not reopened as a durable mutable index.
+  durable compatibility is represented by checkpoint output in the immutable
+  HNSW snapshot format; mutable overlay state itself is not reopened as a
+  durable mutable index.
 - The optional VectorData adapter does not support HNSW VectorData indexes,
   durable VectorData collection open/reopen, durable record or key-map
   storage, embedding generation, hybrid search, multiple vector properties,
@@ -337,6 +340,10 @@ int written = reopened.Search([1.0f, 0.0f, 0.0f], results);
 
 `Save` does not overwrite an existing non-empty directory. It writes only the
 current live view, so deleted rows are not searchable in the saved output.
+Current stable `1.x` packages should open supported earlier stable `1.x`
+exact-flat snapshots for the same surface and metric. Unsupported, future,
+corrupt, or incompatible formats fail closed. There is no cross-major
+durable-format promise.
 
 ## HNSW
 
@@ -391,6 +398,11 @@ fewer than the requested number of results even when exact filtered truth has
 enough live matches.
 
 For HNSW persistence, save to a new or empty directory and open it as read-only.
+Current stable `1.x` packages should open supported earlier stable `1.x`
+immutable HNSW snapshots for the same surface and metric. Unsupported, future,
+corrupt, or incompatible formats fail closed. Mutable HNSW checkpoint output is
+an immutable HNSW snapshot in the current supported format. There is no
+cross-major durable-format promise.
 
 ```csharp
 string path = Path.Combine(Environment.CurrentDirectory, "vecnet-hnsw");

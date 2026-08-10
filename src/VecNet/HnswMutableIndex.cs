@@ -13,6 +13,8 @@ namespace VecNet;
 /// To grow a saved HNSW index, open it with <see cref="HnswIndex.OpenReadOnly(string)"/>, create a
 /// mutable wrapper, apply <see cref="TryAdd"/> or <see cref="TryDelete"/>, checkpoint to a new or
 /// empty directory, and reopen the checkpoint output as a read-only <see cref="HnswIndex"/>.
+/// Checkpoint output is an immutable HNSW snapshot in the current supported format, not durable
+/// mutable overlay storage.
 /// </remarks>
 public sealed class HnswMutableIndex
 {
@@ -277,9 +279,10 @@ public sealed class HnswMutableIndex
     /// Rebuilds the current live view into a new immutable HNSW snapshot.
     /// </summary>
     /// <remarks>
-    /// Checkpoint writes to a new or empty directory, validates the opened output, and publishes the
-    /// rebuilt immutable HNSW base in this mutable instance. It folds exact delta rows and
-    /// tombstones into the rebuilt base. Mutable overlay state is not durably reopened, and
+    /// Checkpoint writes an immutable HNSW snapshot to a new or empty directory, validates the
+    /// opened output, and publishes the rebuilt immutable HNSW base in this mutable instance. It
+    /// folds exact delta rows and tombstones into the rebuilt base. Mutable overlay state is not
+    /// durable mutable storage and is not durably reopened, and
     /// diagnostic timing/allocation phases are not part of this public API. It does not edit the
     /// original base directory or any existing durable directory in place.
     /// </remarks>

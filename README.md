@@ -11,14 +11,14 @@ and durable application storage.
 Use VecNet from a `.NET 10` project. Add the core package:
 
 ```bash
-dotnet add package VecNet --version 1.3.0
+dotnet add package VecNet --version 1.3.1
 ```
 
 For `Microsoft.Extensions.VectorData` applications, add the separate optional
 exact-flat adapter package in addition to the core package:
 
 ```bash
-dotnet add package VecNet.Integration.VectorData --version 1.3.0
+dotnet add package VecNet.Integration.VectorData --version 1.3.1
 ```
 
 The core `VecNet` package intentionally has no runtime package dependencies
@@ -128,7 +128,7 @@ or semantic-relevance claims.
   and `HnswIndex.CreateSearchWorkspace()` for immutable HNSW search. If you
   construct workspaces manually, exact allowlist workspaces are sized from
   `PhysicalVectorCount`/`VectorCount`, not `LiveVectorCount`; immutable HNSW
-  workspaces are sized from `Count` and `Options.EfSearch`.
+  workspaces are sized from `Count` and the intended `maxEfSearch`.
 - Count names are intentionally explicit where possible. On `ExactFlatIndex`,
   `VectorCount` is a compatibility name for physical stored rows and matches
   `PhysicalVectorCount`. On mutation result records, `VectorCount` is a
@@ -163,7 +163,7 @@ or semantic-relevance claims.
   projectable class record shape; unsupported projection shapes throw a clear
   `NotSupportedException`.
 
-## Supported 1.3.0 Feature List
+## Supported 1.3.1 Feature List
 
 - Target framework: `net10.0`.
 - The core `VecNet` package is dependency-free and ships managed `lib/net10.0`
@@ -264,7 +264,7 @@ or semantic-relevance claims.
 - The package-smoke evidence is functional package-consumer evidence. It is
   not a public performance, platform support, NativeAOT, trimming, or
   universal deployment claim.
-- `1.3.0` is the stable package version for the supported public API surfaces
+- `1.3.1` is the stable package version for the supported public API surfaces
   described here. Except for the dedicated benchmark documents linked above,
   this README does not make public HNSW recall, latency, throughput,
   allocation, memory, capacity, storage-size, update-profile, concurrency,
@@ -363,7 +363,7 @@ var options = new HnswIndexOptions(
     M: 16,
     EfConstruction: 200,
     EfSearch: 50,
-    RandomSeed: 0x564543_034UL);
+    RandomSeed: 12345UL);
 
 var index = new HnswIndex(3, VectorMetric.SquaredEuclidean, options);
 
@@ -434,13 +434,13 @@ operations can continue without a separate seal step. Applications that want
 to serve a logically frozen HNSW generation without build scratch
 should save the generation and open it with `OpenReadOnly`.
 
-Create one `HnswSearchWorkspace` per overlapping squared-L2 search. For
-cosine, create one workspace per overlapping read-only search only after the
-index has been opened with `OpenReadOnly`. Size immutable HNSW workspaces from
-the current `Count` and the configured `EfSearch`; recreate a workspace when
-either value can exceed the workspace's recorded capacity. High `EfSearch`
-values and high concurrent squared-L2 reader counts increase caller-owned
-workspace memory that the application must budget.
+Create one `HnswSearchWorkspace` per overlapping search. For cosine, overlap
+read-only searches only after the index has been opened with `OpenReadOnly`.
+Size immutable HNSW workspaces from the current `Count` and the intended
+`maxEfSearch`; recreate a workspace when either value can exceed the
+workspace's recorded capacity. High row counts, high `maxEfSearch` values, and
+high concurrent HNSW search counts increase caller-owned workspace memory that
+the application must budget.
 
 Squared-L2 and cosine `Save`, `OpenReadOnly`, and mutable checkpoint/rebuild operate
 over the index state and may need temporary memory and disk space while
@@ -487,9 +487,13 @@ if (add.Status == VectorMutationStatus.Committed ||
 
 Create mutable HNSW workspaces from the current mutable index shape. Recreate
 them after a committed `TryAdd`, committed `TryDelete`, or published
-`Checkpoint`. The mutable wrapper does not expose direct graph mutation,
-upsert, replacement, graph repair, checkpoint diagnostics, or durable mutable
-overlay reopen.
+`Checkpoint`. For mutable HNSW, `maxEfSearch` is both the workspace capacity
+and the adaptive retry ceiling when base tombstones would otherwise underfill
+results. Latency-sensitive callers should use bounded workspace ceilings for
+their recall/latency tiers instead of reusing one oversized workspace for all
+queries. The mutable wrapper does not expose direct graph mutation, upsert,
+replacement, graph repair, checkpoint diagnostics, or durable mutable overlay
+reopen.
 
 For planned mutable HNSW checkpoint/rebuild workflows, capacity-plan the HNSW
 base around the expected live row count after folding delta rows and

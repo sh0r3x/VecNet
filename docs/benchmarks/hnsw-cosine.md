@@ -116,6 +116,30 @@ behavior were measured.
 | Fashion-MNIST | 60000 | 784 | 1000 | 10 | 256 | 0.9972 | 1.70176 | 108742.52 | 1368.77 | 1400.43 | 197094301 | 3284.91 | passed |
 | generated | 10000 | 384 | 1000 | 10 | 256 | 0.8156 | 2.51674 | 22965.9 | 113.23 | 130.05 | 16848202 | 1684.82 | passed |
 
+## Current 1.3.x Update
+
+A current `1.3.x` refresh reran the same comparable matrices from source
+commit `74896b9a6d9192d1a33a66e947f481a6eff8accf`, with the same datasets,
+query counts, `M`, `efConstruction`, `efSearch` values, run counts, warmup
+shape, caller-owned result buffers, and caller-owned search workspaces. The
+tables above remain the original public summary; this section describes the
+comparison against the current source line.
+
+Recall@k was unchanged for every comparable generated, Fashion-MNIST, and
+durable row. The recall/latency shape also stayed the same: higher
+`efSearch` improved recall and cost more search time.
+
+| Area | Recall result | Current latency result | Allocation note |
+| --- | --- | --- | --- |
+| generated immutable rows | unchanged for every comparable row | lower across the matrix; p50 was `0.67x` to `0.76x` of the original summary, and p99 was `0.34x` to `0.85x` | generated rows that reported small B/query values stayed at the same small values; the other generated rows stayed at `0 B/query` |
+| Fashion-MNIST immutable rows | unchanged for every comparable row | p50 was lower for all `efSearch` values; p95 and p99 were lower through `efSearch=128` | `0 B/query` |
+| durable opened-search rows | unchanged for every comparable row | generated opened p50/p95/p99 were `0.75x`/`0.71x`/`0.73x`; Fashion-MNIST opened p50 was `0.72x` to `0.76x`, p95 was `0.62x` to `0.79x`, and p99 was `0.68x` to `0.88x` | opened-search rows stayed at `0 B/query` |
+
+The main caveat is Fashion-MNIST immutable search at `efSearch=256`: recall
+was unchanged and p50 improved, but p95 was `1.04x` and p99 was `1.18x` of
+the original summary. Build times were lower for every comparable current row,
+and durable persisted bytes were nearly unchanged.
+
 ## Measurement Availability
 
 Measured for the selected search cases: recall@k, p50/p95/p99 search

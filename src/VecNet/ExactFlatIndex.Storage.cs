@@ -106,8 +106,11 @@ public sealed partial class ExactFlatIndex
     /// </summary>
     /// <remarks>
     /// Open validates the manifest and binary files using broad failure categories such as
-    /// invalid data, missing files, unsupported format, or I/O errors. It does not establish a
-    /// stable complete exception taxonomy and does not open the index for mutation.
+    /// invalid data, missing files, unsupported format, or I/O errors. Current stable 1.x packages
+    /// should open supported earlier stable 1.x exact-flat snapshots for the same metric and
+    /// surface; unsupported, future, corrupt, or incompatible formats fail closed. Open does not
+    /// establish a stable complete exception taxonomy, does not open the index for mutation, and
+    /// does not make a cross-major durable-format promise.
     /// </remarks>
     /// <param name="directoryPath">
     /// The exact-flat index directory path. It must not be null or whitespace and must name an

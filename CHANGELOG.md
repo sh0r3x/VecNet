@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.1 - 2026-08-10
+
+### Changed
+
+- Updated README HNSW guidance for caller-owned workspace sizing, overlapping
+  search ownership, mutable adaptive-retry ceilings and memory budgeting.
+- Added the current `1.3.x` HNSW cosine benchmark comparison section.
+- Aligned package metadata for the `1.3.1` package set and updated rolling
+  package validation and durable compatibility baselines to `1.3.0`.
+
 ## 1.3.0 - 2026-08-05
 
 ### Added

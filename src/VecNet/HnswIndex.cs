@@ -16,12 +16,14 @@ namespace VecNet;
 /// <see cref="VectorMetric.SquaredEuclidean"/> and <see cref="VectorMetric.Cosine"/>.
 /// Inner-product HNSW, stored labels,
 /// durable graph-aware filtering metadata, public ordinal filters, full filter-aware graph
-/// traversal, update/delete, replacement, repair, direct graph mutation, and stable file-format
-/// compatibility are not supported by this API.
+/// traversal, update/delete, replacement, repair, and direct graph mutation are not supported by
+/// this API.
 /// VecNet returns external IDs with distances and does not expose vector read-back or vector
-/// enumeration APIs; retain source vectors outside the index when rebuild or export is required.
-/// HNSW durable files are the current round-trip format for this package line, not a
-/// cross-version stable file-format promise.
+/// enumeration APIs; retain source vectors and records outside the index when rebuild or export is
+/// required. Current stable 1.x packages should open supported earlier stable 1.x immutable HNSW
+/// snapshots for the same metric and surface. Unsupported, future, corrupt, or incompatible
+/// formats fail closed. There is no cross-major durable-format promise unless a later release
+/// states one.
 /// </remarks>
 public sealed partial class HnswIndex
 {
@@ -217,10 +219,10 @@ public sealed partial class HnswIndex
     /// Saves this HNSW index to a new or empty durable HNSW directory.
     /// </summary>
     /// <remarks>
-    /// Save writes the current HNSW round-trip files. It requires a new or empty target location
+    /// Save writes the current immutable HNSW snapshot format. It requires a new or empty target location
     /// and does not replace an active index directory, coordinate with other processes, provide
     /// caller-level crash recovery for directory swaps, edit an existing durable directory in
-    /// place, or establish a cross-version stable file-format compatibility promise.
+    /// place, or establish a cross-major durable-format promise.
     /// </remarks>
     /// <param name="directoryPath">
     /// The target directory path. It must not be null or whitespace, must not name an existing file,
@@ -236,10 +238,12 @@ public sealed partial class HnswIndex
     /// </summary>
     /// <remarks>
     /// Open validates the manifest and binary files using broad failure categories such as
-    /// invalid data, missing files, unsupported format, or I/O errors. It does not establish a
-    /// stable complete exception taxonomy, does not open the index for mutation, and does not make
-    /// a cross-version stable file-format compatibility promise. To grow a saved HNSW index, open
-    /// it read-only, wrap it in <see cref="HnswMutableIndex"/>, apply
+    /// invalid data, missing files, unsupported format, or I/O errors. Current stable 1.x packages
+    /// should open supported earlier stable 1.x immutable HNSW snapshots for the same metric and
+    /// surface; unsupported, future, corrupt, or incompatible formats fail closed. Open does not
+    /// establish a stable complete exception taxonomy, does not open the index for mutation, and
+    /// does not make a cross-major durable-format promise. To grow a saved HNSW index, open it
+    /// read-only, wrap it in <see cref="HnswMutableIndex"/>, apply
     /// <see cref="HnswMutableIndex.TryAdd"/> or <see cref="HnswMutableIndex.TryDelete"/>, checkpoint
     /// to a new or empty directory, and reopen the checkpoint output.
     /// </remarks>

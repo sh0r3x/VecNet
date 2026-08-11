@@ -76,11 +76,10 @@ public sealed class HnswIndexPublicPreviewApiTests
     }
 
     [Fact]
-    public void PublicConstruction_AcceptsSquaredL2AndCosineAndValidatesOptions()
+    public void PublicConstruction_AcceptsSquaredL2InnerProductAndCosineAndValidatesOptions()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new HnswIndex(0, VectorMetric.SquaredEuclidean));
         Assert.Throws<ArgumentOutOfRangeException>(() => new HnswIndex(2, (VectorMetric)999));
-        Assert.Throws<NotSupportedException>(() => new HnswIndex(2, VectorMetric.InnerProduct));
         Assert.Throws<ArgumentOutOfRangeException>(
             () => new HnswIndex(2, VectorMetric.SquaredEuclidean, new HnswIndexOptions(1, 2, 2, 1)));
         Assert.Throws<ArgumentOutOfRangeException>(
@@ -98,6 +97,9 @@ public sealed class HnswIndexPublicPreviewApiTests
 
         var cosine = new HnswIndex(2, VectorMetric.Cosine);
         Assert.Equal(VectorMetric.Cosine, cosine.Metric);
+
+        var innerProduct = new HnswIndex(2, VectorMetric.InnerProduct);
+        Assert.Equal(VectorMetric.InnerProduct, innerProduct.Metric);
     }
 
     [Fact]

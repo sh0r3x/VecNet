@@ -1820,7 +1820,7 @@ internal static class HnswIndexStorage
         {
             "squared-euclidean" => VectorMetric.SquaredEuclidean,
             "cosine" => VectorMetric.Cosine,
-            "inner-product" => throw new InvalidDataException("HNSW index manifest metric is unsupported."),
+            "inner-product" => VectorMetric.InnerProduct,
             _ => throw new InvalidDataException("HNSW index manifest metric is unsupported.")
         };
 

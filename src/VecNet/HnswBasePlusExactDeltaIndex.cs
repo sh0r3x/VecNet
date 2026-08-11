@@ -24,10 +24,6 @@ internal sealed class HnswBasePlusExactDeltaIndex
     internal HnswBasePlusExactDeltaIndex(HnswIndex baseIndex, bool isReadOnly = false)
     {
         ArgumentNullException.ThrowIfNull(baseIndex);
-        if (baseIndex.Metric == VectorMetric.InnerProduct)
-        {
-            throw new NotSupportedException("HNSW base-plus-exact-delta search does not support inner product distance.");
-        }
 
         _baseIndex = baseIndex;
         _basePhysicalVectorCount = baseIndex.Count;
@@ -954,9 +950,13 @@ internal sealed class HnswBasePlusExactDeltaIndex
     }
 
     private float DistanceToDelta(ReadOnlySpan<float> query, double queryMagnitude, int deltaOrdinal) =>
-        Metric == VectorMetric.Cosine
-            ? CosineDistance(query, queryMagnitude, deltaOrdinal)
-            : SquaredEuclideanDistance(query, deltaOrdinal);
+        Metric switch
+        {
+            VectorMetric.SquaredEuclidean => SquaredEuclideanDistance(query, deltaOrdinal),
+            VectorMetric.InnerProduct => InnerProductDistance(query, deltaOrdinal),
+            VectorMetric.Cosine => CosineDistance(query, queryMagnitude, deltaOrdinal),
+            _ => throw new InvalidOperationException("HNSW metric is invalid.")
+        };
 
     private float CosineDistance(ReadOnlySpan<float> query, double queryMagnitude, int deltaOrdinal)
     {
@@ -968,6 +968,18 @@ internal sealed class HnswBasePlusExactDeltaIndex
         }
 
         return (float)(1 - (dotProduct / queryMagnitude));
+    }
+
+    private float InnerProductDistance(ReadOnlySpan<float> query, int deltaOrdinal)
+    {
+        int offset = deltaOrdinal * Dimension;
+        double dotProduct = 0;
+        for (int i = 0; i < Dimension; i++)
+        {
+            dotProduct += (double)query[i] * _deltaVectors[offset + i];
+        }
+
+        return (float)-dotProduct;
     }
 
     private static int InsertCandidate(Span<SearchResult> results, int written, SearchResult candidate)

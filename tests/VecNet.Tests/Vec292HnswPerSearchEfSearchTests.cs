@@ -256,11 +256,22 @@ public sealed class Vec292HnswPerSearchEfSearchTests
     }
 
     [Fact]
-    public void HnswInnerProductRejectionRemainsUnchanged()
+    public void HnswInnerProductPerSearchEfSearchIsAdmitted()
     {
-        Assert.Throws<NotSupportedException>(() => new HnswIndex(1, VectorMetric.InnerProduct));
-        HnswIndex baseIndex = CreateHnsw([(10UL, 0f)], efSearch: 2);
-        Assert.Equal(VectorMetric.SquaredEuclidean, new HnswMutableIndex(baseIndex).Metric);
+        var index = new HnswIndex(
+            dimension: 1,
+            VectorMetric.InnerProduct,
+            new HnswIndexOptions(M: 2, EfConstruction: 8, EfSearch: 2, RandomSeed: 0x2920UL),
+            () => 0);
+        index.Add(10, [0f]);
+        index.Add(20, [3f]);
+
+        SearchResult[] results = [new(999, 999), new(998, 998)];
+        int written = index.Search([2f], results, index.CreateSearchWorkspace(maxEfSearch: 2), efSearch: 2);
+
+        Assert.Equal(2, written);
+        Assert.Equal([new SearchResult(20, -6f), new SearchResult(10, 0f)], results);
+        Assert.Equal(VectorMetric.InnerProduct, new HnswMutableIndex(index).Metric);
     }
 
     private static HnswMutableIndex CreateMutable(IEnumerable<(ulong Id, float Value)> rows, int efSearch) =>

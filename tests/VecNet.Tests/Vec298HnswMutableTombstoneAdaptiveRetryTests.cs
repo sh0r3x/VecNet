@@ -192,11 +192,24 @@ public sealed class Vec298HnswMutableTombstoneAdaptiveRetryTests
     }
 
     [Fact]
-    public void HnswInnerProductRejectionRemainsUnchanged()
+    public void HnswInnerProductMutableAdaptiveRetryPathIsAdmitted()
     {
-        Assert.Throws<NotSupportedException>(() => new HnswIndex(2, VectorMetric.InnerProduct));
-        Assert.Throws<NotSupportedException>(
-            () => new HnswIndex(2, VectorMetric.InnerProduct, new HnswIndexOptions(2, 8, 2, 0x298UL)));
+        var baseIndex = new HnswIndex(
+            2,
+            VectorMetric.InnerProduct,
+            new HnswIndexOptions(2, 8, 2, 0x298UL),
+            () => 0);
+        baseIndex.Add(10, [4f, 0f]);
+        baseIndex.Add(20, [0f, 0f]);
+        var mutable = new HnswMutableIndex(baseIndex);
+        Assert.Equal(VectorMutationStatus.Committed, mutable.TryDelete(10).Status);
+        Assert.Equal(VectorMutationStatus.Committed, mutable.TryAdd(30, [3f, 0f]).Status);
+
+        SearchResult[] results = [new(999, 999)];
+        int written = mutable.Search([2f, 0f], results, mutable.CreateSearchWorkspace(maxResults: 1, maxEfSearch: 2), efSearch: 1);
+
+        Assert.Equal(1, written);
+        Assert.Equal(new SearchResult(30, -6f), results[0]);
     }
 
     private static HnswMutableIndex CreateSquaredMutable(

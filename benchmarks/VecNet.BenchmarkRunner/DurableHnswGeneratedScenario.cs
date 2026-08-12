@@ -191,7 +191,7 @@ public static class DurableHnswGeneratedScenario
                 options.EfSearch,
                 FormatHex(options.HnswSeed),
                 "generated vector row order, external ids 0..vectorCount-1",
-                $"{options.Metric} private generated durable HNSW metric; InnerProduct unsupported"),
+                $"{options.Metric} private generated durable HNSW metric"),
             new DurableHnswOperationsInfo(
                 new DurableHnswOperationInfo(
                     "build",
@@ -805,7 +805,7 @@ public static class DurableHnswGeneratedScenario
     {
         if (!IsSupportedMetric(options.Metric))
         {
-            throw new ArgumentException("hnsw-generated-durable supports SquaredEuclidean and Cosine only.", nameof(options));
+            throw new ArgumentException("hnsw-generated-durable supports SquaredEuclidean, InnerProduct and Cosine only.", nameof(options));
         }
 
         if (options.TopK > options.VectorCount)
@@ -855,7 +855,7 @@ public static class DurableHnswGeneratedScenario
     }
 
     private static bool IsSupportedMetric(VectorMetric metric) =>
-        metric is VectorMetric.SquaredEuclidean or VectorMetric.Cosine;
+        metric is VectorMetric.SquaredEuclidean or VectorMetric.InnerProduct or VectorMetric.Cosine;
 
     private static void ValidateDataset(GeneratedDataset dataset, VectorMetric metric)
     {

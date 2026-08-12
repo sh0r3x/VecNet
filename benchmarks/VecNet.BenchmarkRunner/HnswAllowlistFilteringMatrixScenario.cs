@@ -119,7 +119,7 @@ public static class HnswAllowlistFilteringMatrixScenario
                 "Each successful case reuses the accepted VEC-149 VecNet.HnswAllowlistFilteringBenchmarkReport 0.1 report schema without changing measured search-call semantics.",
                 "Linked report, opened-index and checkpoint paths are stored relative to the manifest directory.",
                 "The matrix summarizes branch coverage, exact fallback parity, broad emission recall/order, underfill, allowlist metadata, tombstones, mutation/counts, returned-result integrity and allocation maxima from linked reports.",
-                "Generated finite squared-L2 data only; no Fashion-MNIST, external dataset, public docs, package metadata, production dependency or public filtering claim is introduced."
+                "Generated finite squared-L2, inner-product or cosine data only; no Fashion-MNIST, external dataset, public docs, package metadata, production dependency or public filtering claim is introduced."
             ]);
     }
 
@@ -747,7 +747,7 @@ public static class HnswAllowlistFilteringMatrixScenario
             string.Create(CultureInfo.InvariantCulture, $"0x{seed:X8}"),
             string.Create(CultureInfo.InvariantCulture, $"0x{HnswMatrixSeedBase:X16}"),
             "caseDatasetSeed = matrixSeed + (caseNumber - 1); caseHnswSeed = hnswMatrixSeedBase + caseNumber; case numbers are one-based within the selected preset.",
-            "Generated finite squared-L2 data only; allowlist generation, exact live-view truth, build/open/checkpoint and validation remain inside linked VEC-149 reports and outside measured search-call samples.",
+            "Generated finite squared-L2, inner-product or cosine data only; allowlist generation, exact live-view truth, build/open/checkpoint and validation remain inside linked VEC-149 reports and outside measured search-call samples.",
             string.Equals(presetName, HnswAllowlistFilteringMatrixOptions.StandardPresetName, StringComparison.Ordinal)
                 ? "Standard is 18 bounded generated cases over dimensions 32, 96 and 384; filter profiles empty, very-selective, fallback-boundary, broad and all; top-k 10 and 100; low-churn and tombstone-heavy update profiles; fixed M=16, efConstruction=128 and efSearch=192."
                 : "Smoke is four bounded generated cases covering empty, fallback-boundary and broad profiles plus a tombstone-heavy broad case.",

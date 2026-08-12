@@ -77,8 +77,8 @@ public sealed class Vec125HnswBasePlusExactDeltaMatrixTests
         HnswBasePlusExactDeltaMatrixScenario.MatrixCase[] cases =
             HnswBasePlusExactDeltaMatrixScenario.ExpandCases(options);
 
-        Assert.Equal(16, cases.Length);
-        Assert.Equal([VectorMetric.SquaredEuclidean, VectorMetric.Cosine], cases.Select(item => item.Options.Metric).Distinct().ToArray());
+        Assert.Equal(24, cases.Length);
+        Assert.Equal([VectorMetric.SquaredEuclidean, VectorMetric.InnerProduct, VectorMetric.Cosine], cases.Select(item => item.Options.Metric).Distinct().ToArray());
         Assert.Equal([32, 128], cases.Select(item => item.Options.Dimension).Distinct().OrderBy(item => item).ToArray());
         Assert.Equal([10, 50], cases.Select(item => item.Options.TopK).Distinct().OrderBy(item => item).ToArray());
         Assert.Equal(["low-churn", "tombstone-heavy"], cases.Select(item => item.UpdateProfileName).Distinct().Order().ToArray());
@@ -96,11 +96,11 @@ public sealed class Vec125HnswBasePlusExactDeltaMatrixTests
         });
 
         Assert.Equal(0xFFFF_FFFCu, cases[0].Options.Seed);
-        Assert.Equal(11u, cases[^1].Options.Seed);
+        Assert.Equal(19u, cases[^1].Options.Seed);
         Assert.Equal("0x484EACA8FFFD2501", FormatHex(cases[0].Options.HnswSeed));
-        Assert.Equal("0x484EACA8FFFD2510", FormatHex(cases[^1].Options.HnswSeed));
+        Assert.Equal("0x484EACA8FFFD2518", FormatHex(cases[^1].Options.HnswSeed));
         Assert.Equal("case-001-SquaredEuclidean-balanced-m8-low-churn-32d-10k.json", cases[0].RelativeReportPath);
-        Assert.Equal("case-016-Cosine-balanced-m8-tombstone-heavy-128d-50k.json", cases[^1].RelativeReportPath);
+        Assert.Equal("case-024-Cosine-balanced-m8-tombstone-heavy-128d-50k.json", cases[^1].RelativeReportPath);
     }
 
     [Fact]
@@ -135,8 +135,8 @@ public sealed class Vec125HnswBasePlusExactDeltaMatrixTests
         Assert.Equal("VEC-125", manifest.TaskId);
         Assert.Equal("generated-hnsw-base-plus-exact-delta-matrix", manifest.ScenarioName);
         Assert.Equal("smoke", manifest.PresetName);
-        Assert.Equal(4, manifest.CaseCount);
-        Assert.Equal(4, manifest.Aggregate.PassedCaseCount);
+        Assert.Equal(6, manifest.CaseCount);
+        Assert.Equal(6, manifest.Aggregate.PassedCaseCount);
         Assert.Equal(0, manifest.Aggregate.FailedCaseCount);
         Assert.Equal(0, manifest.Aggregate.BlockedCaseCount);
         Assert.False(manifest.Eligibility.PublicClaimEligible);
@@ -189,7 +189,7 @@ public sealed class Vec125HnswBasePlusExactDeltaMatrixTests
         JsonElement root = manifestDocument.RootElement;
         Assert.Equal("VecNet.HnswBasePlusExactDeltaMatrixManifest", root.GetProperty("schemaName").GetString());
         Assert.Equal("generated-hnsw-base-plus-exact-delta-matrix", root.GetProperty("command").GetProperty("scenario").GetString());
-        Assert.Equal(4, root.GetProperty("aggregate").GetProperty("passedCaseCount").GetInt32());
+        Assert.Equal(6, root.GetProperty("aggregate").GetProperty("passedCaseCount").GetInt32());
         Assert.Equal(0, root.GetProperty("aggregate").GetProperty("failedCaseCount").GetInt32());
         Assert.Equal(0, root.GetProperty("aggregate").GetProperty("blockedCaseCount").GetInt32());
         Assert.False(root.GetProperty("eligibility").GetProperty("publicClaimEligible").GetBoolean());
@@ -217,8 +217,8 @@ public sealed class Vec125HnswBasePlusExactDeltaMatrixTests
         HnswBasePlusExactDeltaMatrixManifest manifest =
             HnswBasePlusExactDeltaMatrixScenario.Run(options, ["generated-hnsw-base-plus-exact-delta-matrix"]);
 
-        Assert.Equal(4, manifest.CaseCount);
-        Assert.Equal(3, manifest.Aggregate.PassedCaseCount);
+        Assert.Equal(6, manifest.CaseCount);
+        Assert.Equal(5, manifest.Aggregate.PassedCaseCount);
         Assert.Equal(0, manifest.Aggregate.FailedCaseCount);
         Assert.Equal(1, manifest.Aggregate.BlockedCaseCount);
 
@@ -253,9 +253,9 @@ public sealed class Vec125HnswBasePlusExactDeltaMatrixTests
         HnswBasePlusExactDeltaMatrixManifest manifest =
             HnswBasePlusExactDeltaMatrixScenario.Run(options, ["generated-hnsw-base-plus-exact-delta-matrix"]);
 
-        Assert.Equal(4, manifest.CaseCount);
+        Assert.Equal(6, manifest.CaseCount);
         Assert.Equal(0, manifest.Aggregate.PassedCaseCount);
-        Assert.Equal(4, manifest.Aggregate.FailedCaseCount);
+        Assert.Equal(6, manifest.Aggregate.FailedCaseCount);
         Assert.Equal(0, manifest.Aggregate.BlockedCaseCount);
         Assert.All(manifest.Cases, matrixCase =>
         {

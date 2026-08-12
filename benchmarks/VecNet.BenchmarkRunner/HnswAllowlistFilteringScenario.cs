@@ -1148,7 +1148,7 @@ public static class HnswAllowlistFilteringScenario
             "No generated HNSW filtering baseline-candidate policy is accepted.",
             "No generated HNSW filtering regression-gate policy, threshold, comparison artifact or hard gate is accepted.",
             [
-                "Generated squared-L2/cosine HNSW allowlist filtering smoke evidence only; no external dataset source, license, version or checksum applies.",
+                "Generated squared-L2, inner-product or cosine HNSW allowlist filtering smoke evidence only; no external dataset source, license, version or checksum applies.",
                 "Exact fallback parity, broad emission integrity, tombstone suppression and underfill are private methodology evidence.",
                 "Managed allocations are measured only for filtered search-call boundaries.",
                 "Memory is explicitly not measured.",
@@ -1181,9 +1181,9 @@ public static class HnswAllowlistFilteringScenario
 
     private static void ValidateOptions(HnswAllowlistFilteringOptions options)
     {
-        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.Cosine))
+        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.InnerProduct or VectorMetric.Cosine))
         {
-            throw new ArgumentException("generated-hnsw-allowlist-filtered supports only SquaredEuclidean and Cosine.", nameof(options));
+            throw new ArgumentException("generated-hnsw-allowlist-filtered supports only SquaredEuclidean, InnerProduct and Cosine.", nameof(options));
         }
 
         if (options.InsertedDeltaCount <= 0)

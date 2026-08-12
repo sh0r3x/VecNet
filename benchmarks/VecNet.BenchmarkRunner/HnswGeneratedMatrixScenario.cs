@@ -10,7 +10,7 @@ public static class HnswGeneratedMatrixScenario
 
     private static readonly int[] SmokeDimensions = [16, 32];
     private static readonly int[] SmokeTopKValues = [1, 10];
-    private static readonly VectorMetric[] SupportedMetrics = [VectorMetric.SquaredEuclidean, VectorMetric.Cosine];
+    private static readonly VectorMetric[] SupportedMetrics = [VectorMetric.SquaredEuclidean, VectorMetric.InnerProduct, VectorMetric.Cosine];
     private static readonly HnswMatrixProfile[] SmokeProfiles =
     [
         new("low-ef-m4", M: 4, EfConstruction: 16, EfSearch: 10),
@@ -99,7 +99,7 @@ public static class HnswGeneratedMatrixScenario
                 "Generated HNSW baseline-candidate policy has not been accepted.",
                 "Generated HNSW regression-gate policy has not been accepted."),
             [
-                "Generated SquaredEuclidean and Cosine HNSW matrix smoke evidence only; no external datasets are used.",
+                "Generated SquaredEuclidean, InnerProduct and Cosine HNSW matrix smoke evidence only; no external datasets are used.",
                 "Each case reuses the existing hnsw-generated scenario and VecNet.HnswBenchmarkReport schema 0.1 measurement semantics.",
                 "Per-case HNSW build, exact truth generation, warmup, final-run result capture/comparison and report writing remain excluded from measured search latency and QPS.",
                 "The standard preset broadens generated HNSW parameter coverage but remains private smoke evidence, not a baseline candidate, regression gate or public benchmark claim.",

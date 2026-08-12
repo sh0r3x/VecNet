@@ -82,24 +82,28 @@ public sealed class Vec076DurableHnswGeneratedMatrixTests
         DurableHnswGeneratedMatrixScenario.DurableHnswGeneratedMatrixCase[] cases =
             DurableHnswGeneratedMatrixScenario.ExpandCases(options);
 
-        Assert.Equal(8, cases.Length);
+        Assert.Equal(12, cases.Length);
         Assert.Equal(
             [
                 "case-001-SquaredEuclidean-low-ef-m4-16d-64v-3q-5k",
                 "case-002-SquaredEuclidean-balanced-m8-32d-128v-4q-10k",
                 "case-003-SquaredEuclidean-wide-m12-128d-192v-5q-25k",
                 "case-004-SquaredEuclidean-tail-balanced-m8-386d-96v-3q-25k",
-                "case-005-Cosine-low-ef-m4-16d-64v-3q-5k",
-                "case-006-Cosine-balanced-m8-32d-128v-4q-10k",
-                "case-007-Cosine-wide-m12-128d-192v-5q-25k",
-                "case-008-Cosine-tail-balanced-m8-386d-96v-3q-25k"
+                "case-005-InnerProduct-low-ef-m4-16d-64v-3q-5k",
+                "case-006-InnerProduct-balanced-m8-32d-128v-4q-10k",
+                "case-007-InnerProduct-wide-m12-128d-192v-5q-25k",
+                "case-008-InnerProduct-tail-balanced-m8-386d-96v-3q-25k",
+                "case-009-Cosine-low-ef-m4-16d-64v-3q-5k",
+                "case-010-Cosine-balanced-m8-32d-128v-4q-10k",
+                "case-011-Cosine-wide-m12-128d-192v-5q-25k",
+                "case-012-Cosine-tail-balanced-m8-386d-96v-3q-25k"
             ],
             cases.Select(item => item.CaseId).ToArray());
         Assert.Equal(
-            [VectorMetric.SquaredEuclidean, VectorMetric.Cosine],
+            [VectorMetric.SquaredEuclidean, VectorMetric.InnerProduct, VectorMetric.Cosine],
             cases.Select(item => item.Options.Metric).Distinct().ToArray());
-        Assert.Equal([0x5EED0751u, 0x5EED0752u, 0x5EED0753u, 0x5EED0754u, 0x5EED0755u, 0x5EED0756u, 0x5EED0757u, 0x5EED0758u], cases.Select(item => item.Options.Seed).ToArray());
-        Assert.Equal([0x484E0DBA43050001UL, 0x484E0DBA43050002UL, 0x484E0DBA43050003UL, 0x484E0DBA43050004UL, 0x484E0DBA43050005UL, 0x484E0DBA43050006UL, 0x484E0DBA43050007UL, 0x484E0DBA43050008UL], cases.Select(item => item.Options.HnswSeed).ToArray());
+        Assert.Equal([0x5EED0751u, 0x5EED0752u, 0x5EED0753u, 0x5EED0754u, 0x5EED0755u, 0x5EED0756u, 0x5EED0757u, 0x5EED0758u, 0x5EED0759u, 0x5EED075Au, 0x5EED075Bu, 0x5EED075Cu], cases.Select(item => item.Options.Seed).ToArray());
+        Assert.Equal([0x484E0DBA43050001UL, 0x484E0DBA43050002UL, 0x484E0DBA43050003UL, 0x484E0DBA43050004UL, 0x484E0DBA43050005UL, 0x484E0DBA43050006UL, 0x484E0DBA43050007UL, 0x484E0DBA43050008UL, 0x484E0DBA43050009UL, 0x484E0DBA4305000AUL, 0x484E0DBA4305000BUL, 0x484E0DBA4305000CUL], cases.Select(item => item.Options.HnswSeed).ToArray());
 
         Assert.All(cases, matrixCase =>
         {
@@ -164,11 +168,11 @@ public sealed class Vec076DurableHnswGeneratedMatrixTests
         Assert.Equal("hnsw-generated-durable-matrix", manifest.ScenarioName);
         Assert.Equal("hnsw-generated-durable-matrix", manifest.Command.Scenario);
         Assert.Equal("smoke", manifest.PresetName);
-        Assert.Equal(8, manifest.CaseCount);
-        Assert.Equal(8, manifest.Aggregate.PassedCaseCount);
+        Assert.Equal(12, manifest.CaseCount);
+        Assert.Equal(12, manifest.Aggregate.PassedCaseCount);
         Assert.Equal(0, manifest.Aggregate.FailedCaseCount);
         Assert.Equal("passed", manifest.Validation.Status);
-        Assert.Equal(8, manifest.Validation.PassedCaseCount);
+        Assert.Equal(12, manifest.Validation.PassedCaseCount);
         Assert.Equal(0, manifest.Validation.FailedCaseCount);
         Assert.Equal("VecNet.DurableHnswBenchmarkReport", manifest.Validation.LinkedReportSchemaName);
         Assert.Equal("0.1", manifest.Validation.LinkedReportSchemaVersion);
@@ -303,9 +307,9 @@ public sealed class Vec076DurableHnswGeneratedMatrixTests
         Assert.True(File.Exists(manifestPath));
         DurableHnswGeneratedMatrixManifest manifest = ReadManifest(manifestPath);
         Assert.Equal("failed", manifest.Validation.Status);
-        Assert.Equal(8, manifest.CaseCount);
+        Assert.Equal(12, manifest.CaseCount);
         Assert.Equal(0, manifest.Aggregate.PassedCaseCount);
-        Assert.Equal(8, manifest.Aggregate.FailedCaseCount);
+        Assert.Equal(12, manifest.Aggregate.FailedCaseCount);
         Assert.False(manifest.Validation.AllLinkedReportsValidationPassed);
         Assert.False(manifest.Validation.AllLinkedReportsPrivateRaw);
         Assert.False(manifest.Validation.AllLinkedReportsEligibilityFalse);

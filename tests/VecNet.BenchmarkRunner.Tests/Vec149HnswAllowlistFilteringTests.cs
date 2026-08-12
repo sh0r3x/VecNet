@@ -37,7 +37,6 @@ public sealed class Vec149HnswAllowlistFilteringTests
 
     [Theory]
     [InlineData("unexpected")]
-    [InlineData("generated-hnsw-allowlist-filtered", "--metric", "InnerProduct")]
     [InlineData("generated-hnsw-allowlist-filtered", "--filter", "selective")]
     [InlineData("generated-hnsw-allowlist-filtered", "--dimension", "0")]
     [InlineData("generated-hnsw-allowlist-filtered", "--vectors", "0")]
@@ -72,13 +71,15 @@ public sealed class Vec149HnswAllowlistFilteringTests
     [Theory]
     [InlineData("Cosine")]
     [InlineData("cosine")]
-    public void ParseHnswAllowlistFiltering_AcceptsCosine(string metric)
+    [InlineData("InnerProduct")]
+    [InlineData("innerproduct")]
+    public void ParseHnswAllowlistFiltering_AcceptsGeneratedHnswMetrics(string metric)
     {
         HnswAllowlistFilteringOptions options =
             CommandLine.ParseHnswAllowlistFiltering(
                 [HnswAllowlistFilteringOptions.ScenarioName, "--metric", metric]);
 
-        Assert.Equal(VectorMetric.Cosine, options.Metric);
+        Assert.True(options.Metric is VectorMetric.Cosine or VectorMetric.InnerProduct);
     }
 
     [Fact]

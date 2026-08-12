@@ -113,7 +113,7 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
                 options.EfSearch,
                 FormatHex(options.HnswSeed),
                 "generated base vector row order, external base ids 0..baseVectorCount-1; delta ids continue from baseVectorCount",
-                $"{options.Metric} private generated HNSW base-plus-exact-delta metric; InnerProduct unsupported"),
+                $"{options.Metric} private generated HNSW base-plus-exact-delta metric"),
             new HnswBuildInfo(
                 "measured",
                 build.ElapsedMilliseconds,
@@ -740,7 +740,7 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
     {
         if (!IsSupportedMetric(options.Metric))
         {
-            throw new ArgumentException("generated-hnsw-base-plus-exact-delta supports SquaredEuclidean and Cosine only.", nameof(options));
+            throw new ArgumentException("generated-hnsw-base-plus-exact-delta supports SquaredEuclidean, InnerProduct and Cosine only.", nameof(options));
         }
 
         if (options.InsertedDeltaCount <= 0)
@@ -805,7 +805,7 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
     }
 
     private static bool IsSupportedMetric(VectorMetric metric) =>
-        metric is VectorMetric.SquaredEuclidean or VectorMetric.Cosine;
+        metric is VectorMetric.SquaredEuclidean or VectorMetric.InnerProduct or VectorMetric.Cosine;
 
     private static void ValidateDataset(GeneratedDataset dataset, VectorMetric metric)
     {

@@ -39,7 +39,6 @@ public sealed class Vec124HnswBasePlusExactDeltaGeneratedTests
 
     [Theory]
     [InlineData("unexpected")]
-    [InlineData("generated-hnsw-base-plus-exact-delta", "--metric", "InnerProduct")]
     [InlineData("generated-hnsw-base-plus-exact-delta", "--dimension", "0")]
     [InlineData("generated-hnsw-base-plus-exact-delta", "--vectors", "0")]
     [InlineData("generated-hnsw-base-plus-exact-delta", "--queries", "0")]
@@ -80,7 +79,7 @@ public sealed class Vec124HnswBasePlusExactDeltaGeneratedTests
     }
 
     [Fact]
-    public void ParseHnswBasePlusExactDeltaGenerated_AcceptsCosineAndRejectsInnerProduct()
+    public void ParseHnswBasePlusExactDeltaGenerated_AcceptsCosineAndInnerProduct()
     {
         HnswBasePlusExactDeltaGeneratedOptions cosine =
             CommandLine.ParseHnswBasePlusExactDeltaGenerated(
@@ -99,8 +98,8 @@ public sealed class Vec124HnswBasePlusExactDeltaGeneratedTests
 
         Assert.Equal(VectorMetric.Cosine, cosine.Metric);
 
-        ArgumentException rejected = Assert.Throws<ArgumentException>(
-            () => CommandLine.ParseHnswBasePlusExactDeltaGenerated(
+        HnswBasePlusExactDeltaGeneratedOptions innerProduct =
+            CommandLine.ParseHnswBasePlusExactDeltaGenerated(
                 [
                     "generated-hnsw-base-plus-exact-delta",
                     "--metric", "InnerProduct",
@@ -112,9 +111,9 @@ public sealed class Vec124HnswBasePlusExactDeltaGeneratedTests
                     "--deletes", "2",
                     "--delta-deletes", "1",
                     "--ef-search", "4"
-                ]));
-        Assert.Contains("Cosine", rejected.Message, StringComparison.Ordinal);
-        Assert.Contains("SquaredEuclidean", rejected.Message, StringComparison.Ordinal);
+                ]);
+
+        Assert.Equal(VectorMetric.InnerProduct, innerProduct.Metric);
     }
 
     [Fact]

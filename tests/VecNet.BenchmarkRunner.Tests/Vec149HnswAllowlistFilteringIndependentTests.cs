@@ -42,10 +42,14 @@ public sealed class Vec149HnswAllowlistFilteringIndependentTests
             CommandLine.ParseHnswAllowlistFiltering([HnswAllowlistFilteringOptions.ScenarioName, "--metric", "cosine"]);
 
         Assert.Equal(VectorMetric.Cosine, cosine.Metric);
+
+        HnswAllowlistFilteringOptions innerProduct =
+            CommandLine.ParseHnswAllowlistFiltering([HnswAllowlistFilteringOptions.ScenarioName, "--metric", "innerproduct"]);
+
+        Assert.Equal(VectorMetric.InnerProduct, innerProduct.Metric);
     }
 
     [Theory]
-    [InlineData("--metric", "InnerProduct")]
     [InlineData("--filter", "selective")]
     [InlineData("--filter", "low-churn")]
     [InlineData("--allowlist", "broad")]

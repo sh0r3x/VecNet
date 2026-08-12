@@ -10,7 +10,7 @@ public static class HnswBasePlusExactDeltaMatrixScenario
 
     private static readonly int[] SmokeDimensions = [16];
     private static readonly int[] SmokeTopKValues = [1, 10];
-    private static readonly VectorMetric[] SupportedMetrics = [VectorMetric.SquaredEuclidean, VectorMetric.Cosine];
+    private static readonly VectorMetric[] SupportedMetrics = [VectorMetric.SquaredEuclidean, VectorMetric.InnerProduct, VectorMetric.Cosine];
     private static readonly HnswMatrixProfile[] SmokeHnswProfiles =
     [
         new("balanced-m4", M: 4, EfConstruction: 16, EfSearch: 16)
@@ -118,7 +118,7 @@ public static class HnswBasePlusExactDeltaMatrixScenario
             [
                 "Private generated HNSW base-plus-exact-delta matrix evidence only; not a public benchmark, baseline candidate, regression gate or public mutable/update HNSW claim.",
                 "Each case reuses the accepted VEC-124 generated-hnsw-base-plus-exact-delta report schema and writes a linked private per-case report when execution succeeds.",
-                "Generated finite SquaredEuclidean and Cosine data only; no external dataset, hnswlib, FAISS, checkpoint/rebuild, durable mutable overlay persistence, filtering or direct HNSW graph mutation is introduced.",
+                "Generated finite SquaredEuclidean, InnerProduct and Cosine data only; no external dataset, hnswlib, FAISS, checkpoint/rebuild, durable mutable overlay persistence, filtering or direct HNSW graph mutation is introduced.",
                 "The standard preset covers two dimensions, two top-k values and two update/tombstone profiles with efSearch greater than or equal to top-k.",
                 "Per-case summaries repeat recall, ordered-agreement, underfill, mutation and count metadata from linked VEC-124 reports for matrix-level inspection."
             ]);
@@ -399,7 +399,7 @@ public static class HnswBasePlusExactDeltaMatrixScenario
             preset.UpdateProfiles
                 .Select(profile => new HnswBasePlusExactDeltaMatrixUpdateProfileInfo(profile.Name, profile.InsertedDeltaCount, profile.DeletedBaseCount, profile.DeletedDeltaCount, profile.Description))
                 .ToArray(),
-            "Generated finite SquaredEuclidean or Cosine base vectors, delta vectors and queries only; exact updated truth is computed by the linked VEC-124 report from the post-update live view.",
+            "Generated finite SquaredEuclidean, InnerProduct or Cosine base vectors, delta vectors and queries only; exact updated truth is computed by the linked VEC-124 report from the post-update live view.",
             "Smoke is a small local validation preset; standard covers at least two dimensions, two top-k values and two update/tombstone profiles.",
             "Internal composite matrix evidence only; no public mutable/update HNSW API, durable mutable overlay persistence, checkpoint/rebuild, external dataset, baseline, regression gate or public claim.");
     }

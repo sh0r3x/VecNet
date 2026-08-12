@@ -112,7 +112,7 @@ public static class HnswGeneratedScenario
                 options.EfSearch,
                 FormatHex(options.HnswSeed),
                 "generated vector row order, external ids 0..vectorCount-1",
-                $"{options.Metric} private generated HNSW metric; InnerProduct unsupported"),
+                $"{options.Metric} private generated HNSW metric"),
             new HnswBuildInfo(
                 "measured",
                 build.ElapsedMilliseconds,
@@ -200,7 +200,7 @@ public static class HnswGeneratedScenario
             [
                 "Private generated HNSW smoke evidence only; not a public benchmark claim.",
                 "This report exercises internal/evaluation-only HnswIndex and does not add or imply a public HNSW API.",
-                $"HNSW metric in this report is {options.Metric}; InnerProduct HNSW remains unsupported.",
+                $"HNSW metric in this report is {options.Metric}.",
                 "Latency and QPS time only internal HnswIndex.Search(query, results, workspace) calls.",
                 "HNSW build and exact scalar-reference truth generation are setup work and are excluded from measured search timing.",
                 "Managed allocations are measured only for the internal HNSW search-call boundary.",
@@ -552,7 +552,7 @@ public static class HnswGeneratedScenario
     {
         if (!IsSupportedMetric(options.Metric))
         {
-            throw new ArgumentException("hnsw-generated supports SquaredEuclidean and Cosine only.", nameof(options));
+            throw new ArgumentException("hnsw-generated supports SquaredEuclidean, InnerProduct and Cosine only.", nameof(options));
         }
 
         if (options.TopK > options.VectorCount)
@@ -592,7 +592,7 @@ public static class HnswGeneratedScenario
     }
 
     private static bool IsSupportedMetric(VectorMetric metric) =>
-        metric is VectorMetric.SquaredEuclidean or VectorMetric.Cosine;
+        metric is VectorMetric.SquaredEuclidean or VectorMetric.InnerProduct or VectorMetric.Cosine;
 
     private static void ValidateDataset(GeneratedDataset dataset, VectorMetric metric)
     {

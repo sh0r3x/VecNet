@@ -289,7 +289,7 @@ public static class HnswBasePlusExactDeltaCheckpointScenario
             eligibility,
             [
                 "Private generated HNSW base-plus-exact-delta checkpoint smoke evidence only; not a public benchmark claim.",
-                "Generated finite squared-L2/cosine data only; no external dataset source, license, version or checksum applies.",
+                "Generated finite squared-L2, inner-product or cosine data only; no external dataset source, license, version or checksum applies.",
                 "This report exercises internal checkpoint/rebuild diagnostics and does not add or imply a public mutable/update HNSW API.",
                 "Checkpoint timing/allocation is measured at the runner call boundary and VEC-133 phase diagnostics are copied from the internal result; phase timings are not inferred or fabricated.",
                 "For runs greater than one, checkpoint timing/allocation is measured across independently rebuilt equivalent checkpoint attempts with fresh generated state and fresh checkpoint output subdirectories; detailed validation uses the final run.",
@@ -957,7 +957,7 @@ public static class HnswBasePlusExactDeltaCheckpointScenario
         ReadOnlySpan<float> expectedVector,
         VectorMetric metric)
     {
-        if (metric == VectorMetric.SquaredEuclidean)
+        if (metric is VectorMetric.SquaredEuclidean or VectorMetric.InnerProduct)
         {
             return openedVector.SequenceEqual(expectedVector);
         }
@@ -1353,7 +1353,7 @@ public static class HnswBasePlusExactDeltaCheckpointScenario
             "No generated mutable/update HNSW checkpoint baseline-candidate policy is accepted.",
             "No generated mutable/update HNSW checkpoint regression-gate policy, threshold, comparison artifact or hard gate is accepted.",
             [
-                "Generated squared-L2/cosine HNSW base-plus-exact-delta checkpoint smoke evidence only; no external dataset source, license, version or checksum applies.",
+                "Generated squared-L2, inner-product or cosine HNSW base-plus-exact-delta checkpoint smoke evidence only; no external dataset source, license, version or checksum applies.",
                 "Checkpoint total timing/allocation and VEC-133 phase diagnostics are reported separately from all search timings.",
                 "Output bytes are scanned after checkpoint timing has ended.",
                 "Managed allocations are smoke fields only; resident/process memory and peak memory are explicitly not measured.",
@@ -1414,9 +1414,9 @@ public static class HnswBasePlusExactDeltaCheckpointScenario
 
     private static void ValidateOptions(HnswBasePlusExactDeltaCheckpointOptions options)
     {
-        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.Cosine))
+        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.InnerProduct or VectorMetric.Cosine))
         {
-            throw new ArgumentException("generated-hnsw-base-plus-exact-delta-checkpoint supports only SquaredEuclidean and Cosine.", nameof(options));
+            throw new ArgumentException("generated-hnsw-base-plus-exact-delta-checkpoint supports only SquaredEuclidean, InnerProduct and Cosine.", nameof(options));
         }
 
         if (options.InsertedDeltaCount <= 0)

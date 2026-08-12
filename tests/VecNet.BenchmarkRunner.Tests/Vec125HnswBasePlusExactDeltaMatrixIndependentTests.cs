@@ -42,19 +42,27 @@ public sealed class Vec125HnswBasePlusExactDeltaMatrixIndependentTests
             "case-006-SquaredEuclidean-balanced-m8-tombstone-heavy-128d-10k.json",
             "case-007-SquaredEuclidean-balanced-m8-low-churn-128d-50k.json",
             "case-008-SquaredEuclidean-balanced-m8-tombstone-heavy-128d-50k.json",
-            "case-009-Cosine-balanced-m8-low-churn-32d-10k.json",
-            "case-010-Cosine-balanced-m8-tombstone-heavy-32d-10k.json",
-            "case-011-Cosine-balanced-m8-low-churn-32d-50k.json",
-            "case-012-Cosine-balanced-m8-tombstone-heavy-32d-50k.json",
-            "case-013-Cosine-balanced-m8-low-churn-128d-10k.json",
-            "case-014-Cosine-balanced-m8-tombstone-heavy-128d-10k.json",
-            "case-015-Cosine-balanced-m8-low-churn-128d-50k.json",
-            "case-016-Cosine-balanced-m8-tombstone-heavy-128d-50k.json"
+            "case-009-InnerProduct-balanced-m8-low-churn-32d-10k.json",
+            "case-010-InnerProduct-balanced-m8-tombstone-heavy-32d-10k.json",
+            "case-011-InnerProduct-balanced-m8-low-churn-32d-50k.json",
+            "case-012-InnerProduct-balanced-m8-tombstone-heavy-32d-50k.json",
+            "case-013-InnerProduct-balanced-m8-low-churn-128d-10k.json",
+            "case-014-InnerProduct-balanced-m8-tombstone-heavy-128d-10k.json",
+            "case-015-InnerProduct-balanced-m8-low-churn-128d-50k.json",
+            "case-016-InnerProduct-balanced-m8-tombstone-heavy-128d-50k.json",
+            "case-017-Cosine-balanced-m8-low-churn-32d-10k.json",
+            "case-018-Cosine-balanced-m8-tombstone-heavy-32d-10k.json",
+            "case-019-Cosine-balanced-m8-low-churn-32d-50k.json",
+            "case-020-Cosine-balanced-m8-tombstone-heavy-32d-50k.json",
+            "case-021-Cosine-balanced-m8-low-churn-128d-10k.json",
+            "case-022-Cosine-balanced-m8-tombstone-heavy-128d-10k.json",
+            "case-023-Cosine-balanced-m8-low-churn-128d-50k.json",
+            "case-024-Cosine-balanced-m8-tombstone-heavy-128d-50k.json"
         ];
 
         Assert.Equal(expectedPaths, first.Select(item => item.RelativeReportPath).ToArray());
         Assert.Equal(expectedPaths, second.Select(item => item.RelativeReportPath).ToArray());
-        Assert.Equal([VectorMetric.SquaredEuclidean, VectorMetric.Cosine], first.Select(item => item.Options.Metric).Distinct().ToArray());
+        Assert.Equal([VectorMetric.SquaredEuclidean, VectorMetric.InnerProduct, VectorMetric.Cosine], first.Select(item => item.Options.Metric).Distinct().ToArray());
         Assert.Equal([32, 128], first.Select(item => item.Options.Dimension).Distinct().ToArray());
         Assert.Equal([10, 50], first.Select(item => item.Options.TopK).Distinct().ToArray());
         Assert.Equal(["low-churn", "tombstone-heavy"], first.Select(item => item.UpdateProfileName).Distinct().ToArray());
@@ -91,7 +99,7 @@ public sealed class Vec125HnswBasePlusExactDeltaMatrixIndependentTests
         HnswBasePlusExactDeltaMatrixManifest manifest = HnswBasePlusExactDeltaMatrixScenario.Run(options, args);
         HnswBasePlusExactDeltaMatrixScenario.WriteManifest(manifest, manifestPath);
 
-        Assert.Equal(4, manifest.Cases.Length);
+        Assert.Equal(6, manifest.Cases.Length);
         Assert.All(manifest.Cases, matrixCase =>
         {
             string reportPath = Path.Combine(outputDirectory, matrixCase.LinkedReportPath);
@@ -150,8 +158,8 @@ public sealed class Vec125HnswBasePlusExactDeltaMatrixIndependentTests
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(manifestPath));
         JsonElement root = document.RootElement;
 
-        Assert.Equal(4, root.GetProperty("caseCount").GetInt32());
-        Assert.Equal(3, root.GetProperty("aggregate").GetProperty("passedCaseCount").GetInt32());
+        Assert.Equal(6, root.GetProperty("caseCount").GetInt32());
+        Assert.Equal(5, root.GetProperty("aggregate").GetProperty("passedCaseCount").GetInt32());
         Assert.Equal(1, root.GetProperty("aggregate").GetProperty("blockedCaseCount").GetInt32());
         Assert.False(root.GetProperty("eligibility").GetProperty("publicClaimEligible").GetBoolean());
         Assert.False(root.GetProperty("eligibility").GetProperty("baselineCandidateEligible").GetBoolean());

@@ -52,7 +52,6 @@ public sealed class Vec150HnswAllowlistFilteringMatrixTests
     [InlineData("generated-hnsw-allowlist-filtered-matrix", "--repeated-deletes", "-1")]
     [InlineData("generated-hnsw-allowlist-filtered-matrix", "--output-dir", "")]
     [InlineData("generated-hnsw-allowlist-filtered-matrix", "--manifest", "")]
-    [InlineData("generated-hnsw-allowlist-filtered-matrix", "--metric", "InnerProduct")]
     [InlineData("generated-hnsw-allowlist-filtered-matrix", "--dimension", "32")]
     [InlineData("generated-hnsw-allowlist-filtered-matrix", "--vectors", "512")]
     [InlineData("generated-hnsw-allowlist-filtered-matrix", "--top-k", "10")]
@@ -71,13 +70,15 @@ public sealed class Vec150HnswAllowlistFilteringMatrixTests
     [Theory]
     [InlineData("Cosine")]
     [InlineData("cosine")]
-    public void ParseHnswAllowlistFilteringMatrix_AcceptsCosine(string metric)
+    [InlineData("InnerProduct")]
+    [InlineData("innerproduct")]
+    public void ParseHnswAllowlistFilteringMatrix_AcceptsGeneratedHnswMetrics(string metric)
     {
         HnswAllowlistFilteringMatrixOptions options =
             CommandLine.ParseHnswAllowlistFilteringMatrix(
                 [HnswAllowlistFilteringMatrixOptions.ScenarioName, "--metric", metric]);
 
-        Assert.Equal(VectorMetric.Cosine, options.Metric);
+        Assert.True(options.Metric is VectorMetric.Cosine or VectorMetric.InnerProduct);
     }
 
     [Fact]

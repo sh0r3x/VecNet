@@ -942,7 +942,7 @@ public static class CommandLine
 
         if (!IsSupportedGeneratedHnswMetric(metric))
         {
-            throw new ArgumentException("hnsw-generated-durable supports SquaredEuclidean and Cosine only.");
+            throw new ArgumentException("hnsw-generated-durable supports SquaredEuclidean, InnerProduct and Cosine only.");
         }
 
         if (topK > vectorCount)
@@ -1075,7 +1075,7 @@ public static class CommandLine
 
         if (!IsSupportedGeneratedHnswMetric(metric))
         {
-            throw new ArgumentException("generated-hnsw-allowlist-filtered supports SquaredEuclidean and Cosine only.");
+            throw new ArgumentException("generated-hnsw-allowlist-filtered supports SquaredEuclidean, InnerProduct and Cosine only.");
         }
 
         if (topK > efSearch)
@@ -1162,7 +1162,7 @@ public static class CommandLine
         VectorMetric metric = GetEnum(values, "metric", VectorMetric.SquaredEuclidean);
         if (!IsSupportedGeneratedHnswMetric(metric))
         {
-            throw new ArgumentException("generated-hnsw-allowlist-filtered-matrix supports SquaredEuclidean and Cosine only.");
+            throw new ArgumentException("generated-hnsw-allowlist-filtered-matrix supports SquaredEuclidean, InnerProduct and Cosine only.");
         }
 
         uint seed = GetSeed(values, "seed", 0x5EED2148);
@@ -1787,7 +1787,7 @@ public static class CommandLine
 
         if (!IsSupportedGeneratedHnswMetric(metric))
         {
-            throw new ArgumentException("hnsw-generated supports SquaredEuclidean and Cosine only.");
+            throw new ArgumentException("hnsw-generated supports SquaredEuclidean, InnerProduct and Cosine only.");
         }
 
         if (topK > vectorCount)
@@ -1877,7 +1877,7 @@ public static class CommandLine
 
         if (!IsSupportedGeneratedHnswMetric(metric))
         {
-            throw new ArgumentException("generated-hnsw-base-plus-exact-delta supports SquaredEuclidean and Cosine only.");
+            throw new ArgumentException("generated-hnsw-base-plus-exact-delta supports SquaredEuclidean, InnerProduct and Cosine only.");
         }
 
         if (deletedBaseCount > baseVectorCount)
@@ -1999,7 +1999,7 @@ public static class CommandLine
 
         if (!IsSupportedGeneratedHnswMetric(metric))
         {
-            throw new ArgumentException("generated-hnsw-base-plus-exact-delta-checkpoint supports SquaredEuclidean and Cosine only.");
+            throw new ArgumentException("generated-hnsw-base-plus-exact-delta-checkpoint supports SquaredEuclidean, InnerProduct and Cosine only.");
         }
 
         if (deletedBaseCount > baseVectorCount)
@@ -2165,7 +2165,7 @@ public static class CommandLine
         VectorMetric metric = GetEnum(values, "metric", VectorMetric.SquaredEuclidean);
         if (!IsSupportedGeneratedHnswMetric(metric))
         {
-            throw new ArgumentException("generated-hnsw-base-plus-exact-delta-checkpoint-matrix supports SquaredEuclidean and Cosine only.");
+            throw new ArgumentException("generated-hnsw-base-plus-exact-delta-checkpoint-matrix supports SquaredEuclidean, InnerProduct and Cosine only.");
         }
 
         uint seed = GetSeed(values, "seed", 0x5EED2136);
@@ -3588,7 +3588,7 @@ public static class CommandLine
         string.Equals(name, "manifest", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedGeneratedHnswMetric(VectorMetric metric) =>
-        metric is VectorMetric.SquaredEuclidean or VectorMetric.Cosine;
+        metric is VectorMetric.SquaredEuclidean or VectorMetric.InnerProduct or VectorMetric.Cosine;
 
     private static VectorMetric GetExternalFashionMnistMetric(Dictionary<string, string> values, string name, VectorMetric defaultValue)
     {

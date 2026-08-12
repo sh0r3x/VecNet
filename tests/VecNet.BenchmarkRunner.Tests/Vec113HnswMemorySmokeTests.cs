@@ -32,7 +32,6 @@ public sealed class Vec113HnswMemorySmokeTests
     [Theory]
     [InlineData("unexpected")]
     [InlineData("generated-hnsw-memory-smoke", "--metric", "Cosine")]
-    [InlineData("generated-hnsw-memory-smoke", "--metric", "InnerProduct")]
     [InlineData("generated-hnsw-memory-smoke", "--dimension", "0")]
     [InlineData("generated-hnsw-memory-smoke", "--vectors", "0")]
     [InlineData("generated-hnsw-memory-smoke", "--queries", "0")]

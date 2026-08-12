@@ -1244,9 +1244,9 @@ public static class CommandLine
             throw new ArgumentException("Option --snapshot-directory must not be empty.");
         }
 
-        if (metric != VectorMetric.SquaredEuclidean)
+        if (metric is not (VectorMetric.SquaredEuclidean or VectorMetric.InnerProduct))
         {
-            throw new ArgumentException("generated-hnsw-memory-smoke supports only SquaredEuclidean.");
+            throw new ArgumentException("generated-hnsw-memory-smoke supports only SquaredEuclidean and InnerProduct.");
         }
 
         if (topK > vectorCount)
@@ -1863,6 +1863,7 @@ public static class CommandLine
         int m = GetPositiveInt(values, "m", defaults.M);
         int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
         int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
+        int workspaceEfSearch = GetPositiveInt(values, "workspace-ef-search", defaults.EffectiveWorkspaceEfSearch);
         ulong hnswSeed = GetUInt64Seed(values, "hnsw-seed", defaults.HnswSeed);
         string outputPath = values.TryGetValue("output", out string? outputValue)
             ? outputValue
@@ -1921,6 +1922,11 @@ public static class CommandLine
             throw new ArgumentException("Option --ef-search must be in the range 1..4096.");
         }
 
+        if (workspaceEfSearch < efSearch || workspaceEfSearch > 4096)
+        {
+            throw new ArgumentException("Option --workspace-ef-search must be at least --ef-search and no more than 4096.");
+        }
+
         return new HnswBasePlusExactDeltaGeneratedOptions(
             metric,
             dimension,
@@ -1940,7 +1946,8 @@ public static class CommandLine
             m,
             efConstruction,
             efSearch,
-            hnswSeed);
+            hnswSeed,
+            workspaceEfSearch);
     }
 
     public static HnswBasePlusExactDeltaCheckpointOptions ParseHnswBasePlusExactDeltaCheckpoint(IReadOnlyList<string> args)
@@ -1975,6 +1982,7 @@ public static class CommandLine
         int m = GetPositiveInt(values, "m", defaults.M);
         int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
         int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
+        int workspaceEfSearch = GetPositiveInt(values, "workspace-ef-search", defaults.EffectiveWorkspaceEfSearch);
         ulong hnswSeed = GetUInt64Seed(values, "hnsw-seed", defaults.HnswSeed);
         string outputPath = values.TryGetValue("output", out string? outputValue)
             ? outputValue
@@ -2038,6 +2046,11 @@ public static class CommandLine
             throw new ArgumentException("Option --ef-search must be at least --top-k and no more than 4096.");
         }
 
+        if (workspaceEfSearch < efSearch || workspaceEfSearch > 4096)
+        {
+            throw new ArgumentException("Option --workspace-ef-search must be at least --ef-search and no more than 4096.");
+        }
+
         return new HnswBasePlusExactDeltaCheckpointOptions(
             metric,
             dimension,
@@ -2058,7 +2071,8 @@ public static class CommandLine
             m,
             efConstruction,
             efSearch,
-            hnswSeed);
+            hnswSeed,
+            workspaceEfSearch);
     }
 
     public static HnswBasePlusExactDeltaMatrixOptions ParseHnswBasePlusExactDeltaMatrix(IReadOnlyList<string> args)
@@ -3526,7 +3540,8 @@ public static class CommandLine
         string.Equals(name, "m", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "workspace-ef-search", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedHnswBasePlusExactDeltaCheckpointOption(string name) =>
         string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
@@ -3548,7 +3563,8 @@ public static class CommandLine
         string.Equals(name, "m", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "workspace-ef-search", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedHnswBasePlusExactDeltaMatrixOption(string name) =>
         string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||

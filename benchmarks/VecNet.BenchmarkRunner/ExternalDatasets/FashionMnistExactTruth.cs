@@ -3,32 +3,37 @@ namespace VecNet.BenchmarkRunner.ExternalDatasets;
 public static class FashionMnistExactTruth
 {
     public const string SquaredEuclideanKind = "vecnet-scalar-reference-squared-l2";
+    public const string InnerProductKind = "vecnet-scalar-reference-inner-product";
     public const string CosineKind = "vecnet-scalar-reference-cosine";
     public const string SquaredEuclideanTiePolicy = "ascending scalar-reference squared distance, then ascending base ordinal";
+    public const string InnerProductTiePolicy = "ascending scalar-reference canonical negative-dot distance, then ascending base ordinal";
     public const string CosineTiePolicy = "ascending scalar-reference canonical cosine distance, then ascending base ordinal";
 
     public static string Kind(VectorMetric metric) =>
         metric switch
         {
             VectorMetric.SquaredEuclidean => SquaredEuclideanKind,
+            VectorMetric.InnerProduct => InnerProductKind,
             VectorMetric.Cosine => CosineKind,
-            _ => throw new ArgumentException("Fashion-MNIST truth supports only SquaredEuclidean and Cosine.", nameof(metric))
+            _ => throw new ArgumentException("Fashion-MNIST truth supports only SquaredEuclidean, InnerProduct and Cosine.", nameof(metric))
         };
 
     public static string TiePolicy(VectorMetric metric) =>
         metric switch
         {
             VectorMetric.SquaredEuclidean => SquaredEuclideanTiePolicy,
+            VectorMetric.InnerProduct => InnerProductTiePolicy,
             VectorMetric.Cosine => CosineTiePolicy,
-            _ => throw new ArgumentException("Fashion-MNIST truth supports only SquaredEuclidean and Cosine.", nameof(metric))
+            _ => throw new ArgumentException("Fashion-MNIST truth supports only SquaredEuclidean, InnerProduct and Cosine.", nameof(metric))
         };
 
     public static string DistanceSemantics(VectorMetric metric) =>
         metric switch
         {
             VectorMetric.SquaredEuclidean => "VecNet canonical squared distances for the external Euclidean ranking convention",
+            VectorMetric.InnerProduct => "VecNet canonical inner-product distances: -dot(rawQuery, rawBase)",
             VectorMetric.Cosine => "VecNet canonical cosine distances: 1 - dot(normalizedQuery, normalizedBase)",
-            _ => throw new ArgumentException("Fashion-MNIST truth supports only SquaredEuclidean and Cosine.", nameof(metric))
+            _ => throw new ArgumentException("Fashion-MNIST truth supports only SquaredEuclidean, InnerProduct and Cosine.", nameof(metric))
         };
 
     public static TruthSet Generate(
@@ -61,9 +66,9 @@ public static class FashionMnistExactTruth
             throw new ArgumentOutOfRangeException(nameof(depth), "Truth depth must be positive and no larger than base count.");
         }
 
-        if (metric is not (VectorMetric.SquaredEuclidean or VectorMetric.Cosine))
+        if (metric is not (VectorMetric.SquaredEuclidean or VectorMetric.InnerProduct or VectorMetric.Cosine))
         {
-            throw new ArgumentException("Fashion-MNIST truth supports only SquaredEuclidean and Cosine.", nameof(metric));
+            throw new ArgumentException("Fashion-MNIST truth supports only SquaredEuclidean, InnerProduct and Cosine.", nameof(metric));
         }
 
         if (metric == VectorMetric.Cosine)

@@ -29,6 +29,7 @@ public sealed record FashionMnistDatasetSpecification(
 {
     public const string EuclideanDatasetId = "fashion-mnist-784-euclidean";
     public const string CosineDatasetId = "fashion-mnist-784-cosine";
+    public const string InnerProductDatasetId = "fashion-mnist-784-inner-product";
     public const string RawDatasetId = EuclideanDatasetId;
 
     public static FashionMnistDatasetSpecification Official { get; } = CreateOfficial();
@@ -39,8 +40,9 @@ public sealed record FashionMnistDatasetSpecification(
         metric switch
         {
             VectorMetric.SquaredEuclidean => EuclideanDatasetId,
+            VectorMetric.InnerProduct => InnerProductDatasetId,
             VectorMetric.Cosine => CosineDatasetId,
-            _ => throw new ArgumentException("Fashion-MNIST external runners support only SquaredEuclidean and Cosine.", nameof(metric))
+            _ => throw new ArgumentException("Fashion-MNIST external runners support only SquaredEuclidean, InnerProduct and Cosine.", nameof(metric))
         };
 
     public FashionMnistDatasetSpecification WithMetricIdentity(VectorMetric metric) =>

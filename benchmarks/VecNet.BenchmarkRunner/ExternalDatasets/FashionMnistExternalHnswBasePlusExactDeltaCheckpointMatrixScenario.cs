@@ -1100,7 +1100,12 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointMatrixSc
         string.Create(CultureInfo.InvariantCulture, $"case-{caseNumber:D3}-{topK}k-{updateProfileName}-{HnswProfileName}");
 
     private static string ToCommandLineMetric(VectorMetric metric) =>
-        metric == VectorMetric.Cosine ? "cosine" : "squared-euclidean";
+        metric switch
+        {
+            VectorMetric.Cosine => "cosine",
+            VectorMetric.InnerProduct => "inner-product",
+            _ => "squared-euclidean"
+        };
 
     private static bool AllMeasured(HnswBasePlusExactDeltaCheckpointPhaseSetInfo phases) =>
         phases.LiveSnapshot.Status == "Measured" &&

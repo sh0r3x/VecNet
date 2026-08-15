@@ -98,7 +98,6 @@ public sealed class Vec151FashionMnistExternalHnswAllowlistFilteringIndependentT
     [Theory]
     [InlineData("--runs", "6")]
     [InlineData("--warmup-queries", "-1")]
-    [InlineData("--metric", "InnerProduct")]
     [InlineData("--filter", "all")]
     [InlineData("--filter", "very-selective")]
     [InlineData("--top-k", "5", "--ef-search", "4")]

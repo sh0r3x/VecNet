@@ -104,7 +104,6 @@ public sealed class Vec142FashionMnistExternalHnswBasePlusExactDeltaCheckpointMe
     }
 
     [Theory]
-    [InlineData("--metric", "inner-product")]
     [InlineData("--sample-interval-ms", "not-a-number")]
     [InlineData("--sample-interval-ms", "-1")]
     [InlineData("--sample-interval-ms", "0")]

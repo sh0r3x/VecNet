@@ -3625,6 +3625,12 @@ public static class CommandLine
             return VectorMetric.Cosine;
         }
 
+        if (string.Equals(value, "inner-product", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(value, nameof(VectorMetric.InnerProduct), StringComparison.OrdinalIgnoreCase))
+        {
+            return VectorMetric.InnerProduct;
+        }
+
         throw new ArgumentException($"Option --{name} has unsupported value '{value}'.");
     }
 

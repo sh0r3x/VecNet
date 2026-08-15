@@ -408,9 +408,9 @@ public static class FashionMnistExternalHnswBenchmarkScenario
             throw new ArgumentException("warmup queries must be non-negative.", nameof(options));
         }
 
-        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.Cosine))
+        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.InnerProduct or VectorMetric.Cosine))
         {
-            throw new ArgumentException("The Fashion-MNIST external HNSW benchmark supports only squared-euclidean and cosine metric mapping.", nameof(options));
+            throw new ArgumentException("The Fashion-MNIST external HNSW benchmark supports only squared-euclidean, inner-product and cosine metric mapping.", nameof(options));
         }
 
         if (options.M is < 2 or > 64)

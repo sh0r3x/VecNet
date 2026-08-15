@@ -17,7 +17,7 @@ public static class FashionMnistExternalExactBenchmarkScenario
         IReadOnlyList<string> commandArguments)
     {
         LoadedExternalDataset dataset = LoadAndValidateDataset(options);
-        ExactFlatIndex index = BuildIndex(dataset);
+        ExactFlatIndex index = BuildIndex(dataset, options.Metric);
 
         WarmupSearch(options, dataset, index);
         SearchMeasurement measurement = MeasureSearch(options, dataset, index);
@@ -300,9 +300,9 @@ public static class FashionMnistExternalExactBenchmarkScenario
             throw new ArgumentException("warmup queries must be non-negative.", nameof(options));
         }
 
-        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.Cosine))
+        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.InnerProduct or VectorMetric.Cosine))
         {
-            throw new ArgumentException("The Fashion-MNIST external exact benchmark supports only squared-euclidean and cosine metric mapping.", nameof(options));
+            throw new ArgumentException("The Fashion-MNIST external exact benchmark supports only squared-euclidean, inner-product and cosine metric mapping.", nameof(options));
         }
     }
 
@@ -400,9 +400,9 @@ public static class FashionMnistExternalExactBenchmarkScenario
         FashionMnistExactTruth.ValidateNonZeroRows(queryVectors, selectedQueryCount, dimension, "query");
     }
 
-    private static ExactFlatIndex BuildIndex(LoadedExternalDataset dataset)
+    private static ExactFlatIndex BuildIndex(LoadedExternalDataset dataset, VectorMetric metric)
     {
-        var index = new ExactFlatIndex(dataset.Dimension, dataset.Manifest.Metric.VecNetMetric == nameof(VectorMetric.Cosine) ? VectorMetric.Cosine : VectorMetric.SquaredEuclidean);
+        var index = new ExactFlatIndex(dataset.Dimension, metric);
         for (int row = 0; row < dataset.BaseCount; row++)
         {
             index.Add((ulong)row, dataset.GetBaseVector(row));

@@ -157,9 +157,9 @@ public static class FashionMnistExternalDatasetScenario
             throw new ArgumentException($"Truth depth must be in the range 1..{spec.BaseCount}.", nameof(options));
         }
 
-        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.Cosine))
+        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.InnerProduct or VectorMetric.Cosine))
         {
-            throw new ArgumentException("Fashion-MNIST external admission supports only SquaredEuclidean and Cosine.", nameof(options));
+            throw new ArgumentException("Fashion-MNIST external admission supports only SquaredEuclidean, InnerProduct and Cosine.", nameof(options));
         }
     }
 
@@ -379,32 +379,57 @@ public static class FashionMnistExternalDatasetScenario
                 "Private Fashion-MNIST admission evidence only; not a public benchmark claim.",
                 "Only the four official Fashion-MNIST raw IDX gzip files are supported by VEC-023.",
                 "Labels are recorded as private metadata only and are absent from converted vector matrices and truth artifacts.",
-                options.Metric == VectorMetric.Cosine
-                    ? "Cosine evidence validates all selected base/query rows are nonzero and stores unnormalized float32 pixel vectors."
-                    : "Squared-L2 behavior and existing Fashion-MNIST euclidean identity are preserved.",
+                GetMetricCacheNote(options.Metric),
                 "ANN-Benchmarks HDF5 import, ANN algorithms, public summaries, hard regression gates and resident/process memory comparison are out of scope."
             ]);
 
     private static string GetTaskId(VectorMetric metric) =>
-        metric == VectorMetric.Cosine ? "VEC-239" : TaskId;
+        metric switch
+        {
+            VectorMetric.Cosine => "VEC-239",
+            VectorMetric.InnerProduct => "VEC-350",
+            _ => TaskId
+        };
 
     private static string GetUpstreamMetricName(VectorMetric metric) =>
-        metric == VectorMetric.Cosine ? "cosine" : "euclidean";
+        metric switch
+        {
+            VectorMetric.Cosine => "cosine",
+            VectorMetric.InnerProduct => "raw-inner-product",
+            _ => "euclidean"
+        };
 
     private static string GetMetricRankingNote(VectorMetric metric) =>
-        metric == VectorMetric.Cosine
-            ? "Cosine ranks by ascending canonical distance over VecNet-normalized vectors."
-            : "Euclidean and squared Euclidean preserve nearest-neighbor order for non-negative distances.";
+        metric switch
+        {
+            VectorMetric.Cosine => "Cosine ranks by ascending canonical distance over VecNet-normalized vectors.",
+            VectorMetric.InnerProduct => "Raw inner product ranks by ascending VecNet canonical negative-dot distance over unnormalized vectors.",
+            _ => "Euclidean and squared Euclidean preserve nearest-neighbor order for non-negative distances."
+        };
 
     private static string GetMetricDistanceNote(VectorMetric metric) =>
-        metric == VectorMetric.Cosine
-            ? "VecNet private evidence records canonical cosine distances: 1 - dot(normalizedQuery, normalizedBase)."
-            : "VecNet private evidence records canonical squared distances.";
+        metric switch
+        {
+            VectorMetric.Cosine => "VecNet private evidence records canonical cosine distances: 1 - dot(normalizedQuery, normalizedBase).",
+            VectorMetric.InnerProduct => "VecNet private evidence records canonical inner-product distances: -dot(rawQuery, rawBase).",
+            _ => "VecNet private evidence records canonical squared distances."
+        };
 
     private static string GetDistanceTolerancePolicy(VectorMetric metric) =>
-        metric == VectorMetric.Cosine
-            ? "ResultComparer non-squared-L2 tolerance is used for canonical cosine distance; ordering requires exact ID order agreement for the selected truth depth."
-            : "D-026 squared-L2 tolerance used by ResultComparer; ordering requires exact ID order agreement for the selected truth depth.";
+        metric switch
+        {
+            VectorMetric.Cosine => "ResultComparer non-squared-L2 tolerance is used for canonical cosine distance; ordering requires exact ID order agreement for the selected truth depth.",
+            VectorMetric.InnerProduct => "ResultComparer non-squared-L2 tolerance is used for canonical negative-dot distance; ordering requires exact ID order agreement for the selected truth depth.",
+            _ => "D-026 squared-L2 tolerance used by ResultComparer; ordering requires exact ID order agreement for the selected truth depth."
+        };
+
+    private static string GetMetricCacheNote(VectorMetric metric) =>
+        metric switch
+        {
+            VectorMetric.Cosine => "Cosine evidence validates all selected base/query rows are nonzero and stores unnormalized float32 pixel vectors.",
+            VectorMetric.InnerProduct => "Raw inner-product evidence stores unnormalized float32 pixel vectors under a distinct Fashion-MNIST identity and computes canonical negative-dot truth.",
+            _ => "Squared-L2 behavior and existing Fashion-MNIST euclidean identity are preserved."
+        };
 
     private sealed record DatasetPaths(
         string CacheRoot,

@@ -868,9 +868,9 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaScenario
             throw new ArgumentException("warmup queries must be non-negative.", nameof(options));
         }
 
-        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.Cosine))
+        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.InnerProduct or VectorMetric.Cosine))
         {
-            throw new ArgumentException("external-fashion-mnist-hnsw-base-plus-exact-delta supports only SquaredEuclidean and Cosine.", nameof(options));
+            throw new ArgumentException("external-fashion-mnist-hnsw-base-plus-exact-delta supports only SquaredEuclidean, InnerProduct and Cosine.", nameof(options));
         }
 
         if (options.DuplicateInsertAttempts < 0 || options.UnknownDeleteAttempts < 0 || options.RepeatedDeleteAttempts < 0)

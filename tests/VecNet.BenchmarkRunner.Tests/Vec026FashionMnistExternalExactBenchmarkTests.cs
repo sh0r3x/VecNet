@@ -51,12 +51,12 @@ public sealed class Vec026FashionMnistExternalExactBenchmarkTests
     }
 
     [Fact]
-    public void ParseExternalFashionMnistExact_RejectsInnerProduct()
+    public void ParseExternalFashionMnistExact_AcceptsInnerProduct()
     {
-        ArgumentException exception = Assert.Throws<ArgumentException>(() =>
-            CommandLine.ParseExternalFashionMnistExact(["external-fashion-mnist-exact", "--metric", "InnerProduct"]));
+        FashionMnistExternalExactBenchmarkOptions options =
+            CommandLine.ParseExternalFashionMnistExact(["external-fashion-mnist-exact", "--metric", "InnerProduct"]);
 
-        Assert.Contains("unsupported", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(VectorMetric.InnerProduct, options.Metric);
     }
 
     [Fact]

@@ -20,7 +20,8 @@ public sealed record HnswBasePlusExactDeltaGeneratedOptions(
     int EfConstruction,
     int EfSearch,
     ulong HnswSeed,
-    int? WorkspaceEfSearch = null)
+    int? WorkspaceEfSearch = null,
+    GeneratedVectorProfile VectorProfile = GeneratedVectorProfile.Uniform)
 {
     public const string ScenarioName = "generated-hnsw-base-plus-exact-delta";
 

@@ -16,7 +16,7 @@ public static class HnswGeneratedScenario
     {
         ValidateOptions(options);
 
-        GeneratedDataset dataset = GeneratedDatasetFactory.Create(ToGeneratedOptions(options));
+        GeneratedDataset dataset = GeneratedDatasetFactory.Create(ToGeneratedOptions(options), options.VectorProfile);
         ValidateDataset(dataset, options.Metric);
         TruthSet truth = ScalarGroundTruth.Generate(dataset, options.Metric, options.TopK);
 
@@ -79,9 +79,9 @@ public static class HnswGeneratedScenario
                 GCSettings.IsServerGC,
                 Vector<float>.Count),
             new DatasetInfo(
-                GeneratedDataset.Kind,
+                dataset.DatasetKind,
                 "generated-no-external-source",
-                GeneratedDataset.Distribution,
+                dataset.ProfileDistribution,
                 dataset.SeedText,
                 options.Metric.ToString(),
                 options.Dimension,
@@ -645,7 +645,7 @@ public static class HnswGeneratedScenario
         string commitPart = string.IsNullOrWhiteSpace(commit) ? "unknown" : commit[..Math.Min(12, commit.Length)];
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"{HnswGeneratedOptions.ScenarioName}-{commitPart}-{options.Metric}-{options.Dimension}d-{options.VectorCount}v-{options.QueryCount}q-{options.TopK}k-{options.Runs}r-{options.WarmupQueries}w-m{options.M}-efc{options.EfConstruction}-efs{options.EfSearch}-{options.Seed:X8}-{options.HnswSeed:X16}");
+            $"{HnswGeneratedOptions.ScenarioName}-{commitPart}-{options.Metric}-{GeneratedDatasetFactory.GetOptionValue(options.VectorProfile)}-{options.Dimension}d-{options.VectorCount}v-{options.QueryCount}q-{options.TopK}k-{options.Runs}r-{options.WarmupQueries}w-m{options.M}-efc{options.EfConstruction}-efs{options.EfSearch}-{options.Seed:X8}-{options.HnswSeed:X16}");
     }
 
     private static string FormatHex(ulong value) => string.Create(CultureInfo.InvariantCulture, $"0x{value:X16}");

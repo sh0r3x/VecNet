@@ -18,7 +18,7 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
     {
         ValidateOptions(options);
 
-        GeneratedDataset dataset = GeneratedDatasetFactory.Create(ToGeneratedOptions(options));
+        GeneratedDataset dataset = GeneratedDatasetFactory.Create(ToGeneratedOptions(options), options.VectorProfile);
         ValidateDataset(dataset, options.Metric);
 
         BuildMeasurement build = BuildBaseIndex(options, dataset);
@@ -83,9 +83,9 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
                 GCSettings.IsServerGC,
                 Vector<float>.Count),
             new DatasetInfo(
-                GeneratedDataset.Kind,
+                dataset.DatasetKind,
                 "generated-no-external-source",
-                GeneratedDataset.Distribution,
+                dataset.ProfileDistribution,
                 dataset.SeedText,
                 options.Metric.ToString(),
                 options.Dimension,
@@ -968,7 +968,7 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
         string commitPart = string.IsNullOrWhiteSpace(commit) ? "unknown" : commit[..Math.Min(12, commit.Length)];
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"{HnswBasePlusExactDeltaGeneratedOptions.ScenarioName}-{commitPart}-{options.Metric}-{options.Dimension}d-{options.BaseVectorCount}b-{options.InsertedDeltaCount}i-{options.DeletedBaseCount}bd-{options.DeletedDeltaCount}dd-{options.QueryCount}q-{options.TopK}k-{options.Runs}r-{options.WarmupQueries}w-m{options.M}-efc{options.EfConstruction}-efs{options.EfSearch}-wefs{options.EffectiveWorkspaceEfSearch}-{options.Seed:X8}-{options.HnswSeed:X16}");
+            $"{HnswBasePlusExactDeltaGeneratedOptions.ScenarioName}-{commitPart}-{options.Metric}-{GeneratedDatasetFactory.GetOptionValue(options.VectorProfile)}-{options.Dimension}d-{options.BaseVectorCount}b-{options.InsertedDeltaCount}i-{options.DeletedBaseCount}bd-{options.DeletedDeltaCount}dd-{options.QueryCount}q-{options.TopK}k-{options.Runs}r-{options.WarmupQueries}w-m{options.M}-efc{options.EfConstruction}-efs{options.EfSearch}-wefs{options.EffectiveWorkspaceEfSearch}-{options.Seed:X8}-{options.HnswSeed:X16}");
     }
 
     private static double? FiniteOrNull(double value) => double.IsFinite(value) ? value : null;

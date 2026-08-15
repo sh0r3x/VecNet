@@ -21,7 +21,7 @@ public static class DurableHnswGeneratedScenario
     {
         ValidateOptions(options);
 
-        GeneratedDataset dataset = GeneratedDatasetFactory.Create(ToGeneratedOptions(options));
+        GeneratedDataset dataset = GeneratedDatasetFactory.Create(ToGeneratedOptions(options), options.VectorProfile);
         ValidateDataset(dataset, options.Metric);
         TruthSet truth = ScalarGroundTruth.Generate(dataset, options.Metric, options.TopK);
 
@@ -142,9 +142,9 @@ public static class DurableHnswGeneratedScenario
                 GCSettings.IsServerGC,
                 Vector<float>.Count),
             new DatasetInfo(
-                GeneratedDataset.Kind,
+                dataset.DatasetKind,
                 "generated-no-external-source",
-                GeneratedDataset.Distribution,
+                dataset.ProfileDistribution,
                 dataset.SeedText,
                 options.Metric.ToString(),
                 options.Dimension,
@@ -909,7 +909,7 @@ public static class DurableHnswGeneratedScenario
         string commitPart = string.IsNullOrWhiteSpace(commit) ? "unknown" : commit[..Math.Min(12, commit.Length)];
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"{DurableHnswGeneratedOptions.ScenarioName}-{commitPart}-{options.Metric}-{options.Dimension}d-{options.VectorCount}v-{options.QueryCount}q-{options.TopK}k-{options.Runs}r-{options.WarmupQueries}w-m{options.M}-efc{options.EfConstruction}-efs{options.EfSearch}-{options.Seed:X8}-{options.HnswSeed:X16}");
+            $"{DurableHnswGeneratedOptions.ScenarioName}-{commitPart}-{options.Metric}-{GeneratedDatasetFactory.GetOptionValue(options.VectorProfile)}-{options.Dimension}d-{options.VectorCount}v-{options.QueryCount}q-{options.TopK}k-{options.Runs}r-{options.WarmupQueries}w-m{options.M}-efc{options.EfConstruction}-efs{options.EfSearch}-{options.Seed:X8}-{options.HnswSeed:X16}");
     }
 
     private static double StopwatchTicksToMilliseconds(long ticks) =>

@@ -28,7 +28,7 @@ public static class HnswMemorySmokeScenario
             baseline,
             baseline);
 
-        GeneratedDataset dataset = GeneratedDatasetFactory.Create(ToGeneratedOptions(options));
+        GeneratedDataset dataset = GeneratedDatasetFactory.Create(ToGeneratedOptions(options), options.VectorProfile);
         ValidateFinite(dataset);
         HnswMemorySampleInfo postDataset = CreateSample(
             "postDatasetGeneration",
@@ -152,9 +152,9 @@ public static class HnswMemorySmokeScenario
                 GCSettings.IsServerGC,
                 Vector<float>.Count),
             new DatasetInfo(
-                GeneratedDataset.Kind,
+                dataset.DatasetKind,
                 "generated-no-external-source",
-                GeneratedDataset.Distribution,
+                dataset.ProfileDistribution,
                 dataset.SeedText,
                 options.Metric.ToString(),
                 options.Dimension,
@@ -695,7 +695,7 @@ public static class HnswMemorySmokeScenario
         string commitPart = string.IsNullOrWhiteSpace(commit) ? "unknown" : commit[..Math.Min(12, commit.Length)];
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"{HnswMemorySmokeOptions.ScenarioName}-{commitPart}-{options.Dimension}d-{options.VectorCount}v-{options.QueryCount}q-{options.TopK}k-m{options.M}-efc{options.EfConstruction}-efs{options.EfSearch}-{options.Seed:X8}-{options.HnswSeed:X16}");
+            $"{HnswMemorySmokeOptions.ScenarioName}-{commitPart}-{options.Metric}-{GeneratedDatasetFactory.GetOptionValue(options.VectorProfile)}-{options.Dimension}d-{options.VectorCount}v-{options.QueryCount}q-{options.TopK}k-m{options.M}-efc{options.EfConstruction}-efs{options.EfSearch}-{options.Seed:X8}-{options.HnswSeed:X16}");
     }
 
     private static string FormatHex(ulong value) => string.Create(CultureInfo.InvariantCulture, $"0x{value:X16}");

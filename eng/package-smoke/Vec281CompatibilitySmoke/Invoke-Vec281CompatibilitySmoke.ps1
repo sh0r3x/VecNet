@@ -96,7 +96,7 @@ function Invoke-Checked {
 }
 
 $currentVersion = Get-LocalPackageVersion -PackageId "VecNet"
-foreach ($baselineVersion in @("1.0.0", "1.3.0")) {
+foreach ($baselineVersion in @("1.0.0", "1.3.1")) {
     Invoke-Checked "dotnet" @(
         "restore",
         $baselineProject,
@@ -141,7 +141,7 @@ $exclusions = @(Get-ChildItem -LiteralPath (Join-Path $ArtifactRoot "baselines")
     ForEach-Object { Get-Content -LiteralPath $_.FullName } |
     Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 foreach ($exclusion in $exclusions) {
-    Write-Host "VEC281_COMPATIBILITY_EXCLUSION $exclusion"
+    Write-Host "COMPATIBILITY_EXCLUSION $exclusion"
 }
 
-Write-Host "VEC281_COMPATIBILITY_SMOKE_PASSED current=$currentVersion"
+Write-Host "COMPATIBILITY_SMOKE_PASSED current=$currentVersion"

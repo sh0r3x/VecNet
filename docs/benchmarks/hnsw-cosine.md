@@ -172,6 +172,6 @@ These numbers are not a NativeAOT or trimming claim, not a competitor
 comparison, not a regression threshold, not a broad memory or capacity
 support envelope, and not a public-dataset-general semantic relevance claim.
 
-HNSW inner product remains unsupported. These numbers do not describe mutable
-HNSW cosine, checkpoint behavior, update-profile behavior, advanced
-filtering, or concurrency.
+These numbers do not describe HNSW inner-product results, mutable HNSW cosine,
+checkpoint behavior, update-profile behavior, advanced filtering, or
+concurrency.

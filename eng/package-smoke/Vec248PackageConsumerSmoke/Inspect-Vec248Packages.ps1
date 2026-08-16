@@ -158,8 +158,8 @@ try {
         throw "Unexpected core package version: $($core.Version)"
     }
 
-    if ($core.Description -notmatch "HNSW approximate search for squared-L2 and cosine workloads") {
-        throw "Core package description does not mention the admitted HNSW cosine package capability."
+    if ($core.Description -notmatch "HNSW approximate search for squared-L2, inner-product, and cosine workloads") {
+        throw "Core package description does not mention the admitted HNSW metric package capabilities."
     }
 
     Assert-RequiredFiles -PackageId $core.Id -Files $core.Files -RequiredFiles @(
@@ -217,13 +217,13 @@ try {
         }
     }
 
-    Write-Host "VEC248_CORE_PACKAGE id=$($core.Id) version=$($core.Version)"
-    Write-Host "VEC248_CORE_PACKAGE_FILES"
+    Write-Host "CORE_PACKAGE id=$($core.Id) version=$($core.Version)"
+    Write-Host "CORE_PACKAGE_FILES"
     $core.Files | ForEach-Object { Write-Host "  $_" }
-    Write-Host "VEC248_ADAPTER_PACKAGE id=$($adapter.Id) version=$($adapter.Version)"
-    Write-Host "VEC248_ADAPTER_PACKAGE_FILES"
+    Write-Host "ADAPTER_PACKAGE id=$($adapter.Id) version=$($adapter.Version)"
+    Write-Host "ADAPTER_PACKAGE_FILES"
     $adapter.Files | ForEach-Object { Write-Host "  $_" }
-    Write-Host "VEC248_ADAPTER_DEPENDENCIES"
+    Write-Host "ADAPTER_DEPENDENCIES"
     $adapterDependencies | ForEach-Object {
         Write-Host "  target=$($_.TargetFramework) id=$($_.Id) version=$($_.Version)"
     }

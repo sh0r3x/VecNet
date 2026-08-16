@@ -8,16 +8,18 @@ string artifactRoot = args.Length > 0
 Directory.CreateDirectory(artifactRoot);
 
 RunHnswCosinePackageSmoke(Path.Combine(artifactRoot, "hnsw-cosine"));
+RunHnswInnerProductPackageSmoke(Path.Combine(artifactRoot, "hnsw-inner-product"));
 RunMutableHnswCosinePackageSmoke(Path.Combine(artifactRoot, "hnsw-mutable-cosine"));
+RunMutableHnswInnerProductPackageSmoke(Path.Combine(artifactRoot, "hnsw-mutable-inner-product"));
 await RunVectorDataAdapterSmoke();
 
-Console.WriteLine("VEC248_PACKAGE_CONSUMER_SMOKE_PASSED");
+Console.WriteLine("PACKAGE_CONSUMER_SMOKE_PASSED");
 
 static void RunHnswCosinePackageSmoke(string artifactRoot)
 {
     ResetDirectory(artifactRoot);
 
-    var options = new HnswIndexOptions(M: 8, EfConstruction: 24, EfSearch: 24, RandomSeed: 0x564543_248UL);
+    var options = new HnswIndexOptions(M: 8, EfConstruction: 24, EfSearch: 24, RandomSeed: 0x91E4_2D7C_A5B9_1031UL);
     var index = new HnswIndex(dimension: 3, VectorMetric.Cosine, options, initialCapacity: 6);
 
     index.Add(40, [10f, 0f, 0f]);
@@ -50,9 +52,6 @@ static void RunHnswCosinePackageSmoke(string artifactRoot)
     ExpectThrows<ArgumentException>(
         () => index.Search([0f, 0f, 0f], new SearchResult[1], index.CreateSearchWorkspace()),
         "HNSW cosine should reject zero query vectors.");
-    ExpectThrows<NotSupportedException>(
-        () => new HnswIndex(3, VectorMetric.InnerProduct),
-        "HNSW inner product should remain unsupported.");
 
     SearchResult[] sourceResults = results[..written].ToArray();
     string savePath = Path.Combine(artifactRoot, "saved");
@@ -72,11 +71,58 @@ static void RunHnswCosinePackageSmoke(string artifactRoot)
     }
 }
 
+static void RunHnswInnerProductPackageSmoke(string artifactRoot)
+{
+    ResetDirectory(artifactRoot);
+
+    var options = new HnswIndexOptions(M: 8, EfConstruction: 32, EfSearch: 32, RandomSeed: 0x1A2B_3C4D_5E6F_7081UL);
+    var index = new HnswIndex(dimension: 3, VectorMetric.InnerProduct, options, initialCapacity: 6);
+
+    index.Add(10, [5f, 0f, 0f]);
+    index.Add(20, [0f, 4f, 0f]);
+    index.Add(30, [1f, 1f, 0f]);
+    index.Add(40, [-10f, 0f, 0f]);
+    index.Add(50, [0f, 0f, 0f]);
+    index.Add(60, [0f, 0f, 3f]);
+
+    SearchResult[] results = SearchHnsw(index, [1f, 1f, 0f], 4);
+    Require(
+        results.Select(static result => result.Id).SequenceEqual([10UL, 20UL, 30UL, 50UL]),
+        "HNSW inner-product search should rank larger dot products as lower distances.");
+    Require(
+        results.Select(static result => result.Distance).SequenceEqual([-5f, -4f, -2f, -0f]),
+        "HNSW inner-product search should expose negative-dot distances.");
+
+    ulong[] allowlist = [999, 60, 30, 20, 20, 777];
+    SearchResult[] allowedResults = SearchHnswAllowed(index, [1f, 1f, 0f], allowlist, 3);
+    Require(
+        allowedResults.Select(static result => result.Id).SequenceEqual([20UL, 30UL, 60UL]),
+        "HNSW inner-product allowlist search should rank only allowed external IDs.");
+
+    string savePath = Path.Combine(artifactRoot, "saved");
+    index.Save(savePath);
+    HnswIndex opened = HnswIndex.OpenReadOnly(savePath);
+    Require(opened.Metric == VectorMetric.InnerProduct, "Opened HNSW index should preserve inner-product metric.");
+    ExpectThrows<InvalidOperationException>(
+        () => opened.Add(70, [1f, 0f, 0f]),
+        "Opened HNSW inner-product indexes should reject build ingestion.");
+
+    SearchResult[] openedResults = SearchHnswAllowed(opened, [1f, 1f, 0f], allowlist, 3);
+    Require(openedResults.Length == allowedResults.Length, "Opened HNSW inner-product search should preserve result count.");
+    for (int i = 0; i < openedResults.Length; i++)
+    {
+        Require(openedResults[i].Id == allowedResults[i].Id, "Opened HNSW inner-product search should preserve result IDs.");
+        Require(
+            Math.Abs(openedResults[i].Distance - allowedResults[i].Distance) <= 0.000001f,
+            "Opened HNSW inner-product search should preserve distances.");
+    }
+}
+
 static void RunMutableHnswCosinePackageSmoke(string artifactRoot)
 {
     ResetDirectory(artifactRoot);
 
-    var options = new HnswIndexOptions(M: 8, EfConstruction: 24, EfSearch: 24, RandomSeed: 0x564543_254UL);
+    var options = new HnswIndexOptions(M: 8, EfConstruction: 24, EfSearch: 24, RandomSeed: 0x6A09_E667_F3BC_C909UL);
     var baseIndex = new HnswIndex(dimension: 3, VectorMetric.Cosine, options, initialCapacity: 6);
 
     baseIndex.Add(40, [10f, 0f, 0f]);
@@ -139,6 +185,71 @@ static void RunMutableHnswCosinePackageSmoke(string artifactRoot)
         Require(
             Math.Abs(openedResults[i].Distance - beforeCheckpoint[i].Distance) <= 0.000001f,
             "Opened mutable HNSW cosine checkpoint should preserve distances.");
+    }
+}
+
+static void RunMutableHnswInnerProductPackageSmoke(string artifactRoot)
+{
+    ResetDirectory(artifactRoot);
+
+    var options = new HnswIndexOptions(M: 8, EfConstruction: 32, EfSearch: 32, RandomSeed: 0x2233_4455_6677_8899UL);
+    var baseIndex = new HnswIndex(dimension: 2, VectorMetric.InnerProduct, options, initialCapacity: 4);
+
+    baseIndex.Add(10, [5f, 0f]);
+    baseIndex.Add(20, [0f, 4f]);
+    baseIndex.Add(30, [-3f, 0f]);
+    baseIndex.Add(40, [0f, 0f]);
+
+    var mutable = new HnswMutableIndex(baseIndex);
+    Require(mutable.Metric == VectorMetric.InnerProduct, "Mutable HNSW wrapper should preserve inner-product metric.");
+
+    VectorMutationResult add = mutable.TryAdd(15, [6f, 0f]);
+    Require(add.Status == VectorMutationStatus.Committed, "Mutable HNSW inner product should accept delta vectors.");
+    Require(mutable.DeltaLiveVectorCount == 1, "Mutable HNSW inner product should expose the live delta row.");
+
+    var staleAfterAdd = new HnswMutableSearchWorkspace(mutable, maxResults: 4);
+    VectorMutationResult delete = mutable.TryDelete(10);
+    Require(delete.Status == VectorMutationStatus.Committed, "Mutable HNSW inner product should tombstone a base ID.");
+    ExpectThrows<InvalidOperationException>(
+        () => mutable.Search([1f, 1f], new SearchResult[4], staleAfterAdd),
+        "Mutable HNSW inner product should reject stale workspaces after mutation.");
+
+    SearchResult[] liveResults = SearchMutableHnsw(mutable, [1f, 1f], 4);
+    Require(
+        liveResults.Select(static result => result.Id).SequenceEqual([15UL, 20UL, 40UL, 30UL]),
+        "Mutable HNSW inner-product search should merge live base and delta rows by negative-dot distance.");
+    Require(
+        !liveResults.Any(static result => result.Id == 10),
+        "Mutable HNSW inner-product search should not return tombstoned base IDs.");
+
+    ulong[] allowed = [999, 10, 15, 20, 40, 15, 777];
+    SearchResult[] allowedResults = SearchMutableHnswAllowed(mutable, [1f, 1f], allowed, 4);
+    Require(
+        allowedResults.Select(static result => result.Id).SequenceEqual([15UL, 20UL, 40UL]),
+        "Mutable HNSW inner-product allowlist search should exclude tombstones and rank live allowed IDs.");
+
+    string checkpointPath = Path.Combine(artifactRoot, "checkpoint");
+    SearchResult[] beforeCheckpoint = SearchMutableHnsw(mutable, [1f, 1f], 4);
+    HnswMutableCheckpointResult checkpoint = mutable.Checkpoint(checkpointPath);
+    Require(
+        checkpoint.Status == HnswMutableCheckpointStatus.Published,
+        "Mutable HNSW inner-product checkpoint should publish a rebuilt immutable HNSW output.");
+    Require(
+        checkpoint.RebuiltBaseVectorCount == mutable.LiveVectorCount,
+        "Mutable HNSW inner-product checkpoint should fold live rows into the rebuilt base.");
+
+    HnswIndex opened = HnswIndex.OpenReadOnly(checkpointPath);
+    Require(opened.Metric == VectorMetric.InnerProduct, "Opened mutable HNSW inner-product checkpoint should preserve metric.");
+
+    SearchResult[] openedResults = SearchHnsw(opened, [1f, 1f], beforeCheckpoint.Length);
+    Require(
+        openedResults.Select(static result => result.Id).SequenceEqual(beforeCheckpoint.Select(static result => result.Id)),
+        "Opened mutable HNSW inner-product checkpoint should preserve result IDs.");
+    for (int i = 0; i < openedResults.Length; i++)
+    {
+        Require(
+            Math.Abs(openedResults[i].Distance - beforeCheckpoint[i].Distance) <= 0.000001f,
+            "Opened mutable HNSW inner-product checkpoint should preserve distances.");
     }
 }
 
@@ -215,6 +326,13 @@ static SearchResult[] SearchHnsw(HnswIndex index, float[] query, int top)
 {
     var results = new SearchResult[top];
     int written = index.Search(query, results, index.CreateSearchWorkspace());
+    return results[..written];
+}
+
+static SearchResult[] SearchHnswAllowed(HnswIndex index, float[] query, ulong[] allowedIds, int top)
+{
+    var results = new SearchResult[top];
+    int written = index.Search(query, allowedIds, results, index.CreateSearchWorkspace());
     return results[..written];
 }
 

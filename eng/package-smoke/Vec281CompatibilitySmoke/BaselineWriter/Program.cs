@@ -3,7 +3,7 @@ using VecNet;
 
 if (args.Length != 2)
 {
-    throw new ArgumentException("Usage: Vec281BaselineWriter <artifact-root> <baseline-version>");
+    throw new ArgumentException("Usage: BaselineWriter <artifact-root> <baseline-version>");
 }
 
 string artifactRoot = Path.GetFullPath(args[0]);
@@ -29,7 +29,7 @@ else
 }
 
 File.WriteAllLines(Path.Combine(baselineRoot, "excluded-scenarios.txt"), exclusions);
-Console.WriteLine($"VEC281_BASELINE_WRITER_PASSED version={baselineVersion}");
+Console.WriteLine($"COMPATIBILITY_BASELINE_WRITER_PASSED version={baselineVersion}");
 
 static void WriteExactFlatSnapshot(string baselineRoot, string scenarioName, VectorMetric metric, float[] query)
 {
@@ -49,7 +49,7 @@ static void WriteHnswSnapshot(string baselineRoot, string scenarioName, VectorMe
     string scenarioRoot = Path.Combine(baselineRoot, scenarioName);
     Directory.CreateDirectory(scenarioRoot);
 
-    var options = new HnswIndexOptions(M: 8, EfConstruction: 24, EfSearch: 24, RandomSeed: 0x564543_281UL);
+    var options = new HnswIndexOptions(M: 8, EfConstruction: 24, EfSearch: 24, RandomSeed: 0x6D61_6E61_6765_6448UL);
     var index = new HnswIndex(3, metric, options);
     AddHnswRows(index);
 

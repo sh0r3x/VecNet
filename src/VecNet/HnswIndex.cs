@@ -9,10 +9,10 @@ namespace VecNet;
 /// This API supports build ingestion with <see cref="Add"/>, caller-owned workspace
 /// search with <see cref="Search(ReadOnlySpan{float}, Span{SearchResult}, HnswSearchWorkspace)"/>,
 /// caller-owned external-ID allowlist filtering, and durable round trips with
-/// <see cref="Save"/> and <see cref="OpenReadOnly"/>. Read-only searches may overlap only when each
-/// caller uses an independent result buffer and independent workspace. For cosine, overlapping
-/// read-only search is supported only on immutable indexes opened with <see cref="OpenReadOnly(string)"/>
-/// and applies to unfiltered and caller-owned allowlist search. Supported metrics are
+/// <see cref="Save"/> and <see cref="OpenReadOnly"/>. Read-only searches may overlap for
+/// supported metrics only when each caller uses an independent result buffer and independent
+/// workspace. The overlapping read-only boundary applies to unfiltered and caller-owned allowlist
+/// search. Supported metrics are
 /// <see cref="VectorMetric.SquaredEuclidean"/>, <see cref="VectorMetric.InnerProduct"/>,
 /// and <see cref="VectorMetric.Cosine"/>. Stored labels,
 /// durable graph-aware filtering metadata, public ordinal filters, full filter-aware graph
@@ -395,8 +395,9 @@ public sealed partial class HnswIndex
     /// <remarks>
     /// Results are ordered by the executing canonical distance, with external ID breaking equal
     /// computed-distance ties. The caller owns the result buffer and workspace. Do not share one
-    /// workspace or one result buffer across overlapping searches. For cosine, overlapping
-    /// read-only search is supported only on immutable indexes opened with <see cref="OpenReadOnly(string)"/>.
+    /// workspace or one result buffer across overlapping searches. Overlapping read-only search is
+    /// supported for supported metrics only when each caller uses an independent result buffer and
+    /// independent workspace.
     /// </remarks>
     /// <param name="query">The finite query vector. Inner-product queries are used as supplied. Cosine queries are normalized during search.</param>
     /// <param name="results">
@@ -494,10 +495,9 @@ public sealed partial class HnswIndex
     /// <param name="results">The caller-owned destination buffer. Its length specifies the requested result count.</param>
     /// <param name="workspace">
     /// The caller-owned reusable HNSW workspace. It must satisfy the same sizing rules as unfiltered
-    /// <see cref="Search(ReadOnlySpan{float}, Span{SearchResult}, HnswSearchWorkspace)"/>. For cosine,
-    /// overlapping read-only allowlist search is supported only on immutable indexes opened with
-    /// <see cref="OpenReadOnly(string)"/> and each overlapping call must use an independent result buffer
-    /// and independent workspace.
+    /// <see cref="Search(ReadOnlySpan{float}, Span{SearchResult}, HnswSearchWorkspace)"/>.
+    /// Overlapping read-only allowlist search is supported for supported metrics only when each
+    /// overlapping call uses an independent result buffer and independent workspace.
     /// </param>
     /// <returns>The number of filtered results written.</returns>
     public int Search(

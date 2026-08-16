@@ -1261,13 +1261,7 @@ public sealed partial class HnswIndex
     private float InnerProductDistance(ReadOnlySpan<float> query, int ordinal)
     {
         int offset = ordinal * Dimension;
-        double dotProduct = 0;
-        for (int i = 0; i < Dimension; i++)
-        {
-            dotProduct += (double)query[i] * _vectors[offset + i];
-        }
-
-        return (float)-dotProduct;
+        return InnerProductDistancePrimitive.Distance(query, _vectors.AsSpan(offset, Dimension));
     }
 
     private float DistanceBetween(int leftOrdinal, int rightOrdinal) =>
@@ -1327,13 +1321,9 @@ public sealed partial class HnswIndex
     {
         int leftOffset = leftOrdinal * Dimension;
         int rightOffset = rightOrdinal * Dimension;
-        double dotProduct = 0;
-        for (int i = 0; i < Dimension; i++)
-        {
-            dotProduct += (double)_vectors[leftOffset + i] * _vectors[rightOffset + i];
-        }
-
-        return (float)-dotProduct;
+        return InnerProductDistancePrimitive.Distance(
+            _vectors.AsSpan(leftOffset, Dimension),
+            _vectors.AsSpan(rightOffset, Dimension));
     }
 
     private void SortNearest(int[] ordinals, float[] distances, int count)

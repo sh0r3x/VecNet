@@ -973,13 +973,7 @@ internal sealed class HnswBasePlusExactDeltaIndex
     private float InnerProductDistance(ReadOnlySpan<float> query, int deltaOrdinal)
     {
         int offset = deltaOrdinal * Dimension;
-        double dotProduct = 0;
-        for (int i = 0; i < Dimension; i++)
-        {
-            dotProduct += (double)query[i] * _deltaVectors[offset + i];
-        }
-
-        return (float)-dotProduct;
+        return InnerProductDistancePrimitive.Distance(query, _deltaVectors.AsSpan(offset, Dimension));
     }
 
     private static int InsertCandidate(Span<SearchResult> results, int written, SearchResult candidate)

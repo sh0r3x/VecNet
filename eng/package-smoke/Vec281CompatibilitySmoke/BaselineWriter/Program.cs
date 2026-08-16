@@ -3,7 +3,7 @@ using VecNet;
 
 if (args.Length != 2)
 {
-    throw new ArgumentException("Usage: BaselineWriter <artifact-root> <baseline-version>");
+    throw new ArgumentException("Usage: <artifact-root> <baseline-version>");
 }
 
 string artifactRoot = Path.GetFullPath(args[0]);

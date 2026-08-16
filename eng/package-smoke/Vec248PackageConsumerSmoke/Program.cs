@@ -4,7 +4,7 @@ using VecNet.Integration.VectorData;
 
 string artifactRoot = args.Length > 0
     ? Path.GetFullPath(args[0])
-    : Path.Combine(Path.GetTempPath(), "vec248-package-consumer-" + Guid.NewGuid().ToString("N"));
+    : Path.Combine(Path.GetTempPath(), "vecnet-package-consumer-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(artifactRoot);
 
 RunHnswCosinePackageSmoke(Path.Combine(artifactRoot, "hnsw-cosine"));
@@ -257,7 +257,7 @@ static async Task RunVectorDataAdapterSmoke()
 {
     var store = new VecNetVectorStore();
     VectorStoreCollection<string, SmokeRecord> collection =
-        store.GetCollection<string, SmokeRecord>("vec248-records", CreateDefinition());
+        store.GetCollection<string, SmokeRecord>("package-smoke-records", CreateDefinition());
 
     await collection.EnsureCollectionExistsAsync();
     await collection.UpsertAsync(CreateRecord("a", [1f, 0f], "red"));

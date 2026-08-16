@@ -8,10 +8,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "../../..")
-$baselineProject = Join-Path $repoRoot "eng/package-smoke/Vec281CompatibilitySmoke/BaselineWriter/Vec281BaselineWriter.csproj"
-$currentProject = Join-Path $repoRoot "eng/package-smoke/Vec281CompatibilitySmoke/CurrentReader/Vec281CurrentReader.csproj"
-$packagesRoot = Join-Path $ArtifactRoot "packages-cache"
+$baselineProject = (Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot "BaselineWriter") -Filter "*.csproj" | Select-Object -First 1).FullName
+$currentProject = (Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot "CurrentReader") -Filter "*.csproj" | Select-Object -First 1).FullName
+if ([string]::IsNullOrEmpty($baselineProject) -or [string]::IsNullOrEmpty($currentProject)) {
+    throw "Compatibility smoke projects were not found."
+}
+
+$packagesRoot = Join-Path $ArtifactRoot "packages"
 $nugetConfig = Join-Path $ArtifactRoot "NuGet.local.config"
 
 New-Item -ItemType Directory -Force -Path $ArtifactRoot, $packagesRoot | Out-Null
@@ -33,7 +36,7 @@ function Expand-Package {
         [string] $PackagePath
     )
 
-    $expanded = Join-Path ([System.IO.Path]::GetTempPath()) ("vec281-package-smoke-" + [Guid]::NewGuid().ToString("N"))
+    $expanded = Join-Path ([System.IO.Path]::GetTempPath()) ("vecnet-compatibility-smoke-" + [Guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Force -Path $expanded | Out-Null
     $zipPath = Join-Path $expanded "package.zip"
     Copy-Item -LiteralPath $PackagePath -Destination $zipPath
@@ -85,14 +88,22 @@ function Invoke-Checked {
         [string] $FilePath,
 
         [Parameter(Mandatory = $true)]
-        [string[]] $Arguments
+        [string[]] $Arguments,
+
+        [Parameter(Mandatory = $true)]
+        [string] $DisplayName
     )
 
-    Write-Host ">> $FilePath $($Arguments -join ' ')"
-    & $FilePath @Arguments
+    Write-Host ">> $DisplayName"
+    $output = & $FilePath @Arguments 2>&1
     if ($LASTEXITCODE -ne 0) {
-        throw "Command failed with exit code ${LASTEXITCODE}: $FilePath $($Arguments -join ' ')"
+        $output | ForEach-Object { Write-Host $_ }
+        throw "Command failed with exit code ${LASTEXITCODE}: $DisplayName"
     }
+
+    $output |
+        Where-Object { $_ -match '^(PACKAGE_|COMPATIBILITY_)' } |
+        ForEach-Object { Write-Host $_ }
 }
 
 $currentVersion = Get-LocalPackageVersion -PackageId "VecNet"
@@ -104,7 +115,9 @@ foreach ($baselineVersion in @("1.0.0", "1.3.1")) {
         $nugetConfig,
         "--packages",
         $packagesRoot,
-        "-p:VecNetPackageVersion=$baselineVersion")
+        "-p:VecNetPackageVersion=$baselineVersion",
+        "--verbosity",
+        "quiet") "restore baseline package $baselineVersion"
     Invoke-Checked "dotnet" @(
         "run",
         "--project",
@@ -115,7 +128,7 @@ foreach ($baselineVersion in @("1.0.0", "1.3.1")) {
         "-p:VecNetPackageVersion=$baselineVersion",
         "--",
         $ArtifactRoot,
-        $baselineVersion)
+        $baselineVersion) "write baseline package $baselineVersion"
 }
 
 Invoke-Checked "dotnet" @(
@@ -125,7 +138,9 @@ Invoke-Checked "dotnet" @(
     $nugetConfig,
     "--packages",
     $packagesRoot,
-    "-p:VecNetPackageVersion=$currentVersion")
+    "-p:VecNetPackageVersion=$currentVersion",
+    "--verbosity",
+    "quiet") "restore current package"
 Invoke-Checked "dotnet" @(
     "run",
     "--project",
@@ -135,7 +150,7 @@ Invoke-Checked "dotnet" @(
     "--no-restore",
     "-p:VecNetPackageVersion=$currentVersion",
     "--",
-    $ArtifactRoot)
+    $ArtifactRoot) "read compatibility baselines"
 
 $exclusions = @(Get-ChildItem -LiteralPath (Join-Path $ArtifactRoot "baselines") -Filter "excluded-scenarios.txt" -Recurse |
     ForEach-Object { Get-Content -LiteralPath $_.FullName } |

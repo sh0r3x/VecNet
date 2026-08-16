@@ -3,7 +3,7 @@ using VecNet;
 
 if (args.Length != 1)
 {
-    throw new ArgumentException("Usage: CurrentReader <artifact-root>");
+    throw new ArgumentException("Usage: <artifact-root>");
 }
 
 string artifactRoot = Path.GetFullPath(args[0]);

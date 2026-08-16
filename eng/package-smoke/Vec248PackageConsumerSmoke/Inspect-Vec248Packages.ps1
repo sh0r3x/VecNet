@@ -20,7 +20,7 @@ function Expand-Package {
         throw "Package file not found: $PackagePath"
     }
 
-    $expanded = Join-Path ([System.IO.Path]::GetTempPath()) ("vec248-package-inspect-" + [Guid]::NewGuid().ToString("N"))
+    $expanded = Join-Path ([System.IO.Path]::GetTempPath()) ("vecnet-package-inspect-" + [Guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Force -Path $expanded | Out-Null
     $zipPath = Join-Path $expanded "package.zip"
     Copy-Item -LiteralPath $PackagePath -Destination $zipPath

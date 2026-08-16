@@ -115,6 +115,57 @@ public static class CommandLine
         return new BenchmarkComparisonOptions(baselinePath, currentPath, outputPath);
     }
 
+    public static InnerProductHotPathOptions ParseInnerProductHotPath(IReadOnlyList<string> args)
+    {
+        string scenario = args.Count == 0 ? InnerProductHotPathOptions.ScenarioName : args[0];
+        if (!string.Equals(scenario, InnerProductHotPathOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported scenario '{scenario}'.");
+        }
+
+        Dictionary<string, string> values = ParseOptionValues(args, args.Count == 0 ? 0 : 1, IsSupportedInnerProductHotPathOption);
+        InnerProductHotPathOptions defaults = InnerProductHotPathOptions.Default;
+        int[] dimensions = values.TryGetValue("dimensions", out string? dimensionsValue)
+            ? ParsePositiveIntList(dimensionsValue, "dimensions")
+            : defaults.Dimensions.ToArray();
+        int vectorCount = GetPositiveInt(values, "vectors", defaults.VectorCount);
+        int queryCount = GetPositiveInt(values, "queries", defaults.QueryCount);
+        int runs = GetPositiveInt(values, "runs", defaults.Runs);
+        if (runs > 5)
+        {
+            throw new ArgumentException("Option --runs must be in the range 1..5.");
+        }
+
+        int warmupIterations = GetNonNegativeInt(values, "warmup-iterations", defaults.WarmupIterations);
+        uint seed = GetSeed(values, "seed", defaults.Seed);
+        string operationShape = InnerProductHotPathOptions.NormalizeOperationShape(
+            GetOptionalNonWhiteSpace(values, "operation-shape") ?? defaults.OperationShape);
+        int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
+        int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
+        string outputPath = values.TryGetValue("output", out string? outputValue)
+            ? outputValue
+            : Path.Combine(
+                "VecNet.BenchmarkRunner.Artifacts",
+                $"inner-product-hot-path-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json");
+
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("Option --output must not be empty.");
+        }
+
+        return new InnerProductHotPathOptions(
+            dimensions,
+            vectorCount,
+            queryCount,
+            runs,
+            warmupIterations,
+            seed,
+            operationShape,
+            efConstruction,
+            efSearch,
+            outputPath);
+    }
+
     public static GeneratedExactFilteredOptions ParseGeneratedExactFiltered(IReadOnlyList<string> args)
     {
         string scenario = args.Count == 0 ? GeneratedExactFilteredOptions.ScenarioName : args[0];
@@ -3046,6 +3097,35 @@ public static class CommandLine
         return parsed;
     }
 
+    private static int[] ParsePositiveIntList(string value, string name)
+    {
+        string[] parts = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 0)
+        {
+            throw new ArgumentException($"Option --{name} must contain at least one positive integer.");
+        }
+
+        var dimensions = new int[parts.Length];
+        var seen = new HashSet<int>();
+        for (int i = 0; i < parts.Length; i++)
+        {
+            if (!int.TryParse(parts[i], NumberStyles.None, CultureInfo.InvariantCulture, out int parsed) || parsed <= 0)
+            {
+                throw new ArgumentException($"Option --{name} must contain only positive integers.");
+            }
+
+            if (!seen.Add(parsed))
+            {
+                throw new ArgumentException($"Option --{name} must not contain duplicate values.");
+            }
+
+            dimensions[i] = parsed;
+        }
+
+        Array.Sort(dimensions);
+        return dimensions;
+    }
+
     private static int GetNonNegativeInt(Dictionary<string, string> values, string name, int defaultValue)
     {
         if (!values.TryGetValue(name, out string? value))
@@ -3086,6 +3166,18 @@ public static class CommandLine
     private static bool IsSupportedComparisonOption(string name) =>
         string.Equals(name, "baseline", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "current", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "output", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedInnerProductHotPathOption(string name) =>
+        string.Equals(name, "dimensions", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vectors", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "queries", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "runs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "warmup-iterations", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "operation-shape", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "output", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedGeneratedExactFilteredOption(string name) =>

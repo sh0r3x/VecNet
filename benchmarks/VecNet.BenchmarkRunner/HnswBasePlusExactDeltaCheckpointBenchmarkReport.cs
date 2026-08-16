@@ -194,7 +194,8 @@ public sealed record HnswBasePlusExactDeltaCheckpointSearchSectionInfo(
     SearchInfo Search,
     MeasurementInfo Measurement,
     HnswBasePlusExactDeltaCheckpointMetricsInfo Metrics,
-    HnswBasePlusExactDeltaUnderfillInfo Underfill);
+    HnswBasePlusExactDeltaUnderfillInfo Underfill,
+    HnswBasePlusExactDeltaRetryDiagnosticsInfo? RetryDiagnostics = null);
 
 public sealed record HnswBasePlusExactDeltaCheckpointMetricsInfo(
     double RecallAtK,

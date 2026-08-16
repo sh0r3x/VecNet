@@ -21,7 +21,7 @@ public static class DurableHnswGeneratedScenario
     {
         ValidateOptions(options);
 
-        GeneratedDataset dataset = GeneratedDatasetFactory.Create(ToGeneratedOptions(options));
+        GeneratedDataset dataset = GeneratedDatasetFactory.Create(ToGeneratedOptions(options), options.VectorProfile);
         ValidateDataset(dataset, options.Metric);
         TruthSet truth = ScalarGroundTruth.Generate(dataset, options.Metric, options.TopK);
 
@@ -142,9 +142,9 @@ public static class DurableHnswGeneratedScenario
                 GCSettings.IsServerGC,
                 Vector<float>.Count),
             new DatasetInfo(
-                GeneratedDataset.Kind,
+                dataset.DatasetKind,
                 "generated-no-external-source",
-                GeneratedDataset.Distribution,
+                dataset.ProfileDistribution,
                 dataset.SeedText,
                 options.Metric.ToString(),
                 options.Dimension,
@@ -191,7 +191,7 @@ public static class DurableHnswGeneratedScenario
                 options.EfSearch,
                 FormatHex(options.HnswSeed),
                 "generated vector row order, external ids 0..vectorCount-1",
-                $"{options.Metric} private generated durable HNSW metric; InnerProduct unsupported"),
+                $"{options.Metric} private generated durable HNSW metric"),
             new DurableHnswOperationsInfo(
                 new DurableHnswOperationInfo(
                     "build",
@@ -805,7 +805,7 @@ public static class DurableHnswGeneratedScenario
     {
         if (!IsSupportedMetric(options.Metric))
         {
-            throw new ArgumentException("hnsw-generated-durable supports SquaredEuclidean and Cosine only.", nameof(options));
+            throw new ArgumentException("hnsw-generated-durable supports SquaredEuclidean, InnerProduct and Cosine only.", nameof(options));
         }
 
         if (options.TopK > options.VectorCount)
@@ -855,7 +855,7 @@ public static class DurableHnswGeneratedScenario
     }
 
     private static bool IsSupportedMetric(VectorMetric metric) =>
-        metric is VectorMetric.SquaredEuclidean or VectorMetric.Cosine;
+        metric is VectorMetric.SquaredEuclidean or VectorMetric.InnerProduct or VectorMetric.Cosine;
 
     private static void ValidateDataset(GeneratedDataset dataset, VectorMetric metric)
     {
@@ -909,7 +909,7 @@ public static class DurableHnswGeneratedScenario
         string commitPart = string.IsNullOrWhiteSpace(commit) ? "unknown" : commit[..Math.Min(12, commit.Length)];
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"{DurableHnswGeneratedOptions.ScenarioName}-{commitPart}-{options.Metric}-{options.Dimension}d-{options.VectorCount}v-{options.QueryCount}q-{options.TopK}k-{options.Runs}r-{options.WarmupQueries}w-m{options.M}-efc{options.EfConstruction}-efs{options.EfSearch}-{options.Seed:X8}-{options.HnswSeed:X16}");
+            $"{DurableHnswGeneratedOptions.ScenarioName}-{commitPart}-{options.Metric}-{GeneratedDatasetFactory.GetOptionValue(options.VectorProfile)}-{options.Dimension}d-{options.VectorCount}v-{options.QueryCount}q-{options.TopK}k-{options.Runs}r-{options.WarmupQueries}w-m{options.M}-efc{options.EfConstruction}-efs{options.EfSearch}-{options.Seed:X8}-{options.HnswSeed:X16}");
     }
 
     private static double StopwatchTicksToMilliseconds(long ticks) =>

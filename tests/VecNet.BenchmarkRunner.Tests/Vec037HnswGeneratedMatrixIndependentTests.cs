@@ -75,6 +75,14 @@ public sealed class Vec037HnswGeneratedMatrixIndependentTests
             (VectorMetric.SquaredEuclidean, "balanced-m8", 32, 1, 8, 32, 24),
             (VectorMetric.SquaredEuclidean, "low-ef-m4", 32, 10, 4, 16, 10),
             (VectorMetric.SquaredEuclidean, "balanced-m8", 32, 10, 8, 32, 24),
+            (VectorMetric.InnerProduct, "low-ef-m4", 16, 1, 4, 16, 10),
+            (VectorMetric.InnerProduct, "balanced-m8", 16, 1, 8, 32, 24),
+            (VectorMetric.InnerProduct, "low-ef-m4", 16, 10, 4, 16, 10),
+            (VectorMetric.InnerProduct, "balanced-m8", 16, 10, 8, 32, 24),
+            (VectorMetric.InnerProduct, "low-ef-m4", 32, 1, 4, 16, 10),
+            (VectorMetric.InnerProduct, "balanced-m8", 32, 1, 8, 32, 24),
+            (VectorMetric.InnerProduct, "low-ef-m4", 32, 10, 4, 16, 10),
+            (VectorMetric.InnerProduct, "balanced-m8", 32, 10, 8, 32, 24),
             (VectorMetric.Cosine, "low-ef-m4", 16, 1, 4, 16, 10),
             (VectorMetric.Cosine, "balanced-m8", 16, 1, 8, 32, 24),
             (VectorMetric.Cosine, "low-ef-m4", 16, 10, 4, 16, 10),
@@ -93,11 +101,11 @@ public sealed class Vec037HnswGeneratedMatrixIndependentTests
         Assert.Equal(0xFFFF_FFFCu, cases[0].Options.Seed);
         Assert.Equal(0xFFFF_FFFFu, cases[3].Options.Seed);
         Assert.Equal(0u, cases[4].Options.Seed);
-        Assert.Equal(11u, cases[^1].Options.Seed);
+        Assert.Equal(19u, cases[^1].Options.Seed);
         Assert.Equal("0x484EACA8FFFC0001", FormatHex(cases[0].Options.HnswSeed));
-        Assert.Equal("0x484EACA8FFFC0010", FormatHex(cases[^1].Options.HnswSeed));
+        Assert.Equal("0x484EACA8FFFC0018", FormatHex(cases[^1].Options.HnswSeed));
         Assert.EndsWith("case-01-SquaredEuclidean-low-ef-m4-16d-1k.json", cases[0].Options.OutputPath, StringComparison.OrdinalIgnoreCase);
-        Assert.EndsWith("case-16-Cosine-balanced-m8-32d-10k.json", cases[^1].Options.OutputPath, StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith("case-24-Cosine-balanced-m8-32d-10k.json", cases[^1].Options.OutputPath, StringComparison.OrdinalIgnoreCase);
         Assert.All(cases, item =>
         {
             Assert.True(item.Options.EfSearch >= item.Options.TopK);
@@ -128,8 +136,8 @@ public sealed class Vec037HnswGeneratedMatrixIndependentTests
             ["hnsw-generated-matrix", "--output-dir", outputDirectory]);
         HnswGeneratedMatrixScenario.WriteManifest(manifest, options.ManifestPath);
 
-        Assert.Equal(16, manifest.CaseCount);
-        Assert.Equal(15, manifest.Aggregate.PassedCaseCount);
+        Assert.Equal(24, manifest.CaseCount);
+        Assert.Equal(23, manifest.Aggregate.PassedCaseCount);
         Assert.Equal(1, manifest.Aggregate.FailedCaseCount);
 
         HnswGeneratedMatrixCaseManifest failedCase = Assert.Single(manifest.Cases, item => item.Status == "failed");
@@ -153,7 +161,7 @@ public sealed class Vec037HnswGeneratedMatrixIndependentTests
 
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(options.ManifestPath));
         JsonElement root = document.RootElement;
-        Assert.Equal(15, root.GetProperty("aggregate").GetProperty("passedCaseCount").GetInt32());
+        Assert.Equal(23, root.GetProperty("aggregate").GetProperty("passedCaseCount").GetInt32());
         Assert.Equal(1, root.GetProperty("aggregate").GetProperty("failedCaseCount").GetInt32());
         AssertFalseMatrixEligibility(root);
         AssertNoForbiddenScopeFields(root);
@@ -187,7 +195,7 @@ public sealed class Vec037HnswGeneratedMatrixIndependentTests
         HnswGeneratedMatrixManifest manifest = HnswGeneratedMatrixScenario.Run(options, arguments);
         HnswGeneratedMatrixScenario.WriteManifest(manifest, options.ManifestPath);
 
-        Assert.Equal(16, manifest.Aggregate.PassedCaseCount);
+        Assert.Equal(24, manifest.Aggregate.PassedCaseCount);
         foreach (HnswGeneratedMatrixCaseManifest matrixCase in manifest.Cases)
         {
             using JsonDocument reportDocument = JsonDocument.Parse(File.ReadAllText(matrixCase.ReportPath));

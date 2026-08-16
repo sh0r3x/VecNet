@@ -18,7 +18,7 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
     {
         ValidateOptions(options);
 
-        GeneratedDataset dataset = GeneratedDatasetFactory.Create(ToGeneratedOptions(options));
+        GeneratedDataset dataset = GeneratedDatasetFactory.Create(ToGeneratedOptions(options), options.VectorProfile);
         ValidateDataset(dataset, options.Metric);
 
         BuildMeasurement build = BuildBaseIndex(options, dataset);
@@ -28,6 +28,7 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
         ulong[] liveIds = BuildLiveIds(options);
         TruthSet truth = GenerateLiveTruth(dataset, options, liveIds);
 
+        SearchResult[][] firstPassProbeResults = ProbeFirstPassSearch(options, dataset, composite);
         WarmupSearch(options, dataset, composite);
         SearchMeasurement measurement = MeasureSearch(options, dataset, composite);
 
@@ -40,6 +41,8 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
         HnswBasePlusExactDeltaReturnedResultIntegrityInfo returnedIntegrity =
             ValidateReturnedResults(dataset, options.Metric, measurement.Results, options.TopK, liveIds);
         HnswBasePlusExactDeltaUnderfillInfo underfill = CreateUnderfill(options, measurement.Results);
+        HnswBasePlusExactDeltaRetryDiagnosticsInfo retryDiagnostics =
+            CreateRetryDiagnostics(options, firstPassProbeResults, measurement.Results, underfill);
         int extraResultCount = CountExtraResults(truth, measurement.Results, options.TopK);
 
         bool statusCountsMatched = mutationExecution.StatusCounts.Committed ==
@@ -80,9 +83,9 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
                 GCSettings.IsServerGC,
                 Vector<float>.Count),
             new DatasetInfo(
-                GeneratedDataset.Kind,
+                dataset.DatasetKind,
                 "generated-no-external-source",
-                GeneratedDataset.Distribution,
+                dataset.ProfileDistribution,
                 dataset.SeedText,
                 options.Metric.ToString(),
                 options.Dimension,
@@ -113,7 +116,7 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
                 options.EfSearch,
                 FormatHex(options.HnswSeed),
                 "generated base vector row order, external base ids 0..baseVectorCount-1; delta ids continue from baseVectorCount",
-                $"{options.Metric} private generated HNSW base-plus-exact-delta metric; InnerProduct unsupported"),
+                $"{options.Metric} private generated HNSW base-plus-exact-delta metric; efSearch is first-pass search width and workspace/adaptive-retry ceiling is reported under retryDiagnostics"),
             new HnswBuildInfo(
                 "measured",
                 build.ElapsedMilliseconds,
@@ -207,6 +210,7 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
                 "set recall@k = returned live ids intersect exact updated top-k live ids divided by min(k, post-update live vector count), summed across measured queries",
                 $"Every returned composite result is checked for finite distance, no duplicate ID within its query, generated live ID membership, no tombstoned ID, and {options.Metric} distance matching recomputation for that returned ID/query within the accepted runner tolerance. HNSW base search is approximate and recall/order are recorded, not required."),
             underfill,
+            retryDiagnostics,
             new HnswBasePlusExactDeltaValidationInfo(
                 validationPassed ? "passed" : "failed",
                 "generated-hnsw-base-plus-exact-delta-smoke",
@@ -237,6 +241,7 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
                 "This report exercises an internal composite type and does not add or imply a public mutable/update HNSW API.",
                 "Durable mutable overlay persistence, checkpoint/rebuild, direct graph mutation, filtering, matrix presets and external datasets are out of scope.",
                 "Latency/QPS/allocation time only internal composite Search calls with caller-owned result buffers and workspace.",
+                "retryDiagnostics compares a tight first-pass probe using workspaceEfSearch == efSearch with final measured results using the configured workspace/adaptive-retry ceiling.",
                 "Immutable HNSW base build, update application and exact updated truth generation are setup work and excluded from measured search timing.",
                 "Approximate recall below 1.0 and underfill are allowed and recorded.",
                 "Public claims, baseline candidates, comparison artifacts and regression gates are not created by this report."
@@ -501,8 +506,27 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
         HnswBasePlusExactDeltaSearchWorkspace workspace = CreateWorkspace(options);
         for (int i = 0; i < options.WarmupQueries; i++)
         {
-            composite.Search(dataset.GetQuery(i % dataset.QueryCount), results, workspace);
+            composite.Search(dataset.GetQuery(i % dataset.QueryCount), results, workspace, options.EfSearch);
         }
+    }
+
+    private static SearchResult[][] ProbeFirstPassSearch(
+        HnswBasePlusExactDeltaGeneratedOptions options,
+        GeneratedDataset dataset,
+        HnswBasePlusExactDeltaIndex composite)
+    {
+        var results = new SearchResult[options.TopK];
+        HnswBasePlusExactDeltaSearchWorkspace workspace = CreateFirstPassWorkspace(options);
+        var captured = new SearchResult[options.QueryCount][];
+        for (int queryRow = 0; queryRow < options.QueryCount; queryRow++)
+        {
+            int written = composite.Search(dataset.GetQuery(queryRow), results, workspace, options.EfSearch);
+            var queryResults = new SearchResult[written];
+            results.AsSpan(0, written).CopyTo(queryResults);
+            captured[queryRow] = queryResults;
+        }
+
+        return captured;
     }
 
     private static SearchMeasurement MeasureSearch(
@@ -545,7 +569,7 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
             ReadOnlySpan<float> query = dataset.GetQuery(queryRow);
             long allocationStart = GC.GetAllocatedBytesForCurrentThread();
             long start = Stopwatch.GetTimestamp();
-            int written = composite.Search(query, results, workspace);
+            int written = composite.Search(query, results, workspace, options.EfSearch);
             long elapsed = Stopwatch.GetTimestamp() - start;
             long allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocationStart;
 
@@ -578,6 +602,13 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
     }
 
     private static HnswBasePlusExactDeltaSearchWorkspace CreateWorkspace(HnswBasePlusExactDeltaGeneratedOptions options) =>
+        new(
+            options.BaseVectorCount,
+            options.EffectiveWorkspaceEfSearch,
+            Math.Min(options.BaseVectorCount, options.EffectiveWorkspaceEfSearch),
+            options.TopK);
+
+    private static HnswBasePlusExactDeltaSearchWorkspace CreateFirstPassWorkspace(HnswBasePlusExactDeltaGeneratedOptions options) =>
         new(
             options.BaseVectorCount,
             options.EfSearch,
@@ -631,6 +662,82 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
             underfilledQueries,
             underfilledSlots,
             "Underfill is recorded when the composite returns fewer than requested top-k live results for a query. This can occur from tombstone-filtered HNSW overfetch limits or approximate base search and is measured against exact updated truth rather than treated as exact-search failure.");
+    }
+
+    private static HnswBasePlusExactDeltaRetryDiagnosticsInfo CreateRetryDiagnostics(
+        HnswBasePlusExactDeltaGeneratedOptions options,
+        SearchResult[][] firstPassResults,
+        SearchResult[][] finalResults,
+        HnswBasePlusExactDeltaUnderfillInfo underfill)
+    {
+        int effectiveRetryCeiling = Math.Min(options.BaseVectorCount, options.EffectiveWorkspaceEfSearch);
+        int firstPassReturned = CountReturnedResults(firstPassResults);
+        int finalReturned = CountReturnedResults(finalResults);
+        int moreResults = 0;
+        int differentResults = 0;
+        int queryCount = Math.Min(firstPassResults.Length, finalResults.Length);
+        for (int query = 0; query < queryCount; query++)
+        {
+            if (finalResults[query].Length > firstPassResults[query].Length)
+            {
+                moreResults++;
+            }
+
+            if (!SameResults(firstPassResults[query], finalResults[query]))
+            {
+                differentResults++;
+            }
+        }
+
+        bool baseTombstonesPresent = options.DeletedBaseCount > 0;
+        bool canWiden = options.EffectiveWorkspaceEfSearch > options.EfSearch && effectiveRetryCeiling > options.EfSearch;
+        bool wideningObserved = canWiden && baseTombstonesPresent && differentResults > 0;
+        return new HnswBasePlusExactDeltaRetryDiagnosticsInfo(
+            canWiden ? "measured" : "notApplicable",
+            options.EfSearch,
+            options.EffectiveWorkspaceEfSearch,
+            effectiveRetryCeiling,
+            Math.Max(0, effectiveRetryCeiling - options.EfSearch),
+            canWiden,
+            baseTombstonesPresent,
+            firstPassReturned,
+            finalReturned,
+            moreResults,
+            differentResults,
+            wideningObserved,
+            underfill.UnderfilledQueryCount > 0,
+            underfill.UnderfilledQueryCount,
+            underfill.UnderfilledSlotCount,
+            "A runner first-pass probe searches with workspaceEfSearch equal to efSearch. Final measured search uses the configured workspaceEfSearch ceiling and explicit first-pass efSearch; result-count or result-set differences show observable adaptive-retry widening effects. Internal retry invocation counts are not instrumented by this runner.");
+    }
+
+    private static int CountReturnedResults(SearchResult[][] results)
+    {
+        int count = 0;
+        foreach (SearchResult[] queryResults in results)
+        {
+            count += queryResults.Length;
+        }
+
+        return count;
+    }
+
+    private static bool SameResults(SearchResult[] left, SearchResult[] right)
+    {
+        if (left.Length != right.Length)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < left.Length; i++)
+        {
+            if (left[i].Id != right[i].Id || left[i].Distance != right[i].Distance)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static AggregateTimingInfo AggregateRuns(SearchRunInfo[] runs, int measuredQueryCountPerRun) =>
@@ -740,7 +847,7 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
     {
         if (!IsSupportedMetric(options.Metric))
         {
-            throw new ArgumentException("generated-hnsw-base-plus-exact-delta supports SquaredEuclidean and Cosine only.", nameof(options));
+            throw new ArgumentException("generated-hnsw-base-plus-exact-delta supports SquaredEuclidean, InnerProduct and Cosine only.", nameof(options));
         }
 
         if (options.InsertedDeltaCount <= 0)
@@ -802,10 +909,15 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
         {
             throw new ArgumentException("ef-search must be in the range 1..4096.", nameof(options));
         }
+
+        if (options.EffectiveWorkspaceEfSearch < options.EfSearch || options.EffectiveWorkspaceEfSearch > 4096)
+        {
+            throw new ArgumentException("workspace-ef-search must be at least ef-search and no more than 4096.", nameof(options));
+        }
     }
 
     private static bool IsSupportedMetric(VectorMetric metric) =>
-        metric is VectorMetric.SquaredEuclidean or VectorMetric.Cosine;
+        metric is VectorMetric.SquaredEuclidean or VectorMetric.InnerProduct or VectorMetric.Cosine;
 
     private static void ValidateDataset(GeneratedDataset dataset, VectorMetric metric)
     {
@@ -856,7 +968,7 @@ public static class HnswBasePlusExactDeltaGeneratedScenario
         string commitPart = string.IsNullOrWhiteSpace(commit) ? "unknown" : commit[..Math.Min(12, commit.Length)];
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"{HnswBasePlusExactDeltaGeneratedOptions.ScenarioName}-{commitPart}-{options.Metric}-{options.Dimension}d-{options.BaseVectorCount}b-{options.InsertedDeltaCount}i-{options.DeletedBaseCount}bd-{options.DeletedDeltaCount}dd-{options.QueryCount}q-{options.TopK}k-{options.Runs}r-{options.WarmupQueries}w-m{options.M}-efc{options.EfConstruction}-efs{options.EfSearch}-{options.Seed:X8}-{options.HnswSeed:X16}");
+            $"{HnswBasePlusExactDeltaGeneratedOptions.ScenarioName}-{commitPart}-{options.Metric}-{GeneratedDatasetFactory.GetOptionValue(options.VectorProfile)}-{options.Dimension}d-{options.BaseVectorCount}b-{options.InsertedDeltaCount}i-{options.DeletedBaseCount}bd-{options.DeletedDeltaCount}dd-{options.QueryCount}q-{options.TopK}k-{options.Runs}r-{options.WarmupQueries}w-m{options.M}-efc{options.EfConstruction}-efs{options.EfSearch}-wefs{options.EffectiveWorkspaceEfSearch}-{options.Seed:X8}-{options.HnswSeed:X16}");
     }
 
     private static double? FiniteOrNull(double value) => double.IsFinite(value) ? value : null;

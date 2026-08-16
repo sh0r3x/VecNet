@@ -41,7 +41,6 @@ public sealed class Vec129FashionMnistExternalHnswBasePlusExactDeltaMatrixTests
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-matrix", "--runs", "0")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-matrix", "--runs", "6")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-matrix", "--warmup-queries", "-1")]
-    [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-matrix", "--metric", "InnerProduct")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-matrix", "--seed", "0xNOTHEX")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-matrix", "--duplicate-inserts", "-1")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-matrix", "--unknown-deletes", "-1")]

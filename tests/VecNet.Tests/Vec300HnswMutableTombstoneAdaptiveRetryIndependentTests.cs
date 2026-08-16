@@ -209,7 +209,7 @@ public sealed class Vec300HnswMutableTombstoneAdaptiveRetryIndependentTests
     }
 
     [Fact]
-    public void PublicPerSearchEfSearchValidationAndInnerProductRejectionRemainUnchanged()
+    public void PublicPerSearchEfSearchValidationAndInnerProductAdmissionRemainUnchanged()
     {
         HnswMutableIndex mutable = CreateMutable(
             VectorMetric.SquaredEuclidean,
@@ -235,12 +235,8 @@ public sealed class Vec300HnswMutableTombstoneAdaptiveRetryIndependentTests
             () => mutable.Search([0f], destination, mutable.CreateSearchWorkspace(maxResults: 1, maxEfSearch: 2), efSearch: 2));
         Assert.Equal(original, destination);
 
-        NotSupportedException defaultInnerProduct = Assert.Throws<NotSupportedException>(
-            () => new HnswIndex(2, VectorMetric.InnerProduct));
-        NotSupportedException optionsInnerProduct = Assert.Throws<NotSupportedException>(
-            () => new HnswIndex(2, VectorMetric.InnerProduct, HnswIndexOptions.Default));
-        Assert.Contains("inner product", defaultInnerProduct.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("inner product", optionsInnerProduct.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(VectorMetric.InnerProduct, new HnswIndex(2, VectorMetric.InnerProduct).Metric);
+        Assert.Equal(VectorMetric.InnerProduct, new HnswIndex(2, VectorMetric.InnerProduct, HnswIndexOptions.Default).Metric);
     }
 
     private static HnswMutableIndex CreateMutable(

@@ -49,7 +49,6 @@ public sealed class Vec138FashionMnistExternalHnswBasePlusExactDeltaCheckpointTe
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint", "--manifest", "manifest.json")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint", "--snapshot-directory", "snapshot")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint", "--hnswlib-python", "python")]
-    [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint", "--metric", "InnerProduct")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint", "--query-count", "0")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint", "--top-k", "0")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint", "--base-vectors", "0")]

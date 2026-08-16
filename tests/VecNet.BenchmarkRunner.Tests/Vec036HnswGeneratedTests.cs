@@ -30,7 +30,6 @@ public sealed class Vec036HnswGeneratedTests
 
     [Theory]
     [InlineData("unexpected")]
-    [InlineData("hnsw-generated", "--metric", "InnerProduct")]
     [InlineData("hnsw-generated", "--metric", "Unknown")]
     [InlineData("hnsw-generated", "--dimension", "0")]
     [InlineData("hnsw-generated", "--vectors", "0")]
@@ -56,7 +55,7 @@ public sealed class Vec036HnswGeneratedTests
     }
 
     [Fact]
-    public void ParseHnswGenerated_AcceptsCosineAndRejectsInnerProduct()
+    public void ParseHnswGenerated_AcceptsCosineAndInnerProduct()
     {
         HnswGeneratedOptions cosine = CommandLine.ParseHnswGenerated(
             [
@@ -71,19 +70,18 @@ public sealed class Vec036HnswGeneratedTests
 
         Assert.Equal(VectorMetric.Cosine, cosine.Metric);
 
-        ArgumentException rejected = Assert.Throws<ArgumentException>(
-            () => CommandLine.ParseHnswGenerated(
-                [
-                    "hnsw-generated",
-                    "--metric", "InnerProduct",
-                    "--dimension", "5",
-                    "--vectors", "12",
-                    "--queries", "2",
-                    "--top-k", "3",
-                    "--ef-search", "3"
-                ]));
-        Assert.Contains("Cosine", rejected.Message, StringComparison.Ordinal);
-        Assert.Contains("SquaredEuclidean", rejected.Message, StringComparison.Ordinal);
+        HnswGeneratedOptions innerProduct = CommandLine.ParseHnswGenerated(
+            [
+                "hnsw-generated",
+                "--metric", "InnerProduct",
+                "--dimension", "5",
+                "--vectors", "12",
+                "--queries", "2",
+                "--top-k", "3",
+                "--ef-search", "3"
+            ]);
+
+        Assert.Equal(VectorMetric.InnerProduct, innerProduct.Metric);
     }
 
     [Fact]

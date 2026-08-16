@@ -35,7 +35,6 @@ public sealed class Vec140FashionMnistExternalHnswBasePlusExactDeltaCheckpointMa
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-matrix", "--query-count", "50")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-matrix", "--runs", "2")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-matrix", "--warmup-queries", "3")]
-    [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-matrix", "--metric", "InnerProduct")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-matrix", "--seed", "0x5EED2139")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-matrix", "--top-k", "10")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-matrix", "--base-vectors", "59000")]

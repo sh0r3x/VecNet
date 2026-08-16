@@ -43,7 +43,6 @@ public sealed class Vec150HnswAllowlistFilteringMatrixIndependentTests
     }
 
     [Theory]
-    [InlineData("--metric", "InnerProduct")]
     [InlineData("--dimension", "384")]
     [InlineData("--vectors", "2048")]
     [InlineData("--top-k", "100")]

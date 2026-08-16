@@ -28,7 +28,7 @@ public static class HnswMemorySmokeScenario
             baseline,
             baseline);
 
-        GeneratedDataset dataset = GeneratedDatasetFactory.Create(ToGeneratedOptions(options));
+        GeneratedDataset dataset = GeneratedDatasetFactory.Create(ToGeneratedOptions(options), options.VectorProfile);
         ValidateFinite(dataset);
         HnswMemorySampleInfo postDataset = CreateSample(
             "postDatasetGeneration",
@@ -99,8 +99,8 @@ public static class HnswMemorySmokeScenario
 
         DurableHnswReadOnlyMutationInfo readOnlyMutation = ValidateOpenedReadOnlyMutation(openedIndex, options.Dimension);
         DurableHnswParityInfo parity = CompareSourceOpenedParity(sourceResults, openedResults);
-        HnswReturnedResultIntegrityInfo sourceIntegrity = HnswGeneratedScenario.ValidateReturnedResults(dataset, sourceResults, options.TopK);
-        HnswReturnedResultIntegrityInfo openedIntegrity = HnswGeneratedScenario.ValidateReturnedResults(dataset, openedResults, options.TopK);
+        HnswReturnedResultIntegrityInfo sourceIntegrity = HnswGeneratedScenario.ValidateReturnedResults(dataset, options.Metric, sourceResults, options.TopK);
+        HnswReturnedResultIntegrityInfo openedIntegrity = HnswGeneratedScenario.ValidateReturnedResults(dataset, options.Metric, openedResults, options.TopK);
         HnswMemorySmokeStorageSizeInfo storageSize = InspectStorageSize(options.SnapshotDirectory, options.VectorCount);
         HnswMemorySampleInfo postValidation = CreateSample(
             "postValidationRetained",
@@ -152,11 +152,11 @@ public static class HnswMemorySmokeScenario
                 GCSettings.IsServerGC,
                 Vector<float>.Count),
             new DatasetInfo(
-                GeneratedDataset.Kind,
+                dataset.DatasetKind,
                 "generated-no-external-source",
-                GeneratedDataset.Distribution,
+                dataset.ProfileDistribution,
                 dataset.SeedText,
-                VectorMetric.SquaredEuclidean.ToString(),
+                options.Metric.ToString(),
                 options.Dimension,
                 options.VectorCount,
                 options.QueryCount),
@@ -169,12 +169,12 @@ public static class HnswMemorySmokeScenario
             new IndexInfo(
                 "InternalHnswMemorySmoke",
                 nameof(HnswIndex),
-                VectorMetric.SquaredEuclidean.ToString(),
+                options.Metric.ToString(),
                 options.Dimension,
                 options.VectorCount,
-                "internal/evaluation-only HnswIndex; generated squared-L2 build/search, Save, OpenReadOnly and opened search are exercised for private memory methodology only"),
+                $"internal/evaluation-only HnswIndex; generated {options.Metric} build/search, Save, OpenReadOnly and opened search are exercised for private memory methodology only"),
             new HnswMemorySmokeWorkloadInfo(
-                VectorMetric.SquaredEuclidean.ToString(),
+                options.Metric.ToString(),
                 options.Dimension,
                 options.VectorCount,
                 options.QueryCount,
@@ -197,7 +197,7 @@ public static class HnswMemorySmokeScenario
                 options.EfSearch,
                 FormatHex(options.HnswSeed),
                 "generated vector row order, external ids 0..vectorCount-1",
-                "SquaredEuclidean only"),
+                $"{options.Metric} memory-smoke metric"),
             actualMemory,
             peakMemory,
             lowerBounds,
@@ -244,7 +244,7 @@ public static class HnswMemorySmokeScenario
 
     private static GeneratedExactSearchOptions ToGeneratedOptions(HnswMemorySmokeOptions options) =>
         new(
-            VectorMetric.SquaredEuclidean,
+            options.Metric,
             options.Dimension,
             options.VectorCount,
             options.QueryCount,
@@ -258,7 +258,7 @@ public static class HnswMemorySmokeScenario
     private static HnswIndex BuildIndex(HnswMemorySmokeOptions options, GeneratedDataset dataset)
     {
         var hnswOptions = new HnswIndexOptions(options.M, options.EfConstruction, options.EfSearch, options.HnswSeed);
-        var index = new HnswIndex(options.Dimension, VectorMetric.SquaredEuclidean, hnswOptions);
+        var index = new HnswIndex(options.Dimension, options.Metric, hnswOptions);
         for (int row = 0; row < dataset.VectorCount; row++)
         {
             index.Add((ulong)row, dataset.GetVector(row));
@@ -603,7 +603,7 @@ public static class HnswMemorySmokeScenario
             "Generated HNSW memory smoke reports are not accepted comparison artifacts.",
             "No generated HNSW memory regression-gate policy, threshold, comparison artifact or hard gate is accepted.",
             [
-                "Generated squared-L2 HNSW memory smoke evidence only; no external dataset source, license, version or checksum applies.",
+                "Generated squared-L2 or inner-product HNSW memory smoke evidence only; no external dataset source, license, version or checksum applies.",
                 "Actual samples are local whole-process boundary samples and are separated from sampled peaks, lower-bound layout estimates and durable file facts.",
                 "Build/save/open peaks are observed sampled peaks, not true maxima.",
                 "Working set is OS/cache-sensitive context only.",
@@ -625,9 +625,9 @@ public static class HnswMemorySmokeScenario
 
     private static void ValidateOptions(HnswMemorySmokeOptions options)
     {
-        if (options.Metric != VectorMetric.SquaredEuclidean)
+        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.InnerProduct))
         {
-            throw new ArgumentException("generated-hnsw-memory-smoke supports only SquaredEuclidean.", nameof(options));
+            throw new ArgumentException("generated-hnsw-memory-smoke supports only SquaredEuclidean and InnerProduct.", nameof(options));
         }
 
         if (options.TopK > options.VectorCount)
@@ -695,7 +695,7 @@ public static class HnswMemorySmokeScenario
         string commitPart = string.IsNullOrWhiteSpace(commit) ? "unknown" : commit[..Math.Min(12, commit.Length)];
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"{HnswMemorySmokeOptions.ScenarioName}-{commitPart}-{options.Dimension}d-{options.VectorCount}v-{options.QueryCount}q-{options.TopK}k-m{options.M}-efc{options.EfConstruction}-efs{options.EfSearch}-{options.Seed:X8}-{options.HnswSeed:X16}");
+            $"{HnswMemorySmokeOptions.ScenarioName}-{commitPart}-{options.Metric}-{GeneratedDatasetFactory.GetOptionValue(options.VectorProfile)}-{options.Dimension}d-{options.VectorCount}v-{options.QueryCount}q-{options.TopK}k-m{options.M}-efc{options.EfConstruction}-efs{options.EfSearch}-{options.Seed:X8}-{options.HnswSeed:X16}");
     }
 
     private static string FormatHex(ulong value) => string.Create(CultureInfo.InvariantCulture, $"0x{value:X16}");

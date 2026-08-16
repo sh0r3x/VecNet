@@ -920,7 +920,7 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
         ReadOnlySpan<float> expectedVector,
         VectorMetric metric)
     {
-        if (metric == VectorMetric.SquaredEuclidean)
+        if (metric is VectorMetric.SquaredEuclidean or VectorMetric.InnerProduct)
         {
             return openedVector.SequenceEqual(expectedVector);
         }
@@ -1512,9 +1512,9 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaCheckpointScenario
             throw new ArgumentException("warmup queries must be non-negative.", nameof(options));
         }
 
-        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.Cosine))
+        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.InnerProduct or VectorMetric.Cosine))
         {
-            throw new ArgumentException("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint supports only SquaredEuclidean and Cosine.", nameof(options));
+            throw new ArgumentException("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint supports only SquaredEuclidean, InnerProduct and Cosine.", nameof(options));
         }
 
         if (options.DuplicateInsertAttempts < 0 || options.UnknownDeleteAttempts < 0 || options.RepeatedDeleteAttempts < 0)

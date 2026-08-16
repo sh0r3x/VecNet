@@ -67,12 +67,12 @@ public sealed class Vec039FashionMnistExternalHnswBenchmarkTests
     }
 
     [Fact]
-    public void ParseExternalFashionMnistHnsw_RejectsInnerProduct()
+    public void ParseExternalFashionMnistHnsw_AcceptsInnerProduct()
     {
-        ArgumentException exception = Assert.Throws<ArgumentException>(() =>
-            CommandLine.ParseExternalFashionMnistHnsw(["external-fashion-mnist-hnsw", "--metric", "InnerProduct"]));
+        FashionMnistExternalHnswBenchmarkOptions options =
+            CommandLine.ParseExternalFashionMnistHnsw(["external-fashion-mnist-hnsw", "--metric", "InnerProduct"]);
 
-        Assert.Contains("unsupported", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(VectorMetric.InnerProduct, options.Metric);
     }
 
     [Fact]

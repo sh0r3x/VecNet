@@ -5,19 +5,19 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackageId>VecNet</PackageId>
-    <Version>1.3.1</Version>
+    <Version>1.4.0</Version>
     <Title>VecNet</Title>
     <Authors>VecNet Contributors</Authors>
-    <Description>Embedded vector indexing for .NET applications, with exact search, filtering, durable snapshots, mutable updates, and HNSW approximate search for squared-L2 and cosine workloads.</Description>
+    <Description>Embedded vector indexing for .NET applications, with exact search, filtering, durable snapshots, mutable updates, and HNSW approximate search for squared-L2, inner-product, and cosine workloads.</Description>
     <RepositoryUrl>https://github.com/sh0r3x/VecNet.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://github.com/sh0r3x/VecNet</PackageProjectUrl>
-    <PackageTags>vector-search;vector-indexing;similarity-search;nearest-neighbor;ann;hnsw;exact-search;cosine-similarity;dotnet;embedded;managed</PackageTags>
+    <PackageTags>vector-search;vector-indexing;similarity-search;nearest-neighbor;ann;hnsw;exact-search;inner-product;dot-product;cosine-similarity;dotnet;embedded;managed</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <EnablePackageValidation>true</EnablePackageValidation>
-    <PackageValidationBaselineVersion>1.3.0</PackageValidationBaselineVersion>
+    <PackageValidationBaselineVersion>1.3.1</PackageValidationBaselineVersion>
   </PropertyGroup>
 
   <ItemGroup>

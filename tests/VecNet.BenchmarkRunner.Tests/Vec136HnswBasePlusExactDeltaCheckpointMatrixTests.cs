@@ -56,7 +56,6 @@ public sealed class Vec136HnswBasePlusExactDeltaCheckpointMatrixTests
     [InlineData("generated-hnsw-base-plus-exact-delta-checkpoint-matrix", "--repeated-deletes", "-1")]
     [InlineData("generated-hnsw-base-plus-exact-delta-checkpoint-matrix", "--output-dir", "")]
     [InlineData("generated-hnsw-base-plus-exact-delta-checkpoint-matrix", "--manifest", "")]
-    [InlineData("generated-hnsw-base-plus-exact-delta-checkpoint-matrix", "--metric", "InnerProduct")]
     [InlineData("generated-hnsw-base-plus-exact-delta-checkpoint-matrix", "--dimension", "128")]
     [InlineData("generated-hnsw-base-plus-exact-delta-checkpoint-matrix", "--top-k", "10")]
     [InlineData("generated-hnsw-base-plus-exact-delta-checkpoint-matrix", "--insertions", "10")]
@@ -77,13 +76,15 @@ public sealed class Vec136HnswBasePlusExactDeltaCheckpointMatrixTests
     [Theory]
     [InlineData("Cosine")]
     [InlineData("cosine")]
-    public void ParseHnswBasePlusExactDeltaCheckpointMatrix_AcceptsCosine(string metric)
+    [InlineData("InnerProduct")]
+    [InlineData("innerproduct")]
+    public void ParseHnswBasePlusExactDeltaCheckpointMatrix_AcceptsGeneratedHnswMetrics(string metric)
     {
         HnswBasePlusExactDeltaCheckpointMatrixOptions options =
             CommandLine.ParseHnswBasePlusExactDeltaCheckpointMatrix(
                 [HnswBasePlusExactDeltaCheckpointMatrixOptions.ScenarioName, "--metric", metric]);
 
-        Assert.Equal(VectorMetric.Cosine, options.Metric);
+        Assert.True(options.Metric is VectorMetric.Cosine or VectorMetric.InnerProduct);
     }
 
     [Fact]

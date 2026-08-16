@@ -3,18 +3,18 @@ using System.Numerics;
 namespace VecNet;
 
 /// <summary>
-/// Approximate HNSW index for squared Euclidean and cosine distance.
+/// Approximate HNSW index for squared Euclidean, inner product, and cosine distance.
 /// </summary>
 /// <remarks>
 /// This API supports build ingestion with <see cref="Add"/>, caller-owned workspace
 /// search with <see cref="Search(ReadOnlySpan{float}, Span{SearchResult}, HnswSearchWorkspace)"/>,
 /// caller-owned external-ID allowlist filtering, and durable round trips with
-/// <see cref="Save"/> and <see cref="OpenReadOnly"/>. Read-only searches may overlap only when each
-/// caller uses an independent result buffer and independent workspace. For cosine, overlapping
-/// read-only search is supported only on immutable indexes opened with <see cref="OpenReadOnly(string)"/>
-/// and applies to unfiltered and caller-owned allowlist search. Supported metrics are
-/// <see cref="VectorMetric.SquaredEuclidean"/> and <see cref="VectorMetric.Cosine"/>.
-/// Inner-product HNSW, stored labels,
+/// <see cref="Save"/> and <see cref="OpenReadOnly"/>. Read-only searches may overlap for
+/// supported metrics only when each caller uses an independent result buffer and independent
+/// workspace. The overlapping read-only boundary applies to unfiltered and caller-owned allowlist
+/// search. Supported metrics are
+/// <see cref="VectorMetric.SquaredEuclidean"/>, <see cref="VectorMetric.InnerProduct"/>,
+/// and <see cref="VectorMetric.Cosine"/>. Stored labels,
 /// durable graph-aware filtering metadata, public ordinal filters, full filter-aware graph
 /// traversal, update/delete, replacement, repair, and direct graph mutation are not supported by
 /// this API.
@@ -54,7 +54,7 @@ public sealed partial class HnswIndex
     /// Initializes an HNSW index with <see cref="HnswIndexOptions.Default"/>.
     /// </summary>
     /// <param name="dimension">The required positive vector dimension.</param>
-    /// <param name="metric">The canonical distance metric. Squared Euclidean and cosine are supported.</param>
+    /// <param name="metric">The canonical distance metric. Squared Euclidean, inner product, and cosine are supported.</param>
     public HnswIndex(int dimension, VectorMetric metric)
         : this(dimension, metric, HnswIndexOptions.Default)
     {
@@ -64,7 +64,7 @@ public sealed partial class HnswIndex
     /// Initializes an HNSW index with <see cref="HnswIndexOptions.Default"/> and preallocated mutable row capacity.
     /// </summary>
     /// <param name="dimension">The required positive vector dimension.</param>
-    /// <param name="metric">The canonical distance metric. Squared Euclidean and cosine are supported.</param>
+    /// <param name="metric">The canonical distance metric. Squared Euclidean, inner product, and cosine are supported.</param>
     /// <param name="initialCapacity">The non-negative number of vector rows to reserve in contiguous HNSW storage.</param>
     public HnswIndex(int dimension, VectorMetric metric, int initialCapacity)
         : this(dimension, metric, HnswIndexOptions.Default, initialCapacity)
@@ -75,7 +75,7 @@ public sealed partial class HnswIndex
     /// Initializes an HNSW index with explicit options.
     /// </summary>
     /// <param name="dimension">The required positive vector dimension.</param>
-    /// <param name="metric">The canonical distance metric. Squared Euclidean and cosine are supported.</param>
+    /// <param name="metric">The canonical distance metric. Squared Euclidean, inner product, and cosine are supported.</param>
     /// <param name="options">The HNSW build and search options.</param>
     public HnswIndex(int dimension, VectorMetric metric, HnswIndexOptions options)
         : this(dimension, metric, options, levelProvider: null)
@@ -86,7 +86,7 @@ public sealed partial class HnswIndex
     /// Initializes an HNSW index with explicit options and preallocated mutable row capacity.
     /// </summary>
     /// <param name="dimension">The required positive vector dimension.</param>
-    /// <param name="metric">The canonical distance metric. Squared Euclidean and cosine are supported.</param>
+    /// <param name="metric">The canonical distance metric. Squared Euclidean, inner product, and cosine are supported.</param>
     /// <param name="options">The HNSW build and search options.</param>
     /// <param name="initialCapacity">The non-negative number of vector rows to reserve in contiguous HNSW storage.</param>
     public HnswIndex(int dimension, VectorMetric metric, HnswIndexOptions options, int initialCapacity)
@@ -116,11 +116,6 @@ public sealed partial class HnswIndex
             throw new ArgumentOutOfRangeException(nameof(metric), "Metric is not supported.");
         }
 
-        if (metric == VectorMetric.InnerProduct)
-        {
-            throw new NotSupportedException("HNSW does not support inner product distance.");
-        }
-
         ValidateOptions(options);
 
         Dimension = dimension;
@@ -148,7 +143,7 @@ public sealed partial class HnswIndex
     /// <summary>
     /// Gets the canonical distance metric used by this HNSW index.
     /// </summary>
-    /// <remarks>Squared Euclidean and cosine are supported. Inner product is not supported.</remarks>
+    /// <remarks>Squared Euclidean, inner product, and cosine are supported.</remarks>
     public VectorMetric Metric { get; }
 
     /// <summary>
@@ -264,7 +259,7 @@ public sealed partial class HnswIndex
     /// <see cref="OpenReadOnly"/> reject this operation.
     /// </remarks>
     /// <param name="id">The opaque external vector identifier.</param>
-    /// <param name="vector">The finite vector values to copy into index storage. Cosine vectors are normalized during insertion.</param>
+    /// <param name="vector">The finite vector values to copy into index storage. Inner-product vectors are stored as supplied. Cosine vectors are normalized during insertion.</param>
     public void Add(ulong id, ReadOnlySpan<float> vector)
     {
         if (_isReadOnly)
@@ -400,10 +395,11 @@ public sealed partial class HnswIndex
     /// <remarks>
     /// Results are ordered by the executing canonical distance, with external ID breaking equal
     /// computed-distance ties. The caller owns the result buffer and workspace. Do not share one
-    /// workspace or one result buffer across overlapping searches. For cosine, overlapping
-    /// read-only search is supported only on immutable indexes opened with <see cref="OpenReadOnly(string)"/>.
+    /// workspace or one result buffer across overlapping searches. Overlapping read-only search is
+    /// supported for supported metrics only when each caller uses an independent result buffer and
+    /// independent workspace.
     /// </remarks>
-    /// <param name="query">The finite query vector. Cosine queries are normalized during search.</param>
+    /// <param name="query">The finite query vector. Inner-product queries are used as supplied. Cosine queries are normalized during search.</param>
     /// <param name="results">
     /// The caller-owned destination buffer. Its length specifies the requested result count.
     /// </param>
@@ -429,7 +425,7 @@ public sealed partial class HnswIndex
     /// <see cref="HnswSearchWorkspace.MaxElements"/> at least <see cref="Count"/> and
     /// <see cref="HnswSearchWorkspace.MaxEf"/> at least <paramref name="efSearch"/>.
     /// </remarks>
-    /// <param name="query">The finite query vector. Cosine queries are normalized during search.</param>
+    /// <param name="query">The finite query vector. Inner-product queries are used as supplied. Cosine queries are normalized during search.</param>
     /// <param name="results">The caller-owned destination buffer. Its length specifies the requested result count.</param>
     /// <param name="workspace">The caller-owned reusable HNSW workspace.</param>
     /// <param name="efSearch">The HNSW candidate width for this search.</param>
@@ -494,15 +490,14 @@ public sealed partial class HnswIndex
     /// HNSW traversal remains unfiltered and non-allowed candidates are suppressed at emission, so the
     /// result may underfill even when exact filtered truth has at least the requested number of results.
     /// </remarks>
-    /// <param name="query">The finite query vector. Cosine queries are normalized during search.</param>
+    /// <param name="query">The finite query vector. Inner-product queries are used as supplied. Cosine queries are normalized during search.</param>
     /// <param name="allowedIds">Caller-supplied external identifiers allowed for this search.</param>
     /// <param name="results">The caller-owned destination buffer. Its length specifies the requested result count.</param>
     /// <param name="workspace">
     /// The caller-owned reusable HNSW workspace. It must satisfy the same sizing rules as unfiltered
-    /// <see cref="Search(ReadOnlySpan{float}, Span{SearchResult}, HnswSearchWorkspace)"/>. For cosine,
-    /// overlapping read-only allowlist search is supported only on immutable indexes opened with
-    /// <see cref="OpenReadOnly(string)"/> and each overlapping call must use an independent result buffer
-    /// and independent workspace.
+    /// <see cref="Search(ReadOnlySpan{float}, Span{SearchResult}, HnswSearchWorkspace)"/>.
+    /// Overlapping read-only allowlist search is supported for supported metrics only when each
+    /// overlapping call uses an independent result buffer and independent workspace.
     /// </param>
     /// <returns>The number of filtered results written.</returns>
     public int Search(
@@ -525,7 +520,7 @@ public sealed partial class HnswIndex
     /// remains unfiltered and non-allowed candidates are suppressed at emission, so the result may
     /// underfill even when exact filtered truth has at least the requested number of results.
     /// </remarks>
-    /// <param name="query">The finite query vector. Cosine queries are normalized during search.</param>
+    /// <param name="query">The finite query vector. Inner-product queries are used as supplied. Cosine queries are normalized during search.</param>
     /// <param name="allowedIds">Caller-supplied external identifiers allowed for this search.</param>
     /// <param name="results">The caller-owned destination buffer. Its length specifies the requested result count.</param>
     /// <param name="workspace">The caller-owned reusable HNSW workspace.</param>
@@ -1243,9 +1238,13 @@ public sealed partial class HnswIndex
     }
 
     private float DistanceToQuery(ReadOnlySpan<float> query, double queryMagnitude, int ordinal) =>
-        Metric == VectorMetric.Cosine
-            ? CosineDistance(query, queryMagnitude, ordinal)
-            : SquaredEuclideanDistance(query, ordinal);
+        Metric switch
+        {
+            VectorMetric.SquaredEuclidean => SquaredEuclideanDistance(query, ordinal),
+            VectorMetric.InnerProduct => InnerProductDistance(query, ordinal),
+            VectorMetric.Cosine => CosineDistance(query, queryMagnitude, ordinal),
+            _ => throw new InvalidOperationException("HNSW metric is invalid.")
+        };
 
     private float CosineDistance(ReadOnlySpan<float> query, double queryMagnitude, int ordinal)
     {
@@ -1259,12 +1258,26 @@ public sealed partial class HnswIndex
         return (float)(1 - (dotProduct / queryMagnitude));
     }
 
-    private float DistanceBetween(int leftOrdinal, int rightOrdinal)
+    private float InnerProductDistance(ReadOnlySpan<float> query, int ordinal)
     {
-        return Metric == VectorMetric.Cosine
-            ? CosineDistanceBetween(leftOrdinal, rightOrdinal)
-            : SquaredEuclideanDistanceBetween(leftOrdinal, rightOrdinal);
+        int offset = ordinal * Dimension;
+        double dotProduct = 0;
+        for (int i = 0; i < Dimension; i++)
+        {
+            dotProduct += (double)query[i] * _vectors[offset + i];
+        }
+
+        return (float)-dotProduct;
     }
+
+    private float DistanceBetween(int leftOrdinal, int rightOrdinal) =>
+        Metric switch
+        {
+            VectorMetric.SquaredEuclidean => SquaredEuclideanDistanceBetween(leftOrdinal, rightOrdinal),
+            VectorMetric.InnerProduct => InnerProductDistanceBetween(leftOrdinal, rightOrdinal),
+            VectorMetric.Cosine => CosineDistanceBetween(leftOrdinal, rightOrdinal),
+            _ => throw new InvalidOperationException("HNSW metric is invalid.")
+        };
 
     private float SquaredEuclideanDistanceBetween(int leftOrdinal, int rightOrdinal)
     {
@@ -1308,6 +1321,19 @@ public sealed partial class HnswIndex
         }
 
         return (float)(1 - dotProduct);
+    }
+
+    private float InnerProductDistanceBetween(int leftOrdinal, int rightOrdinal)
+    {
+        int leftOffset = leftOrdinal * Dimension;
+        int rightOffset = rightOrdinal * Dimension;
+        double dotProduct = 0;
+        for (int i = 0; i < Dimension; i++)
+        {
+            dotProduct += (double)_vectors[leftOffset + i] * _vectors[rightOffset + i];
+        }
+
+        return (float)-dotProduct;
     }
 
     private void SortNearest(int[] ordinals, float[] distances, int count)

@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.4.0 - 2026-08-15
+
+### Added
+
+- Added HNSW inner-product support for immutable build/search, durable
+  save/open, opened read-only search, caller-owned allowlist search, and the
+  update-oriented mutable wrapper.
+- Added HNSW inner-product checkpoint/rebuild/reopen support through immutable
+  snapshot output from `HnswMutableIndex`.
+
+### Changed
+
+- The README now documents HNSW inner product alongside the existing squared-L2
+  and cosine HNSW package surface.
+
 ## 1.3.1 - 2026-08-10
 
 ### Changed

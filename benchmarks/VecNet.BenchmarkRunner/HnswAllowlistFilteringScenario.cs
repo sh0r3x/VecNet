@@ -18,7 +18,7 @@ public static class HnswAllowlistFilteringScenario
     {
         ValidateOptions(options);
 
-        GeneratedDataset dataset = GeneratedDatasetFactory.Create(ToGeneratedOptions(options));
+        GeneratedDataset dataset = GeneratedDatasetFactory.Create(ToGeneratedOptions(options), options.VectorProfile);
         ValidateFinite(dataset);
         PreparedState state = PrepareState(options, dataset);
         AllowlistSet allowlists = GenerateAllowlists(options, state.LiveIds);
@@ -101,9 +101,9 @@ public static class HnswAllowlistFilteringScenario
                 GCSettings.IsServerGC,
                 Vector<float>.Count),
             new DatasetInfo(
-                GeneratedDataset.Kind,
+                dataset.DatasetKind,
                 "generated-no-external-source",
-                GeneratedDataset.Distribution,
+                dataset.ProfileDistribution,
                 dataset.SeedText,
                 options.Metric.ToString(),
                 options.Dimension,
@@ -1148,7 +1148,7 @@ public static class HnswAllowlistFilteringScenario
             "No generated HNSW filtering baseline-candidate policy is accepted.",
             "No generated HNSW filtering regression-gate policy, threshold, comparison artifact or hard gate is accepted.",
             [
-                "Generated squared-L2/cosine HNSW allowlist filtering smoke evidence only; no external dataset source, license, version or checksum applies.",
+                "Generated squared-L2, inner-product or cosine HNSW allowlist filtering smoke evidence only; no external dataset source, license, version or checksum applies.",
                 "Exact fallback parity, broad emission integrity, tombstone suppression and underfill are private methodology evidence.",
                 "Managed allocations are measured only for filtered search-call boundaries.",
                 "Memory is explicitly not measured.",
@@ -1181,9 +1181,9 @@ public static class HnswAllowlistFilteringScenario
 
     private static void ValidateOptions(HnswAllowlistFilteringOptions options)
     {
-        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.Cosine))
+        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.InnerProduct or VectorMetric.Cosine))
         {
-            throw new ArgumentException("generated-hnsw-allowlist-filtered supports only SquaredEuclidean and Cosine.", nameof(options));
+            throw new ArgumentException("generated-hnsw-allowlist-filtered supports only SquaredEuclidean, InnerProduct and Cosine.", nameof(options));
         }
 
         if (options.InsertedDeltaCount <= 0)
@@ -1334,7 +1334,7 @@ public static class HnswAllowlistFilteringScenario
         string commitPart = string.IsNullOrWhiteSpace(commit) ? "unknown" : commit[..Math.Min(12, commit.Length)];
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"{HnswAllowlistFilteringOptions.ScenarioName}-{commitPart}-{options.FilterProfile}-{options.Dimension}d-{options.BaseVectorCount}b-{options.InsertedDeltaCount}i-{options.DeletedBaseCount}bd-{options.DeletedDeltaCount}dd-{options.QueryCount}q-{options.TopK}k-{options.Runs}r-{options.WarmupQueries}w-m{options.M}-efc{options.EfConstruction}-efs{options.EfSearch}-{options.Seed:X8}-{options.HnswSeed:X16}");
+            $"{HnswAllowlistFilteringOptions.ScenarioName}-{commitPart}-{options.FilterProfile}-{GeneratedDatasetFactory.GetOptionValue(options.VectorProfile)}-{options.Dimension}d-{options.BaseVectorCount}b-{options.InsertedDeltaCount}i-{options.DeletedBaseCount}bd-{options.DeletedDeltaCount}dd-{options.QueryCount}q-{options.TopK}k-{options.Runs}r-{options.WarmupQueries}w-m{options.M}-efc{options.EfConstruction}-efs{options.EfSearch}-{options.Seed:X8}-{options.HnswSeed:X16}");
     }
 
     private delegate int SearchOperation(ReadOnlySpan<float> query, ReadOnlySpan<ulong> allowlist, Span<SearchResult> results);

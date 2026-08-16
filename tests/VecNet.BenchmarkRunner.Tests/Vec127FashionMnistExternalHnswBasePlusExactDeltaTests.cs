@@ -51,7 +51,6 @@ public sealed class Vec127FashionMnistExternalHnswBasePlusExactDeltaTests
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta", "--hnswlib-python", "python")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta", "--allowlist", "broad")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta", "--candidate-set", "selective")]
-    [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta", "--metric", "InnerProduct")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta", "--query-count", "0")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta", "--top-k", "0")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta", "--base-vectors", "0")]

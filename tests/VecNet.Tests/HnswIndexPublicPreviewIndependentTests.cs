@@ -94,15 +94,10 @@ public sealed class HnswIndexPublicPreviewIndependentTests
     }
 
     [Fact]
-    public void PublicConstruction_InnerProductFailsAndCosineIsAcceptedForDefaultAndExplicitOptions()
+    public void PublicConstruction_InnerProductAndCosineAreAcceptedForDefaultAndExplicitOptions()
     {
-        NotSupportedException defaultException = Assert.Throws<NotSupportedException>(
-            () => new HnswIndex(3, VectorMetric.InnerProduct));
-        NotSupportedException explicitException = Assert.Throws<NotSupportedException>(
-            () => new HnswIndex(3, VectorMetric.InnerProduct, HnswIndexOptions.Default));
-
-        Assert.Contains("inner product", defaultException.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("inner product", explicitException.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(VectorMetric.InnerProduct, new HnswIndex(3, VectorMetric.InnerProduct).Metric);
+        Assert.Equal(VectorMetric.InnerProduct, new HnswIndex(3, VectorMetric.InnerProduct, HnswIndexOptions.Default).Metric);
         Assert.Equal(VectorMetric.Cosine, new HnswIndex(3, VectorMetric.Cosine).Metric);
         Assert.Equal(VectorMetric.Cosine, new HnswIndex(3, VectorMetric.Cosine, HnswIndexOptions.Default).Metric);
     }

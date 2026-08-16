@@ -126,7 +126,7 @@ public static class HnswBasePlusExactDeltaCheckpointMatrixScenario
                 "Each case reuses the accepted VEC-134 generated-hnsw-base-plus-exact-delta-checkpoint report schema and writes one linked private per-case report.",
                 "Checkpoint timing, allocation and phase diagnostics are owned by the linked VEC-134 reports; the matrix only orchestrates cases and summarizes linked evidence.",
                 "Linked report paths are stored relative to the manifest directory. Checkpoint output paths are case-scoped and preserve VEC-134 checkpoint-run subdirectories.",
-                "Generated finite squared-L2 data only; no external dataset, memory evidence, concurrency evidence, public documentation, package metadata, baseline candidate, comparison artifact or regression gate is introduced."
+                "Generated finite squared-L2, inner-product or cosine data only; no external dataset, memory evidence, concurrency evidence, public documentation, package metadata, baseline candidate, comparison artifact or regression gate is introduced."
             ]);
     }
 
@@ -530,7 +530,7 @@ public static class HnswBasePlusExactDeltaCheckpointMatrixScenario
                 })
                 .OrderBy(item => item.Name, StringComparer.Ordinal)
                 .ToArray(),
-            "Generated finite squared-L2 base vectors, delta vectors and queries only; exact updated truth and checkpoint measurements are produced by linked VEC-134 reports.",
+            "Generated finite squared-L2, inner-product or cosine base vectors, delta vectors and queries only; exact updated truth and checkpoint measurements are produced by linked VEC-134 reports.",
             IsStandard(presetName)
                 ? "Standard is exactly 16 bounded generated cases covering dimensions 32, 128, 386 and 768; top-k 1, 10 and 100; low-churn and tombstone-heavy profiles; fixed M=16, efConstruction=128, efSearch=192; and two checkpoint runs per case."
                 : "Smoke is exactly two bounded generated cases for quick local validation.",

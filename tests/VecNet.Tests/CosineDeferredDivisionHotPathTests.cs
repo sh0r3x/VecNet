@@ -140,11 +140,10 @@ public sealed class CosineDeferredDivisionHotPathTests
     }
 
     [Fact]
-    public void HnswInnerProduct_RemainsUnsupportedForImmutableAndMutableCosinePath()
+    public void HnswInnerProduct_ConstructorsAreAdmitted()
     {
-        Assert.Throws<NotSupportedException>(() => new HnswIndex(3, VectorMetric.InnerProduct));
-        Assert.Throws<NotSupportedException>(
-            () => new HnswIndex(3, VectorMetric.InnerProduct, HnswIndexOptions.Default));
+        Assert.Equal(VectorMetric.InnerProduct, new HnswIndex(3, VectorMetric.InnerProduct).Metric);
+        Assert.Equal(VectorMetric.InnerProduct, new HnswIndex(3, VectorMetric.InnerProduct, HnswIndexOptions.Default).Metric);
     }
 
     private static HnswIndex CreateHnsw(

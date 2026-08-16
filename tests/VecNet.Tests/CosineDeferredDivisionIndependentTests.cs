@@ -150,11 +150,12 @@ public sealed class CosineDeferredDivisionIndependentTests
     }
 
     [Fact]
-    public void HnswInnerProductConstructors_RemainUnsupported()
+    public void HnswInnerProductConstructors_AreAdmitted()
     {
-        Assert.Throws<NotSupportedException>(() => new HnswIndex(4, VectorMetric.InnerProduct));
-        Assert.Throws<NotSupportedException>(
-            () => new HnswIndex(4, VectorMetric.InnerProduct, new HnswIndexOptions(4, 16, 16, 0x2700_0004UL)));
+        Assert.Equal(VectorMetric.InnerProduct, new HnswIndex(4, VectorMetric.InnerProduct).Metric);
+        Assert.Equal(
+            VectorMetric.InnerProduct,
+            new HnswIndex(4, VectorMetric.InnerProduct, new HnswIndexOptions(4, 16, 16, 0x2700_0004UL)).Metric);
     }
 
     private static Row[] CreateAngularRows(int dimension, int rowCount, ulong idBase)

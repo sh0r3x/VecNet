@@ -876,9 +876,9 @@ public static class FashionMnistExternalDurableHnswBenchmarkScenario
             throw new ArgumentException("Snapshot directory must not be empty.", nameof(options));
         }
 
-        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.Cosine))
+        if (options.Metric is not (VectorMetric.SquaredEuclidean or VectorMetric.InnerProduct or VectorMetric.Cosine))
         {
-            throw new ArgumentException("external-fashion-mnist-hnsw-durable supports only SquaredEuclidean and Cosine.", nameof(options));
+            throw new ArgumentException("external-fashion-mnist-hnsw-durable supports only SquaredEuclidean, InnerProduct and Cosine.", nameof(options));
         }
 
         if (options.QueryCount <= 0)

@@ -14,7 +14,8 @@ public sealed record HnswMemorySmokeOptions(
     int EfConstruction,
     int EfSearch,
     ulong HnswSeed,
-    int SampleIntervalMilliseconds)
+    int SampleIntervalMilliseconds,
+    GeneratedVectorProfile VectorProfile = GeneratedVectorProfile.Uniform)
 {
     public const string ScenarioName = "generated-hnsw-memory-smoke";
 

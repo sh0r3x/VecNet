@@ -48,7 +48,6 @@ public sealed class Vec151FashionMnistExternalHnswAllowlistFilteringTests
     [InlineData("external-fashion-mnist-hnsw-allowlist-filtered", "--manifest", "manifest.json")]
     [InlineData("external-fashion-mnist-hnsw-allowlist-filtered", "--snapshot-directory", "snapshot")]
     [InlineData("external-fashion-mnist-hnsw-allowlist-filtered", "--hnswlib-python", "python")]
-    [InlineData("external-fashion-mnist-hnsw-allowlist-filtered", "--metric", "InnerProduct")]
     [InlineData("external-fashion-mnist-hnsw-allowlist-filtered", "--filter", "all")]
     [InlineData("external-fashion-mnist-hnsw-allowlist-filtered", "--query-count", "0")]
     [InlineData("external-fashion-mnist-hnsw-allowlist-filtered", "--top-k", "0")]

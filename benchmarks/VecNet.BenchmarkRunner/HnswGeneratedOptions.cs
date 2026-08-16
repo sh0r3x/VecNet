@@ -13,7 +13,8 @@ public sealed record HnswGeneratedOptions(
     int M,
     int EfConstruction,
     int EfSearch,
-    ulong HnswSeed)
+    ulong HnswSeed,
+    GeneratedVectorProfile VectorProfile = GeneratedVectorProfile.Uniform)
 {
     public const string ScenarioName = "hnsw-generated";
 

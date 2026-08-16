@@ -348,15 +348,23 @@ public sealed class Vec294HnswPerSearchEfSearchIndependentTests
     }
 
     [Fact]
-    public void HnswInnerProductRejectionRemainsUnchanged()
+    public void HnswInnerProductPerSearchEfSearchIsAdmitted()
     {
-        NotSupportedException defaultException = Assert.Throws<NotSupportedException>(
-            () => new HnswIndex(2, VectorMetric.InnerProduct));
-        NotSupportedException explicitException = Assert.Throws<NotSupportedException>(
-            () => new HnswIndex(2, VectorMetric.InnerProduct, HnswIndexOptions.Default));
+        var index = new HnswIndex(
+            2,
+            VectorMetric.InnerProduct,
+            new HnswIndexOptions(2, 8, 2, 0x2940UL),
+            () => 0);
+        index.Add(10, [0f, 0f]);
+        index.Add(20, [3f, 1f]);
 
-        Assert.Contains("inner product", defaultException.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("inner product", explicitException.Message, StringComparison.OrdinalIgnoreCase);
+        SearchResult[] results = [new(999, 999), new(998, 998)];
+        int written = index.Search([2f, -1f], results, index.CreateSearchWorkspace(maxEfSearch: 2), efSearch: 2);
+
+        Assert.Equal(2, written);
+        Assert.Equal([new SearchResult(20, -5f), new SearchResult(10, 0f)], results);
+        Assert.Equal(VectorMetric.InnerProduct, new HnswIndex(2, VectorMetric.InnerProduct).Metric);
+        Assert.Equal(VectorMetric.InnerProduct, new HnswIndex(2, VectorMetric.InnerProduct, HnswIndexOptions.Default).Metric);
     }
 
     private static HnswMutableIndex CreateMutable(IEnumerable<(ulong Id, float[] Vector)> rows, int efSearch) =>

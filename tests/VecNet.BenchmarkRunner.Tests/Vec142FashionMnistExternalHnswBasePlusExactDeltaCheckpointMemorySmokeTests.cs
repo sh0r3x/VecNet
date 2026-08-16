@@ -54,7 +54,6 @@ public sealed class Vec142FashionMnistExternalHnswBasePlusExactDeltaCheckpointMe
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-memory-smoke", "--repeated-deletes", "1")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-memory-smoke", "--runs", "1")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-memory-smoke", "--warmup-queries", "3")]
-    [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-memory-smoke", "--metric", "InnerProduct")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-memory-smoke", "--seed", "0x5EED2141")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-memory-smoke", "--m", "16")]
     [InlineData("external-fashion-mnist-hnsw-base-plus-exact-delta-checkpoint-memory-smoke", "--ef-construction", "128")]

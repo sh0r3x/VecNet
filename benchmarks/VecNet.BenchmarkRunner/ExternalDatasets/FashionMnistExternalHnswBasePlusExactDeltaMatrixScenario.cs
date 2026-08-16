@@ -722,7 +722,12 @@ public static class FashionMnistExternalHnswBasePlusExactDeltaMatrixScenario
         string.Create(CultureInfo.InvariantCulture, $"case-{caseNumber:D3}-{topK}k-{updateProfileName}-{hnswProfileName}");
 
     private static string ToCommandLineMetric(VectorMetric metric) =>
-        metric == VectorMetric.Cosine ? "cosine" : "squared-euclidean";
+        metric switch
+        {
+            VectorMetric.Cosine => "cosine",
+            VectorMetric.InnerProduct => "inner-product",
+            _ => "squared-euclidean"
+        };
 
     private static double? MinOrNull(double[] values) => values.Length == 0 ? null : values.Min();
 

@@ -920,6 +920,7 @@ public static class CommandLine
         int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
         int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
         ulong hnswSeed = GetUInt64Seed(values, "hnsw-seed", defaults.HnswSeed);
+        GeneratedVectorProfile vectorProfile = GetGeneratedVectorProfile(values, "vector-profile", defaults.VectorProfile);
         string outputPath = values.TryGetValue("output", out string? outputValue)
             ? outputValue
             : Path.Combine(
@@ -942,8 +943,10 @@ public static class CommandLine
 
         if (!IsSupportedGeneratedHnswMetric(metric))
         {
-            throw new ArgumentException("hnsw-generated-durable supports SquaredEuclidean and Cosine only.");
+            throw new ArgumentException("hnsw-generated-durable supports SquaredEuclidean, InnerProduct and Cosine only.");
         }
+
+        ValidateGeneratedVectorProfileMetricCompatibility(vectorProfile, metric);
 
         if (topK > vectorCount)
         {
@@ -979,7 +982,8 @@ public static class CommandLine
             m,
             efConstruction,
             efSearch,
-            hnswSeed);
+            hnswSeed,
+            vectorProfile);
     }
 
     public static HnswAllowlistFilteringOptions ParseHnswAllowlistFiltering(IReadOnlyList<string> args)
@@ -1018,6 +1022,7 @@ public static class CommandLine
         int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
         int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
         ulong hnswSeed = GetUInt64Seed(values, "hnsw-seed", defaults.HnswSeed);
+        GeneratedVectorProfile vectorProfile = GetGeneratedVectorProfile(values, "vector-profile", defaults.VectorProfile);
         string outputPath = values.TryGetValue("output", out string? outputValue)
             ? outputValue
             : Path.Combine(
@@ -1071,12 +1076,15 @@ public static class CommandLine
             m,
             efConstruction,
             efSearch,
-            hnswSeed);
+            hnswSeed,
+            vectorProfile);
 
         if (!IsSupportedGeneratedHnswMetric(metric))
         {
-            throw new ArgumentException("generated-hnsw-allowlist-filtered supports SquaredEuclidean and Cosine only.");
+            throw new ArgumentException("generated-hnsw-allowlist-filtered supports SquaredEuclidean, InnerProduct and Cosine only.");
         }
+
+        ValidateGeneratedVectorProfileMetricCompatibility(vectorProfile, metric);
 
         if (topK > efSearch)
         {
@@ -1162,7 +1170,7 @@ public static class CommandLine
         VectorMetric metric = GetEnum(values, "metric", VectorMetric.SquaredEuclidean);
         if (!IsSupportedGeneratedHnswMetric(metric))
         {
-            throw new ArgumentException("generated-hnsw-allowlist-filtered-matrix supports SquaredEuclidean and Cosine only.");
+            throw new ArgumentException("generated-hnsw-allowlist-filtered-matrix supports SquaredEuclidean, InnerProduct and Cosine only.");
         }
 
         uint seed = GetSeed(values, "seed", 0x5EED2148);
@@ -1223,6 +1231,7 @@ public static class CommandLine
         int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
         int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
         ulong hnswSeed = GetUInt64Seed(values, "hnsw-seed", defaults.HnswSeed);
+        GeneratedVectorProfile vectorProfile = GetGeneratedVectorProfile(values, "vector-profile", defaults.VectorProfile);
         int sampleIntervalMilliseconds = GetPositiveInt(values, "sample-interval-ms", defaults.SampleIntervalMilliseconds);
         string outputPath = values.TryGetValue("output", out string? outputValue)
             ? outputValue
@@ -1244,10 +1253,12 @@ public static class CommandLine
             throw new ArgumentException("Option --snapshot-directory must not be empty.");
         }
 
-        if (metric != VectorMetric.SquaredEuclidean)
+        if (metric is not (VectorMetric.SquaredEuclidean or VectorMetric.InnerProduct))
         {
-            throw new ArgumentException("generated-hnsw-memory-smoke supports only SquaredEuclidean.");
+            throw new ArgumentException("generated-hnsw-memory-smoke supports only SquaredEuclidean and InnerProduct.");
         }
+
+        ValidateGeneratedVectorProfileMetricCompatibility(vectorProfile, metric);
 
         if (topK > vectorCount)
         {
@@ -1288,7 +1299,8 @@ public static class CommandLine
             efConstruction,
             efSearch,
             hnswSeed,
-            sampleIntervalMilliseconds);
+            sampleIntervalMilliseconds,
+            vectorProfile);
     }
 
     public static HnswEstablishedComparisonOptions ParseHnswEstablishedComparison(IReadOnlyList<string> args)
@@ -1774,6 +1786,7 @@ public static class CommandLine
         int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
         int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
         ulong hnswSeed = GetUInt64Seed(values, "hnsw-seed", defaults.HnswSeed);
+        GeneratedVectorProfile vectorProfile = GetGeneratedVectorProfile(values, "vector-profile", defaults.VectorProfile);
         string outputPath = values.TryGetValue("output", out string? outputValue)
             ? outputValue
             : Path.Combine(
@@ -1787,8 +1800,10 @@ public static class CommandLine
 
         if (!IsSupportedGeneratedHnswMetric(metric))
         {
-            throw new ArgumentException("hnsw-generated supports SquaredEuclidean and Cosine only.");
+            throw new ArgumentException("hnsw-generated supports SquaredEuclidean, InnerProduct and Cosine only.");
         }
+
+        ValidateGeneratedVectorProfileMetricCompatibility(vectorProfile, metric);
 
         if (topK > vectorCount)
         {
@@ -1828,7 +1843,8 @@ public static class CommandLine
             m,
             efConstruction,
             efSearch,
-            hnswSeed);
+            hnswSeed,
+            vectorProfile);
     }
 
     public static HnswBasePlusExactDeltaGeneratedOptions ParseHnswBasePlusExactDeltaGenerated(IReadOnlyList<string> args)
@@ -1863,7 +1879,9 @@ public static class CommandLine
         int m = GetPositiveInt(values, "m", defaults.M);
         int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
         int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
+        int workspaceEfSearch = GetPositiveInt(values, "workspace-ef-search", defaults.EffectiveWorkspaceEfSearch);
         ulong hnswSeed = GetUInt64Seed(values, "hnsw-seed", defaults.HnswSeed);
+        GeneratedVectorProfile vectorProfile = GetGeneratedVectorProfile(values, "vector-profile", defaults.VectorProfile);
         string outputPath = values.TryGetValue("output", out string? outputValue)
             ? outputValue
             : Path.Combine(
@@ -1877,8 +1895,10 @@ public static class CommandLine
 
         if (!IsSupportedGeneratedHnswMetric(metric))
         {
-            throw new ArgumentException("generated-hnsw-base-plus-exact-delta supports SquaredEuclidean and Cosine only.");
+            throw new ArgumentException("generated-hnsw-base-plus-exact-delta supports SquaredEuclidean, InnerProduct and Cosine only.");
         }
+
+        ValidateGeneratedVectorProfileMetricCompatibility(vectorProfile, metric);
 
         if (deletedBaseCount > baseVectorCount)
         {
@@ -1921,6 +1941,11 @@ public static class CommandLine
             throw new ArgumentException("Option --ef-search must be in the range 1..4096.");
         }
 
+        if (workspaceEfSearch < efSearch || workspaceEfSearch > 4096)
+        {
+            throw new ArgumentException("Option --workspace-ef-search must be at least --ef-search and no more than 4096.");
+        }
+
         return new HnswBasePlusExactDeltaGeneratedOptions(
             metric,
             dimension,
@@ -1940,7 +1965,9 @@ public static class CommandLine
             m,
             efConstruction,
             efSearch,
-            hnswSeed);
+            hnswSeed,
+            workspaceEfSearch,
+            vectorProfile);
     }
 
     public static HnswBasePlusExactDeltaCheckpointOptions ParseHnswBasePlusExactDeltaCheckpoint(IReadOnlyList<string> args)
@@ -1975,7 +2002,9 @@ public static class CommandLine
         int m = GetPositiveInt(values, "m", defaults.M);
         int efConstruction = GetPositiveInt(values, "ef-construction", defaults.EfConstruction);
         int efSearch = GetPositiveInt(values, "ef-search", defaults.EfSearch);
+        int workspaceEfSearch = GetPositiveInt(values, "workspace-ef-search", defaults.EffectiveWorkspaceEfSearch);
         ulong hnswSeed = GetUInt64Seed(values, "hnsw-seed", defaults.HnswSeed);
+        GeneratedVectorProfile vectorProfile = GetGeneratedVectorProfile(values, "vector-profile", defaults.VectorProfile);
         string outputPath = values.TryGetValue("output", out string? outputValue)
             ? outputValue
             : Path.Combine(
@@ -1999,8 +2028,10 @@ public static class CommandLine
 
         if (!IsSupportedGeneratedHnswMetric(metric))
         {
-            throw new ArgumentException("generated-hnsw-base-plus-exact-delta-checkpoint supports SquaredEuclidean and Cosine only.");
+            throw new ArgumentException("generated-hnsw-base-plus-exact-delta-checkpoint supports SquaredEuclidean, InnerProduct and Cosine only.");
         }
+
+        ValidateGeneratedVectorProfileMetricCompatibility(vectorProfile, metric);
 
         if (deletedBaseCount > baseVectorCount)
         {
@@ -2038,6 +2069,11 @@ public static class CommandLine
             throw new ArgumentException("Option --ef-search must be at least --top-k and no more than 4096.");
         }
 
+        if (workspaceEfSearch < efSearch || workspaceEfSearch > 4096)
+        {
+            throw new ArgumentException("Option --workspace-ef-search must be at least --ef-search and no more than 4096.");
+        }
+
         return new HnswBasePlusExactDeltaCheckpointOptions(
             metric,
             dimension,
@@ -2058,7 +2094,9 @@ public static class CommandLine
             m,
             efConstruction,
             efSearch,
-            hnswSeed);
+            hnswSeed,
+            workspaceEfSearch,
+            vectorProfile);
     }
 
     public static HnswBasePlusExactDeltaMatrixOptions ParseHnswBasePlusExactDeltaMatrix(IReadOnlyList<string> args)
@@ -2165,7 +2203,7 @@ public static class CommandLine
         VectorMetric metric = GetEnum(values, "metric", VectorMetric.SquaredEuclidean);
         if (!IsSupportedGeneratedHnswMetric(metric))
         {
-            throw new ArgumentException("generated-hnsw-base-plus-exact-delta-checkpoint-matrix supports SquaredEuclidean and Cosine only.");
+            throw new ArgumentException("generated-hnsw-base-plus-exact-delta-checkpoint-matrix supports SquaredEuclidean, InnerProduct and Cosine only.");
         }
 
         uint seed = GetSeed(values, "seed", 0x5EED2136);
@@ -3279,7 +3317,8 @@ public static class CommandLine
         string.Equals(name, "m", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vector-profile", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedHnswMemorySmokeOption(string name) =>
         string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
@@ -3295,7 +3334,8 @@ public static class CommandLine
         string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(name, "sample-interval-ms", StringComparison.OrdinalIgnoreCase);
+        string.Equals(name, "sample-interval-ms", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vector-profile", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedHnswEstablishedComparisonOption(string name) =>
         string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
@@ -3468,7 +3508,8 @@ public static class CommandLine
         string.Equals(name, "m", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vector-profile", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedHnswAllowlistFilteringOption(string name) =>
         string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
@@ -3492,7 +3533,8 @@ public static class CommandLine
         string.Equals(name, "m", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vector-profile", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedHnswAllowlistFilteringMatrixOption(string name) =>
         string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||
@@ -3526,7 +3568,9 @@ public static class CommandLine
         string.Equals(name, "m", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "workspace-ef-search", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vector-profile", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedHnswBasePlusExactDeltaCheckpointOption(string name) =>
         string.Equals(name, "metric", StringComparison.OrdinalIgnoreCase) ||
@@ -3548,7 +3592,9 @@ public static class CommandLine
         string.Equals(name, "m", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-construction", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "ef-search", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase);
+        string.Equals(name, "hnsw-seed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "workspace-ef-search", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "vector-profile", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedHnswBasePlusExactDeltaMatrixOption(string name) =>
         string.Equals(name, "preset", StringComparison.OrdinalIgnoreCase) ||
@@ -3588,7 +3634,28 @@ public static class CommandLine
         string.Equals(name, "manifest", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedGeneratedHnswMetric(VectorMetric metric) =>
-        metric is VectorMetric.SquaredEuclidean or VectorMetric.Cosine;
+        metric is VectorMetric.SquaredEuclidean or VectorMetric.InnerProduct or VectorMetric.Cosine;
+
+    private static GeneratedVectorProfile GetGeneratedVectorProfile(
+        Dictionary<string, string> values,
+        string name,
+        GeneratedVectorProfile defaultValue)
+    {
+        if (!values.TryGetValue(name, out string? value))
+        {
+            return defaultValue;
+        }
+
+        return GeneratedDatasetFactory.NormalizeVectorProfile(value);
+    }
+
+    private static void ValidateGeneratedVectorProfileMetricCompatibility(GeneratedVectorProfile vectorProfile, VectorMetric metric)
+    {
+        if (vectorProfile == GeneratedVectorProfile.ZeroVector && metric == VectorMetric.Cosine)
+        {
+            throw new ArgumentException("Option --vector-profile zero-vector is supported only for SquaredEuclidean and InnerProduct.");
+        }
+    }
 
     private static VectorMetric GetExternalFashionMnistMetric(Dictionary<string, string> values, string name, VectorMetric defaultValue)
     {
@@ -3607,6 +3674,12 @@ public static class CommandLine
             string.Equals(value, nameof(VectorMetric.Cosine), StringComparison.OrdinalIgnoreCase))
         {
             return VectorMetric.Cosine;
+        }
+
+        if (string.Equals(value, "inner-product", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(value, nameof(VectorMetric.InnerProduct), StringComparison.OrdinalIgnoreCase))
+        {
+            return VectorMetric.InnerProduct;
         }
 
         throw new ArgumentException($"Option --{name} has unsupported value '{value}'.");

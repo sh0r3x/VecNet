@@ -31,7 +31,6 @@ public sealed class Vec074DurableHnswGeneratedTests
 
     [Theory]
     [InlineData("unexpected")]
-    [InlineData("hnsw-generated-durable", "--metric", "InnerProduct")]
     [InlineData("hnsw-generated-durable", "--dimension", "0")]
     [InlineData("hnsw-generated-durable", "--vectors", "0")]
     [InlineData("hnsw-generated-durable", "--queries", "0")]
@@ -61,7 +60,7 @@ public sealed class Vec074DurableHnswGeneratedTests
     }
 
     [Fact]
-    public void ParseDurableHnswGenerated_AcceptsCosineAndRejectsInnerProduct()
+    public void ParseDurableHnswGenerated_AcceptsCosineAndInnerProduct()
     {
         DurableHnswGeneratedOptions cosine = CommandLine.ParseDurableHnswGenerated(
             [
@@ -76,19 +75,18 @@ public sealed class Vec074DurableHnswGeneratedTests
 
         Assert.Equal(VectorMetric.Cosine, cosine.Metric);
 
-        ArgumentException rejected = Assert.Throws<ArgumentException>(
-            () => CommandLine.ParseDurableHnswGenerated(
-                [
-                    "hnsw-generated-durable",
-                    "--metric", "InnerProduct",
-                    "--dimension", "6",
-                    "--vectors", "16",
-                    "--queries", "2",
-                    "--top-k", "3",
-                    "--ef-search", "3"
-                ]));
-        Assert.Contains("Cosine", rejected.Message, StringComparison.Ordinal);
-        Assert.Contains("SquaredEuclidean", rejected.Message, StringComparison.Ordinal);
+        DurableHnswGeneratedOptions innerProduct = CommandLine.ParseDurableHnswGenerated(
+            [
+                "hnsw-generated-durable",
+                "--metric", "InnerProduct",
+                "--dimension", "6",
+                "--vectors", "16",
+                "--queries", "2",
+                "--top-k", "3",
+                "--ef-search", "3"
+            ]);
+
+        Assert.Equal(VectorMetric.InnerProduct, innerProduct.Metric);
     }
 
     [Fact]

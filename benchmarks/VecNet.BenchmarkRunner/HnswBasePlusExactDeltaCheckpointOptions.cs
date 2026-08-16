@@ -20,13 +20,17 @@ public sealed record HnswBasePlusExactDeltaCheckpointOptions(
     int M,
     int EfConstruction,
     int EfSearch,
-    ulong HnswSeed)
+    ulong HnswSeed,
+    int? WorkspaceEfSearch = null,
+    GeneratedVectorProfile VectorProfile = GeneratedVectorProfile.Uniform)
 {
     public const string ScenarioName = "generated-hnsw-base-plus-exact-delta-checkpoint";
 
     public int PhysicalVectorCount => checked(BaseVectorCount + InsertedDeltaCount);
 
     public int LiveVectorCount => checked(BaseVectorCount + InsertedDeltaCount - DeletedBaseCount - DeletedDeltaCount);
+
+    public int EffectiveWorkspaceEfSearch => WorkspaceEfSearch ?? EfSearch;
 
     public static HnswBasePlusExactDeltaCheckpointOptions Default { get; } = new(
         VectorMetric.SquaredEuclidean,

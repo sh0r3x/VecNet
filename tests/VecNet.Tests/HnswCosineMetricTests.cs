@@ -8,12 +8,13 @@ namespace VecNet.Tests;
 public sealed class HnswCosineMetricTests
 {
     [Fact]
-    public void Constructor_AcceptsCosineAndStillRejectsInnerProduct()
+    public void Constructor_AcceptsCosineAndInnerProduct()
     {
         var cosine = new HnswIndex(3, VectorMetric.Cosine, new HnswIndexOptions(2, 8, 8, 0x227UL));
+        var innerProduct = new HnswIndex(3, VectorMetric.InnerProduct, new HnswIndexOptions(2, 8, 8, 0x228UL));
 
         Assert.Equal(VectorMetric.Cosine, cosine.Metric);
-        Assert.Throws<NotSupportedException>(() => new HnswIndex(3, VectorMetric.InnerProduct));
+        Assert.Equal(VectorMetric.InnerProduct, innerProduct.Metric);
     }
 
     [Fact]

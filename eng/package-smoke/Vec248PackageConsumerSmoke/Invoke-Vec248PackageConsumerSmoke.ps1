@@ -8,17 +8,16 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "../../..")
-$consumerSource = Join-Path $repoRoot "eng/package-smoke/Vec248PackageConsumerSmoke"
+$consumerSource = $PSScriptRoot
 $consumerRoot = Join-Path $ArtifactRoot "consumer"
-$packagesRoot = Join-Path $ArtifactRoot "packages-cache"
+$packagesRoot = Join-Path $ArtifactRoot "packages"
 $runRoot = Join-Path $ArtifactRoot "run"
 $nugetConfig = Join-Path $ArtifactRoot "NuGet.local.config"
 
 New-Item -ItemType Directory -Force -Path $ArtifactRoot, $consumerRoot, $packagesRoot, $runRoot | Out-Null
 Copy-Item -Path (Join-Path $consumerSource "*") -Destination $consumerRoot -Recurse -Force
-Remove-Item -LiteralPath (Join-Path $consumerRoot "Inspect-Vec248Packages.ps1") -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath (Join-Path $consumerRoot "Invoke-Vec248PackageConsumerSmoke.ps1") -Force -ErrorAction SilentlyContinue
+Get-ChildItem -LiteralPath $consumerRoot -Filter "*.ps1" |
+    Remove-Item -Force -ErrorAction SilentlyContinue
 
 @"
 <?xml version="1.0" encoding="utf-8"?>
@@ -41,7 +40,7 @@ function Expand-Package {
         throw "Package file not found: $PackagePath"
     }
 
-    $expanded = Join-Path ([System.IO.Path]::GetTempPath()) ("vec248-package-smoke-" + [Guid]::NewGuid().ToString("N"))
+    $expanded = Join-Path ([System.IO.Path]::GetTempPath()) ("vecnet-package-smoke-" + [Guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Force -Path $expanded | Out-Null
     $zipPath = Join-Path $expanded "package.zip"
     Copy-Item -LiteralPath $PackagePath -Destination $zipPath
@@ -128,14 +127,22 @@ function Invoke-Checked {
         [string] $FilePath,
 
         [Parameter(Mandatory = $true)]
-        [string[]] $Arguments
+        [string[]] $Arguments,
+
+        [Parameter(Mandatory = $true)]
+        [string] $DisplayName
     )
 
-    Write-Host ">> $FilePath $($Arguments -join ' ')"
-    & $FilePath @Arguments
+    Write-Host ">> $DisplayName"
+    $output = & $FilePath @Arguments 2>&1
     if ($LASTEXITCODE -ne 0) {
-        throw "Command failed with exit code ${LASTEXITCODE}: $FilePath $($Arguments -join ' ')"
+        $output | ForEach-Object { Write-Host $_ }
+        throw "Command failed with exit code ${LASTEXITCODE}: $DisplayName"
     }
+
+    $output |
+        Where-Object { $_ -match '^(PACKAGE_|COMPATIBILITY_)' } |
+        ForEach-Object { Write-Host $_ }
 }
 
 function Assert-PackageReferenceRestore {
@@ -147,7 +154,11 @@ function Assert-PackageReferenceRestore {
         [string] $AdapterPackageVersion
     )
 
-    $projectPath = Join-Path $consumerRoot "Vec248PackageConsumer.csproj"
+    $projectPath = (Get-ChildItem -LiteralPath $consumerRoot -Filter "*.csproj" | Select-Object -First 1).FullName
+    if ([string]::IsNullOrEmpty($projectPath)) {
+        throw "Consumer project was not found."
+    }
+
     [xml] $project = Get-Content -LiteralPath $projectPath -Raw
     if ($project.Project.ItemGroup.ProjectReference) {
         throw "Consumer project must not contain ProjectReference items."
@@ -191,7 +202,11 @@ function Assert-PackageReferenceRestore {
     }
 }
 
-$projectPath = Join-Path $consumerRoot "Vec248PackageConsumer.csproj"
+$projectPath = (Get-ChildItem -LiteralPath $consumerRoot -Filter "*.csproj" | Select-Object -First 1).FullName
+if ([string]::IsNullOrEmpty($projectPath)) {
+    throw "Consumer project was not found."
+}
+
 $corePackage = Get-RequiredPackageInfo -PackageId "VecNet"
 $adapterPackage = Get-RequiredPackageInfo -PackageId "VecNet.Integration.VectorData"
 if ($adapterPackage.Version -ne $corePackage.Version) {
@@ -203,7 +218,7 @@ Set-PackageReferenceVersion -Project $project -PackageId "VecNet" -Version $core
 Set-PackageReferenceVersion -Project $project -PackageId "VecNet.Integration.VectorData" -Version $adapterPackage.Version
 $project.Save($projectPath)
 
-Invoke-Checked "dotnet" @("restore", $projectPath, "--configfile", $nugetConfig, "--packages", $packagesRoot)
+Invoke-Checked "dotnet" @("restore", $projectPath, "--configfile", $nugetConfig, "--packages", $packagesRoot, "--verbosity", "quiet") "restore package consumer"
 Assert-PackageReferenceRestore -CorePackageVersion $corePackage.Version -AdapterPackageVersion $adapterPackage.Version
-Invoke-Checked "dotnet" @("build", $projectPath, "--configuration", "Release", "--no-restore")
-Invoke-Checked "dotnet" @("run", "--project", $projectPath, "--configuration", "Release", "--no-build", "--", $runRoot)
+Invoke-Checked "dotnet" @("build", $projectPath, "--configuration", "Release", "--no-restore", "--verbosity", "quiet") "build package consumer"
+Invoke-Checked "dotnet" @("run", "--project", $projectPath, "--configuration", "Release", "--no-build", "--", $runRoot) "run package consumer"

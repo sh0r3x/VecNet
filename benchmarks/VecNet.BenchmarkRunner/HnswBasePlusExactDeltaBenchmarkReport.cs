@@ -27,6 +27,7 @@ public sealed record HnswBasePlusExactDeltaBenchmarkReport(
     MeasurementInfo Measurement,
     HnswBasePlusExactDeltaMetricsInfo Metrics,
     HnswBasePlusExactDeltaUnderfillInfo Underfill,
+    HnswBasePlusExactDeltaRetryDiagnosticsInfo RetryDiagnostics,
     HnswBasePlusExactDeltaValidationInfo Validation,
     HnswEligibilityInfo Eligibility,
     string[] Notes);
@@ -105,6 +106,24 @@ public sealed record HnswBasePlusExactDeltaUnderfillInfo(
     int TotalReturnedResults,
     int UnderfilledQueryCount,
     int UnderfilledSlotCount,
+    string Policy);
+
+public sealed record HnswBasePlusExactDeltaRetryDiagnosticsInfo(
+    string Status,
+    int FirstPassEfSearch,
+    int WorkspaceEfSearchCeiling,
+    int EffectiveRetryEfSearchCeiling,
+    int RetryWidthDelta,
+    bool WorkspaceCanWidenBeyondFirstPass,
+    bool BaseTombstonesPresent,
+    int FirstPassTotalReturnedResults,
+    int FinalTotalReturnedResults,
+    int QueryCountWithMoreResultsAfterWidening,
+    int QueryCountWithDifferentResultsAfterWidening,
+    bool RetryWideningObserved,
+    bool UnderfillRemainedAfterWidening,
+    int UnderfilledQueryCountAfterWidening,
+    int UnderfilledSlotCountAfterWidening,
     string Policy);
 
 public sealed record HnswBasePlusExactDeltaValidationInfo(

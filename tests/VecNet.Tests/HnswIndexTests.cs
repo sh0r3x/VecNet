@@ -9,8 +9,7 @@ public sealed class HnswIndexTests
             () => new HnswIndex(0, VectorMetric.SquaredEuclidean, HnswIndexOptions.Default));
         Assert.Throws<ArgumentOutOfRangeException>(
             () => new HnswIndex(2, (VectorMetric)99, HnswIndexOptions.Default));
-        Assert.Throws<NotSupportedException>(
-            () => new HnswIndex(2, VectorMetric.InnerProduct, HnswIndexOptions.Default));
+        Assert.Equal(VectorMetric.InnerProduct, new HnswIndex(2, VectorMetric.InnerProduct, HnswIndexOptions.Default).Metric);
         Assert.Equal(VectorMetric.Cosine, new HnswIndex(2, VectorMetric.Cosine, HnswIndexOptions.Default).Metric);
 
         Assert.Throws<ArgumentOutOfRangeException>(

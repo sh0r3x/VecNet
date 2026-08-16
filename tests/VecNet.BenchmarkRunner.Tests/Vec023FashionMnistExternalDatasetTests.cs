@@ -37,14 +37,15 @@ public sealed class Vec023FashionMnistExternalDatasetTests
     }
 
     [Fact]
-    public void ParseExternalFashionMnist_AcceptsCosineAndRejectsInnerProduct()
+    public void ParseExternalFashionMnist_AcceptsCosineAndInnerProduct()
     {
-        FashionMnistExternalDatasetOptions options =
+        FashionMnistExternalDatasetOptions cosine =
             CommandLine.ParseExternalFashionMnist(["external-fashion-mnist", "--metric", "Cosine"]);
+        FashionMnistExternalDatasetOptions innerProduct =
+            CommandLine.ParseExternalFashionMnist(["external-fashion-mnist", "--metric", "InnerProduct"]);
 
-        Assert.Equal(VectorMetric.Cosine, options.Metric);
-        Assert.Throws<ArgumentException>(() =>
-            CommandLine.ParseExternalFashionMnist(["external-fashion-mnist", "--metric", "InnerProduct"]));
+        Assert.Equal(VectorMetric.Cosine, cosine.Metric);
+        Assert.Equal(VectorMetric.InnerProduct, innerProduct.Metric);
     }
 
     [Fact]

@@ -3,7 +3,7 @@ using VecNet;
 
 if (args.Length != 1)
 {
-    throw new ArgumentException("Usage: Vec281CurrentReader <artifact-root>");
+    throw new ArgumentException("Usage: <artifact-root>");
 }
 
 string artifactRoot = Path.GetFullPath(args[0]);
@@ -35,7 +35,7 @@ if (scenarioCount == 0)
     throw new InvalidOperationException("No baseline scenarios were found.");
 }
 
-Console.WriteLine($"VEC281_CURRENT_READER_PASSED scenarios={scenarioCount}");
+Console.WriteLine($"COMPATIBILITY_CURRENT_READER_PASSED scenarios={scenarioCount}");
 
 static SearchResult[] SearchExact(ExactFlatIndex index, float[] query, int top)
 {

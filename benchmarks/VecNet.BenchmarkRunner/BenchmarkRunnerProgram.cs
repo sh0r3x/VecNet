@@ -41,6 +41,19 @@ public static class BenchmarkRunnerProgram
                 return 0;
             }
 
+            if (args.Length > 0 && string.Equals(args[0], InnerProductHotPathOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
+            {
+                InnerProductHotPathOptions hotPathOptions = CommandLine.ParseInnerProductHotPath(args);
+                InnerProductHotPathReport hotPathReport = InnerProductHotPathScenario.Run(hotPathOptions);
+                InnerProductHotPathScenario.Write(hotPathReport, hotPathOptions.OutputPath);
+
+                Console.WriteLine(
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"Wrote private inner-product hot-path report with validation status {hotPathReport.Validation.Status}."));
+                return 0;
+            }
+
             if (args.Length > 0 && string.Equals(args[0], GeneratedExactFilteredOptions.ScenarioName, StringComparison.OrdinalIgnoreCase))
             {
                 GeneratedExactFilteredOptions filteredOptions = CommandLine.ParseGeneratedExactFiltered(args);
@@ -535,6 +548,7 @@ public static class BenchmarkRunnerProgram
         writer.WriteLine("Usage:");
         writer.WriteLine("  exact-generated --metric SquaredEuclidean --dimension 128 --vectors 10000 --queries 100 --top-k 10 --runs 1 --warmup-queries 0 --seed 0x5EED2009 --output VecNet.BenchmarkRunner.Artifacts/report.json [--baseline-report-id report-id]");
         writer.WriteLine("  exact-generated-matrix --preset smoke|standard --vectors 128 --queries 8 --runs 1 --warmup-queries 0 --seed 0x5EED2014 --output-dir VecNet.BenchmarkRunner.Artifacts/matrix --manifest VecNet.BenchmarkRunner.Artifacts/matrix/matrix-manifest.json");
+        writer.WriteLine("  inner-product-hot-path --dimensions 31,33,127,128,129,384,386,768,769,1536 --vectors 512 --queries 16 --runs 1 --warmup-iterations 1 --operation-shape all|exact-flat-search|hnsw-build-distance-calls|hnsw-search-distance-calls --ef-construction 64 --ef-search 64 --seed 0x5EED2360 --output VecNet.BenchmarkRunner.Artifacts/inner-product-hot-path.json");
         writer.WriteLine("  exact-generated-filtered --metric SquaredEuclidean --dimension 128 --vectors 10000 --queries 100 --top-k 10 --filter all|broad|selective|very-selective|empty --duplicate-ids 0 --unknown-ids 0 --runs 1 --warmup-queries 0 --seed 0x5EED2046 --output VecNet.BenchmarkRunner.Artifacts/exact-generated-filtered.json");
         writer.WriteLine("  exact-generated-filtered-matrix --preset smoke|standard --vectors 128 --queries 4 --duplicate-ids 0 --unknown-ids 0 --runs 1 --warmup-queries 0 --seed 0x5EED2047 --output-dir VecNet.BenchmarkRunner.Artifacts/exact-filtered-matrix --manifest VecNet.BenchmarkRunner.Artifacts/exact-filtered-matrix/exact-filtered-matrix-manifest.json");
         writer.WriteLine("  generated-exact-candidate-set --metric SquaredEuclidean --dimension 128 --vectors 10000 --queries 100 --top-k 10 --candidate-set all|broad|selective|very-selective|empty --duplicate-ids 0 --unknown-ids 0 --runs 1 --warmup-queries 0 --seed 0x5EED2053 --output VecNet.BenchmarkRunner.Artifacts/generated-exact-candidate-set.json");

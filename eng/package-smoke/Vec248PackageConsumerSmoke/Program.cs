@@ -7,6 +7,7 @@ string artifactRoot = args.Length > 0
     : Path.Combine(Path.GetTempPath(), "vecnet-package-consumer-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(artifactRoot);
 
+RunExactFlatPackageSmoke(Path.Combine(artifactRoot, "exact-flat"));
 RunHnswCosinePackageSmoke(Path.Combine(artifactRoot, "hnsw-cosine"));
 RunHnswInnerProductPackageSmoke(Path.Combine(artifactRoot, "hnsw-inner-product"));
 RunMutableHnswCosinePackageSmoke(Path.Combine(artifactRoot, "hnsw-mutable-cosine"));
@@ -14,6 +15,44 @@ RunMutableHnswInnerProductPackageSmoke(Path.Combine(artifactRoot, "hnsw-mutable-
 await RunVectorDataAdapterSmoke();
 
 Console.WriteLine("PACKAGE_CONSUMER_SMOKE_PASSED");
+
+static void RunExactFlatPackageSmoke(string artifactRoot)
+{
+    ResetDirectory(artifactRoot);
+
+    var index = new ExactFlatIndex(dimension: 2, VectorMetric.SquaredEuclidean, initialCapacity: 4);
+    index.Add(40, [3f, 0f]);
+    index.Add(10, [0f, 0f]);
+    index.Add(30, [2f, 0f]);
+    index.Add(20, [1f, 0f]);
+
+    SearchResult[] results = SearchExact(index, [0f, 0f], 3);
+    Require(
+        results.Select(static result => result.Id).SequenceEqual([10UL, 20UL, 30UL]),
+        "Exact-flat package search should rank nearest squared-L2 rows.");
+    Require(
+        results.Select(static result => result.Distance).SequenceEqual([0f, 1f, 4f]),
+        "Exact-flat package search should expose squared-L2 distances.");
+
+    string savePath = Path.Combine(artifactRoot, "saved");
+    index.Save(savePath);
+    ExactFlatIndex opened = ExactFlatIndex.OpenReadOnly(savePath);
+    Require(opened.Metric == VectorMetric.SquaredEuclidean, "Opened exact-flat index should preserve metric.");
+    ExpectThrows<InvalidOperationException>(
+        () => opened.Add(50, [4f, 0f]),
+        "Opened exact-flat indexes should reject build ingestion.");
+
+    SearchResult[] openedResults = SearchExact(opened, [0f, 0f], 3);
+    Require(
+        openedResults.Select(static result => result.Id).SequenceEqual(results.Select(static result => result.Id)),
+        "Opened exact-flat package search should preserve result IDs.");
+    for (int i = 0; i < openedResults.Length; i++)
+    {
+        Require(
+            Math.Abs(openedResults[i].Distance - results[i].Distance) <= 0.000001f,
+            "Opened exact-flat package search should preserve distances.");
+    }
+}
 
 static void RunHnswCosinePackageSmoke(string artifactRoot)
 {
@@ -319,6 +358,13 @@ static SearchResult[] SearchMutableHnswAllowed(HnswMutableIndex index, float[] q
 {
     var results = new SearchResult[top];
     int written = index.Search(query, allowedIds, results, new HnswMutableSearchWorkspace(index, top));
+    return results[..written];
+}
+
+static SearchResult[] SearchExact(ExactFlatIndex index, float[] query, int top)
+{
+    var results = new SearchResult[top];
+    int written = index.Search(query, results);
     return results[..written];
 }
 

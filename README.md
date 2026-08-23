@@ -55,11 +55,12 @@ for (int i = 0; i < written; i++)
 }
 ```
 
-## HNSW Cosine Example
+## HNSW First-Use Examples
 
-For a batch-built approximate cosine index, create `HnswIndex` with
-`VectorMetric.Cosine`, add non-zero vectors, search with your own result buffer
-and workspace, then save and reopen the durable index as read-only.
+For approximate graph search, create `HnswIndex` with the metric you want, add
+vectors, and search with your own result buffer and workspace.
+
+Squared L2 keeps ordinary distance semantics: lower squared distance is nearer.
 
 ```csharp
 using VecNet;
@@ -70,7 +71,7 @@ var options = new HnswIndexOptions(
     EfSearch: 50,
     RandomSeed: 12345UL);
 
-var index = new HnswIndex(dimension: 3, VectorMetric.Cosine, options);
+var index = new HnswIndex(dimension: 3, VectorMetric.SquaredEuclidean, options);
 
 index.Add(1001, [1.0f, 0.0f, 0.0f]);
 index.Add(1002, [0.0f, 1.0f, 0.0f]);
@@ -80,17 +81,46 @@ Span<SearchResult> results = stackalloc SearchResult[2];
 HnswSearchWorkspace workspace = index.CreateSearchWorkspace();
 
 int written = index.Search([0.9f, 0.1f, 0.0f], results, workspace);
+```
 
-string path = Path.Combine(Environment.CurrentDirectory, "vecnet-hnsw-cosine");
-index.Save(path);
+Cosine is for direction-only similarity. VecNet normalizes inserted and query
+vectors for cosine indexes, and cosine rejects zero vectors.
 
-HnswIndex opened = HnswIndex.OpenReadOnly(path);
-HnswSearchWorkspace openedWorkspace = opened.CreateSearchWorkspace();
+```csharp
+using VecNet;
 
-int openedWritten = opened.Search(
-    [0.9f, 0.1f, 0.0f],
-    results,
-    openedWorkspace);
+var options = new HnswIndexOptions(M: 16, EfConstruction: 200, EfSearch: 50);
+var index = new HnswIndex(dimension: 3, VectorMetric.Cosine, options);
+
+index.Add(2001, [1.0f, 0.0f, 0.0f]);
+index.Add(2002, [0.0f, 1.0f, 0.0f]);
+index.Add(2003, [1.0f, 1.0f, 0.0f]);
+
+Span<SearchResult> results = stackalloc SearchResult[2];
+HnswSearchWorkspace workspace = index.CreateSearchWorkspace();
+
+int written = index.Search([0.8f, 0.2f, 0.0f], results, workspace);
+```
+
+Inner product uses raw vectors as supplied. VecNet does not normalize them,
+zero vectors are valid, and magnitude affects ranking: a larger dot product
+becomes a lower negative distance.
+
+```csharp
+using VecNet;
+
+var options = new HnswIndexOptions(M: 16, EfConstruction: 200, EfSearch: 50);
+var index = new HnswIndex(dimension: 3, VectorMetric.InnerProduct, options);
+
+index.Add(3001, [1.0f, 0.0f, 0.0f]);
+index.Add(3002, [2.0f, 0.0f, 0.0f]);
+index.Add(3003, [0.0f, 1.0f, 0.0f]);
+index.Add(3004, [0.0f, 0.0f, 0.0f]);
+
+Span<SearchResult> results = stackalloc SearchResult[2];
+HnswSearchWorkspace workspace = index.CreateSearchWorkspace();
+
+int written = index.Search([1.0f, 0.0f, 0.0f], results, workspace);
 ```
 
 ## Where Next?
@@ -115,6 +145,8 @@ VecNet has bounded benchmark summaries:
   [docs/benchmarks/hnsw-squared-l2.md](docs/benchmarks/hnsw-squared-l2.md).
 - `HnswIndex` cosine recall versus latency:
   [docs/benchmarks/hnsw-cosine.md](docs/benchmarks/hnsw-cosine.md).
+- `HnswIndex` inner-product recall versus latency:
+  [docs/benchmarks/hnsw-inner-product.md](docs/benchmarks/hnsw-inner-product.md).
 
 Read each methodology and limit section before using the numbers. The
 summaries are narrow search measurements, not capacity, package-wide,
@@ -172,8 +204,8 @@ or semantic-relevance claims.
 - External vector IDs as caller-owned `ulong` values.
 - Exact exhaustive search with these canonical distances:
   - `VectorMetric.SquaredEuclidean`: squared L2 distance.
-  - `VectorMetric.InnerProduct`: negative dot product, so lower distance is
-    still better.
+  - `VectorMetric.InnerProduct`: raw-vector negative dot product, so larger
+    dot product produces a lower distance and magnitude affects ranking.
   - `VectorMetric.Cosine`: `1 - dot` after VecNet normalizes inserted and
     query vectors.
 - Results ordered by ascending distance, then ascending external ID when the
@@ -271,13 +303,16 @@ Use `VectorMetric.SquaredEuclidean` when lower squared L2 distance is the
 desired ranking. VecNet keeps L2 squared; it does not take a square root merely
 for display.
 
-Use `VectorMetric.InnerProduct` when larger dot product should rank better.
-VecNet reports the canonical distance as negative dot product so all result
-ordering remains "lower distance is better."
+Use `VectorMetric.InnerProduct` when larger raw dot product should rank better.
+VecNet uses vectors as supplied, does not normalize inner-product vectors, and
+reports the canonical distance as negative dot product so all result ordering
+remains "lower distance is better." Magnitude affects ranking, zero vectors are
+valid, and an indexed vector is not necessarily its own nearest result under
+maximum inner product.
 
-Use `VectorMetric.Cosine` when angle/direction should rank better. VecNet
-normalizes inserted and query vectors for cosine indexes, rejects zero vectors,
-and reports `1 - dot(normalizedQuery, normalizedStored)`.
+Use `VectorMetric.Cosine` when direction-only similarity should rank better.
+VecNet normalizes inserted and query vectors for cosine indexes, rejects zero
+vectors, and reports `1 - dot(normalizedQuery, normalizedStored)`.
 
 HNSW supports squared L2, inner product, and cosine across immutable search,
 durable save/open, opened read-only search, caller-owned allowlist search, and
@@ -343,10 +378,13 @@ durable-format promise.
 ## HNSW
 
 `HnswIndex` is an approximate index for squared L2, inner product, and cosine.
-The example below uses squared L2. Inner product and cosine use the same
-immutable `HnswIndex` build/search and durable save/open surface, and each can
-also be wrapped by `HnswMutableIndex` for the update-oriented workflow
-described below.
+The example below uses squared L2; the first-use examples above show cosine
+and inner product as well. Inner product uses vectors as supplied, so VecNet
+does not normalize away magnitude and a larger dot product becomes a lower
+negative distance. Cosine is the direction-only metric. All three metrics use
+the same immutable `HnswIndex` build/search and durable save/open surface, and
+each can also be wrapped by `HnswMutableIndex` for the update-oriented
+workflow described below.
 
 Use `HnswIndexOptions` to choose build/search parameters, and pass a
 caller-owned `HnswSearchWorkspace` to every search.

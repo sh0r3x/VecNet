@@ -833,15 +833,7 @@ public sealed partial class ExactFlatIndex
     }
 
     private float InnerProductDistance(ReadOnlySpan<float> query, int offset)
-    {
-        double dotProduct = 0;
-        for (int i = 0; i < Dimension; i++)
-        {
-            dotProduct += (double)query[i] * _vectors[offset + i];
-        }
-
-        return (float)-dotProduct;
-    }
+        => InnerProductDistancePrimitive.Distance(query, _vectors.AsSpan(offset, Dimension));
 
     private float CosineDistance(ReadOnlySpan<float> query, double queryMagnitude, int offset)
     {

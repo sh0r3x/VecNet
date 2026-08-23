@@ -1,6 +1,21 @@
 # Changelog
 
-## 1.4.0 - 2026-08-15
+## 1.4.1 - Unreleased
+
+### Added
+
+- Added a bounded HNSW inner-product benchmark summary for immutable and
+  durable/opened read-only `HnswIndex` search.
+- Added compact README first-use examples for HNSW squared-L2, cosine, and
+  inner-product search.
+
+### Changed
+
+- Expanded README and XML inner-product wording to clarify raw-vector,
+  magnitude-sensitive ranking, zero-vector validity, negative-dot distances,
+  and cosine as the direction-only metric.
+
+## 1.4.0 - 2026-08-16
 
 ### Added
 

@@ -11,14 +11,14 @@ and durable application storage.
 Use VecNet from a `.NET 10` project. Add the core package:
 
 ```bash
-dotnet add package VecNet --version 1.4.0
+dotnet add package VecNet --version 1.4.1
 ```
 
 For `Microsoft.Extensions.VectorData` applications, add the separate optional
 exact-flat adapter package in addition to the core package:
 
 ```bash
-dotnet add package VecNet.Integration.VectorData --version 1.4.0
+dotnet add package VecNet.Integration.VectorData --version 1.4.1
 ```
 
 The core `VecNet` package intentionally has no runtime package dependencies
@@ -195,7 +195,7 @@ or semantic-relevance claims.
   projectable class record shape; unsupported projection shapes throw a clear
   `NotSupportedException`.
 
-## Supported 1.4.0 Feature List
+## Supported 1.4.1 Feature List
 
 - Target framework: `net10.0`.
 - The core `VecNet` package is dependency-free and ships managed `lib/net10.0`
@@ -290,7 +290,7 @@ or semantic-relevance claims.
 - Package installation and basic consumer checks do not create a public
   performance, platform support, NativeAOT, trimming, or universal deployment
   claim.
-- `1.4.0` is the stable package version for the supported public API surfaces
+- `1.4.1` is the stable package version for the supported public API surfaces
   described here. Except for the dedicated benchmark documents linked above,
   this README does not make public HNSW recall, latency, throughput,
   allocation, memory, capacity, storage-size, update-profile, concurrency,

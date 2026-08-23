@@ -20,6 +20,7 @@ if (requireArm64)
 
 RunExactSmoke(artifactRoot);
 RunHnswSmoke(artifactRoot);
+RunHnswInnerProductSmoke();
 RunMutableHnswSmoke(artifactRoot);
 AssertNoTempFiles(artifactRoot);
 AssertNoEmbeddedArtifactRoot(artifactRoot);
@@ -101,6 +102,31 @@ static void RunHnswSmoke(string artifactRoot)
     written = opened.Search([0f, 0f], results, openedWorkspace);
     Require(written == 3 && Contains(results[..written], 100), "Opened HNSW search failed.");
     ExpectThrows<InvalidOperationException>(() => opened.Add(999, [9f, 9f]), "Opened HNSW Add should throw.");
+}
+
+static void RunHnswInnerProductSmoke()
+{
+    var options = new HnswIndexOptions(M: 6, EfConstruction: 24, EfSearch: 24, RandomSeed: 704UL);
+    var index = new HnswIndex(3, VectorMetric.InnerProduct, options, initialCapacity: 6);
+
+    index.Add(200, [1f, 1f, 0f]);
+    index.Add(201, [5f, 0f, 0f]);
+    index.Add(202, [0f, 4f, 0f]);
+    index.Add(203, [2f, 1f, 0f]);
+    index.Add(204, [0f, 0f, 0f]);
+    index.Add(205, [-3f, 0f, 0f]);
+
+    SearchResult[] results = new SearchResult[4];
+    var workspace = new HnswSearchWorkspace(index.Count, index.Options.EfSearch);
+    int written = index.Search([1f, 1f, 0f], results, workspace);
+
+    Require(written == 4, "HNSW inner-product smoke should return the requested result count.");
+    Require(
+        results.Select(static result => result.Id).SequenceEqual([201UL, 202UL, 203UL, 200UL]),
+        "HNSW inner-product smoke should rank larger dot products as lower negative distances.");
+    Require(
+        results.Select(static result => result.Distance).SequenceEqual([-5f, -4f, -3f, -2f]),
+        "HNSW inner-product smoke should expose canonical negative-dot distances.");
 }
 
 static void RunMutableHnswSmoke(string artifactRoot)

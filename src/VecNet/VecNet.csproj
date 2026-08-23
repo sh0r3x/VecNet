@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackageId>VecNet</PackageId>
-    <Version>1.4.0</Version>
+    <Version>1.4.1</Version>
     <Title>VecNet</Title>
     <Authors>VecNet Contributors</Authors>
     <Description>Embedded vector indexing for .NET applications, with exact search, filtering, durable snapshots, mutable updates, and HNSW approximate search for squared-L2, inner-product, and cosine workloads.</Description>

@@ -5,7 +5,13 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $AdapterPackagePath,
 
-    [string] $ExpectedPackageVersion
+    [string] $ExpectedPackageVersion,
+
+    [string] $CoreSymbolPackagePath,
+
+    [string] $AdapterSymbolPackagePath,
+
+    [string[]] $ForbiddenPayloadText
 )
 
 $ErrorActionPreference = "Stop"
@@ -70,11 +76,27 @@ function Get-PackageInfo {
             }
         }
 
+        $projectUrl = $metadata.SelectSingleNode("n:projectUrl", $namespace)
+        $license = $metadata.SelectSingleNode("n:license", $namespace)
+        $repository = $metadata.SelectSingleNode("n:repository", $namespace)
+        $projectUrlValue = if ($null -eq $projectUrl) { $null } else { $projectUrl.InnerText }
+        $licenseTypeValue = if ($null -eq $license) { $null } else { $license.GetAttribute("type") }
+        $licenseValue = if ($null -eq $license) { $null } else { $license.InnerText }
+        $repositoryTypeValue = if ($null -eq $repository) { $null } else { $repository.GetAttribute("type") }
+        $repositoryUrlValue = if ($null -eq $repository) { $null } else { $repository.GetAttribute("url") }
+        $repositoryCommitValue = if ($null -eq $repository) { $null } else { $repository.GetAttribute("commit") }
+
         return [pscustomobject]@{
             Expanded = $expanded
             Id = $metadata.SelectSingleNode("n:id", $namespace).InnerText
             Version = $metadata.SelectSingleNode("n:version", $namespace).InnerText
             Description = $metadata.SelectSingleNode("n:description", $namespace).InnerText
+            ProjectUrl = $projectUrlValue
+            LicenseType = $licenseTypeValue
+            License = $licenseValue
+            RepositoryType = $repositoryTypeValue
+            RepositoryUrl = $repositoryUrlValue
+            RepositoryCommit = $repositoryCommitValue
             Files = $files
             Dependencies = $dependencies
         }
@@ -105,6 +127,35 @@ function Assert-NoForbiddenAssets {
 
     if ($forbidden) {
         throw "$PackageId has unexpected RID/native/build/analyzer/content assets: $($forbidden -join ', ')"
+    }
+}
+
+function Assert-PackageMetadata {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object] $Package,
+
+        [bool] $RequireLicense = $true
+    )
+
+    if ($Package.ProjectUrl -ne "https://github.com/sh0r3x/VecNet") {
+        throw "$($Package.Id) has unexpected project URL: $($Package.ProjectUrl)"
+    }
+
+    if ($Package.RepositoryType -ne "git") {
+        throw "$($Package.Id) has unexpected repository type: $($Package.RepositoryType)"
+    }
+
+    if ($Package.RepositoryUrl -ne "https://github.com/sh0r3x/VecNet.git") {
+        throw "$($Package.Id) has unexpected repository URL: $($Package.RepositoryUrl)"
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Package.RepositoryCommit)) {
+        throw "$($Package.Id) package did not emit repository commit metadata."
+    }
+
+    if ($RequireLicense -and ($Package.LicenseType -ne "expression" -or $Package.License -ne "MIT")) {
+        throw "$($Package.Id) has unexpected license metadata: type=$($Package.LicenseType) value=$($Package.License)"
     }
 }
 
@@ -139,8 +190,89 @@ function Test-AcceptedDependencyVersion {
     return $Actual -eq $Expected -or $Actual -eq "[$Expected, )" -or $Actual -eq "[$Expected,)"
 }
 
+function Get-DefaultSymbolPackagePath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $PackagePath
+    )
+
+    return [System.IO.Path]::ChangeExtension($PackagePath, ".snupkg")
+}
+
+function Assert-SymbolPackage {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $PackageId,
+
+        [Parameter(Mandatory = $true)]
+        [string] $PackagePath,
+
+        [Parameter(Mandatory = $true)]
+        [string[]] $RequiredFiles
+    )
+
+    if (-not (Test-Path -LiteralPath $PackagePath -PathType Leaf)) {
+        throw "$PackageId symbol package was not found: $PackagePath"
+    }
+
+    $symbol = Get-PackageInfo -PackagePath $PackagePath
+    try {
+        if ($symbol.Id -ne $PackageId) {
+            throw "Unexpected symbol package ID for ${PackageId}: $($symbol.Id)"
+        }
+
+        Assert-PackageMetadata -Package $symbol -RequireLicense $false
+        Assert-RequiredFiles -PackageId $symbol.Id -Files $symbol.Files -RequiredFiles $RequiredFiles
+        Assert-NoForbiddenAssets -PackageId $symbol.Id -Files $symbol.Files
+
+        return $symbol
+    }
+    catch {
+        Remove-Item -LiteralPath $symbol.Expanded -Recurse -Force -ErrorAction SilentlyContinue
+        throw
+    }
+}
+
+function Assert-NoForbiddenPayloadText {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $ExpandedRoot,
+
+        [Parameter(Mandatory = $true)]
+        [string] $PackageId,
+
+        [string[]] $Patterns
+    )
+
+    if ($null -eq $Patterns -or $Patterns.Count -eq 0) {
+        return
+    }
+
+    foreach ($file in Get-ChildItem -LiteralPath $ExpandedRoot -Recurse -File) {
+        if ($file.Name -eq "package.zip") {
+            continue
+        }
+
+        $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
+        $utf8 = [System.Text.Encoding]::UTF8.GetString($bytes)
+        $unicode = [System.Text.Encoding]::Unicode.GetString($bytes)
+        foreach ($pattern in $Patterns) {
+            if ([string]::IsNullOrWhiteSpace($pattern)) {
+                continue
+            }
+
+            if ($utf8.IndexOf($pattern, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+                $unicode.IndexOf($pattern, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                throw "$PackageId payload contains forbidden text '$pattern' in $($file.Name)."
+            }
+        }
+    }
+}
+
 $core = Get-PackageInfo -PackagePath $CorePackagePath
 $adapter = Get-PackageInfo -PackagePath $AdapterPackagePath
+$coreSymbolPackage = $null
+$adapterSymbolPackage = $null
 
 try {
     $expectedVersion = if ([string]::IsNullOrWhiteSpace($ExpectedPackageVersion)) {
@@ -157,6 +289,8 @@ try {
     if ($core.Version -ne $expectedVersion) {
         throw "Unexpected core package version: $($core.Version)"
     }
+
+    Assert-PackageMetadata -Package $core
 
     if ($core.Description -notmatch "HNSW approximate search for squared-L2, inner-product, and cosine workloads") {
         throw "Core package description does not mention the admitted HNSW metric package capabilities."
@@ -180,6 +314,8 @@ try {
     if ($adapter.Version -ne $expectedVersion) {
         throw "Unexpected adapter package version: $($adapter.Version)"
     }
+
+    Assert-PackageMetadata -Package $adapter
 
     if ($adapter.Description -notmatch "exact-flat") {
         throw "Adapter package description must remain exact-flat-only."
@@ -217,12 +353,44 @@ try {
         }
     }
 
+    $coreSymbolPath = if ([string]::IsNullOrWhiteSpace($CoreSymbolPackagePath)) {
+        Get-DefaultSymbolPackagePath -PackagePath $CorePackagePath
+    }
+    else {
+        $CoreSymbolPackagePath
+    }
+    $adapterSymbolPath = if ([string]::IsNullOrWhiteSpace($AdapterSymbolPackagePath)) {
+        Get-DefaultSymbolPackagePath -PackagePath $AdapterPackagePath
+    }
+    else {
+        $AdapterSymbolPackagePath
+    }
+
+    $coreSymbolPackage = Assert-SymbolPackage -PackageId "VecNet" -PackagePath $coreSymbolPath -RequiredFiles @(
+        "lib/net10.0/VecNet.pdb"
+    )
+    $adapterSymbolPackage = Assert-SymbolPackage -PackageId "VecNet.Integration.VectorData" -PackagePath $adapterSymbolPath -RequiredFiles @(
+        "lib/net10.0/VecNet.Integration.VectorData.pdb"
+    )
+
+    foreach ($payload in @($core, $adapter, $coreSymbolPackage, $adapterSymbolPackage)) {
+        Assert-NoForbiddenPayloadText -ExpandedRoot $payload.Expanded -PackageId $payload.Id -Patterns $ForbiddenPayloadText
+    }
+
     Write-Host "CORE_PACKAGE id=$($core.Id) version=$($core.Version)"
+    Write-Host "CORE_PACKAGE_METADATA projectUrl=$($core.ProjectUrl) repositoryType=$($core.RepositoryType) repositoryUrl=$($core.RepositoryUrl) repositoryCommit=$($core.RepositoryCommit) license=$($core.LicenseType):$($core.License)"
     Write-Host "CORE_PACKAGE_FILES"
     $core.Files | ForEach-Object { Write-Host "  $_" }
+    Write-Host "CORE_SYMBOL_PACKAGE id=$($coreSymbolPackage.Id) version=$($coreSymbolPackage.Version)"
+    Write-Host "CORE_SYMBOL_PACKAGE_FILES"
+    $coreSymbolPackage.Files | ForEach-Object { Write-Host "  $_" }
     Write-Host "ADAPTER_PACKAGE id=$($adapter.Id) version=$($adapter.Version)"
+    Write-Host "ADAPTER_PACKAGE_METADATA projectUrl=$($adapter.ProjectUrl) repositoryType=$($adapter.RepositoryType) repositoryUrl=$($adapter.RepositoryUrl) repositoryCommit=$($adapter.RepositoryCommit) license=$($adapter.LicenseType):$($adapter.License)"
     Write-Host "ADAPTER_PACKAGE_FILES"
     $adapter.Files | ForEach-Object { Write-Host "  $_" }
+    Write-Host "ADAPTER_SYMBOL_PACKAGE id=$($adapterSymbolPackage.Id) version=$($adapterSymbolPackage.Version)"
+    Write-Host "ADAPTER_SYMBOL_PACKAGE_FILES"
+    $adapterSymbolPackage.Files | ForEach-Object { Write-Host "  $_" }
     Write-Host "ADAPTER_DEPENDENCIES"
     $adapterDependencies | ForEach-Object {
         Write-Host "  target=$($_.TargetFramework) id=$($_.Id) version=$($_.Version)"
@@ -231,4 +399,10 @@ try {
 finally {
     Remove-Item -LiteralPath $core.Expanded -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $adapter.Expanded -Recurse -Force -ErrorAction SilentlyContinue
+    if ($null -ne $coreSymbolPackage) {
+        Remove-Item -LiteralPath $coreSymbolPackage.Expanded -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    if ($null -ne $adapterSymbolPackage) {
+        Remove-Item -LiteralPath $adapterSymbolPackage.Expanded -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }

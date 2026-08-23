@@ -14,6 +14,9 @@
 - Expanded README and XML inner-product wording to clarify raw-vector,
   magnitude-sensitive ranking, zero-vector validity, negative-dot distances,
   and cosine as the direction-only metric.
+- Optimized inner-product distance evaluation for exact-flat, immutable HNSW
+  and mutable HNSW through a shared SIMD-aware dot-product path while
+  preserving VecNet's canonical negative-dot distance ordering.
 
 ## 1.4.0 - 2026-08-16
 

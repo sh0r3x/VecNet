@@ -269,6 +269,7 @@ public sealed class HnswIndexBoundedPersistenceTestsIndependent
         var info = new FileInfo(filePath);
         file["byteLength"] = info.Length;
         file["sha256"] = ComputeSha256Hex(filePath);
+        root.Remove("contentDigest");
         File.WriteAllText(manifestPath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = false }));
     }
 

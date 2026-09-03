@@ -250,6 +250,7 @@ public sealed class ExactFlatIndexCandidateSetIndependentTests
                 "schemaName",
                 "schemaVersion",
                 "formatFamily",
+                "contentDigest",
                 "createdUtc",
                 "writer",
                 "index",

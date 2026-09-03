@@ -541,6 +541,7 @@ internal static class ExactFlatIndexStorage
         writer.WriteString("schemaName", ManifestSchemaName);
         writer.WriteString("schemaVersion", ManifestSchemaVersion);
         writer.WriteString("formatFamily", FormatFamily);
+        writer.WriteString("contentDigest", CreateContentDigest(dimension, metric, vectorCount, idsFile, vectorsFile));
         writer.WriteString("createdUtc", DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", CultureInfo.InvariantCulture));
 
         writer.WriteStartObject("writer");
@@ -580,6 +581,57 @@ internal static class ExactFlatIndexStorage
         writer.WriteEndObject();
 
         writer.WriteEndObject();
+    }
+
+    private static string CreateContentDigest(
+        int dimension,
+        VectorMetric metric,
+        int vectorCount,
+        BinaryFileMetadata idsFile,
+        BinaryFileMetadata vectorsFile)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = false }))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("schemaName", ManifestSchemaName);
+            writer.WriteString("schemaVersion", ManifestSchemaVersion);
+            writer.WriteString("formatFamily", FormatFamily);
+
+            writer.WriteStartObject("index");
+            writer.WriteNumber("dimension", dimension);
+            writer.WriteString("metric", ToMetricText(metric));
+            writer.WriteNumber("vectorCount", vectorCount);
+            writer.WriteString("idType", IdType);
+            writer.WriteString("vectorElementType", VectorElementType);
+            writer.WriteString("vectorLayout", VectorLayout);
+            writer.WriteString("normalizationState", GetNormalizationState(metric));
+            writer.WriteEndObject();
+
+            writer.WriteStartObject("semantics");
+            writer.WriteString("distanceContract", DistanceContract);
+            writer.WriteString("tiePolicy", TiePolicy);
+            writer.WriteString("squaredEuclideanExecutionPolicy", SquaredEuclideanExecutionPolicy);
+            writer.WriteBoolean("cosineQueryNormalization", true);
+            writer.WriteEndObject();
+
+            writer.WriteStartObject("files");
+            WriteFileMetadata(writer, "ids", idsFile);
+            WriteFileMetadata(writer, "vectors", vectorsFile);
+            writer.WriteEndObject();
+
+            writer.WriteStartObject("compatibility");
+            writer.WriteStartArray("requiredFeatures");
+            writer.WriteEndArray();
+            writer.WriteStartArray("optionalFeatures");
+            writer.WriteEndArray();
+            writer.WriteNumber("minimumReaderMajorVersion", 1);
+            writer.WriteEndObject();
+
+            writer.WriteEndObject();
+        }
+
+        return Convert.ToHexString(SHA256.HashData(stream.ToArray())).ToLowerInvariant();
     }
 
     private static void WriteFileMetadata(Utf8JsonWriter writer, string propertyName, BinaryFileMetadata file)
@@ -637,7 +689,9 @@ internal static class ExactFlatIndexStorage
             BinaryFileMetadata ids = ReadFileMetadata(GetRequiredObject(files, "ids"), IdsFileName, IdsMagicText);
             BinaryFileMetadata vectors = ReadFileMetadata(GetRequiredObject(files, "vectors"), VectorsFileName, VectorsMagicText);
 
-            ValidateCompatibility(GetRequiredObject(root, "compatibility"));
+            JsonElement compatibility = GetRequiredObject(root, "compatibility");
+            ValidateCompatibility(compatibility);
+            ValidateContentDigestIfPresent(root, dimension, metric, vectorCount, ids, vectors);
 
             return new Manifest(dimension, metric, vectorCount, ids, vectors);
         }
@@ -700,6 +754,33 @@ internal static class ExactFlatIndexStorage
         if (minimumReaderMajorVersion > BinaryMajorVersion)
         {
             throw new InvalidDataException("Exact flat index requires a newer reader major version.");
+        }
+    }
+
+    private static void ValidateContentDigestIfPresent(
+        JsonElement root,
+        int dimension,
+        VectorMetric metric,
+        int vectorCount,
+        BinaryFileMetadata idsFile,
+        BinaryFileMetadata vectorsFile)
+    {
+        if (!root.TryGetProperty("contentDigest", out JsonElement value))
+        {
+            return;
+        }
+
+        if (value.ValueKind != JsonValueKind.String)
+        {
+            throw new InvalidDataException("Exact flat index manifest contentDigest must be a string.");
+        }
+
+        string actual = value.GetString()!;
+        ValidateSha256Text(actual);
+        string expected = CreateContentDigest(dimension, metric, vectorCount, idsFile, vectorsFile);
+        if (!string.Equals(actual, expected, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("Exact flat index manifest contentDigest does not match the durable contents.");
         }
     }
 

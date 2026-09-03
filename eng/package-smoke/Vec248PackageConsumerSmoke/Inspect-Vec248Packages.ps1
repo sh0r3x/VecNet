@@ -85,11 +85,19 @@ function Get-PackageInfo {
         $repositoryTypeValue = if ($null -eq $repository) { $null } else { $repository.GetAttribute("type") }
         $repositoryUrlValue = if ($null -eq $repository) { $null } else { $repository.GetAttribute("url") }
         $repositoryCommitValue = if ($null -eq $repository) { $null } else { $repository.GetAttribute("commit") }
+        $repositoryBranchValue = if ($null -eq $repository) { $null } else { $repository.GetAttribute("branch") }
+        $authors = $metadata.SelectSingleNode("n:authors", $namespace)
+        $authorsValue = if ($null -eq $authors) { $null } else { $authors.InnerText }
+        $packageTypes = @()
+        foreach ($packageType in $metadata.SelectNodes("n:packageTypes/n:packageType", $namespace)) {
+            $packageTypes += $packageType.GetAttribute("name")
+        }
 
         return [pscustomobject]@{
             Expanded = $expanded
             Id = $metadata.SelectSingleNode("n:id", $namespace).InnerText
             Version = $metadata.SelectSingleNode("n:version", $namespace).InnerText
+            Authors = $authorsValue
             Description = $metadata.SelectSingleNode("n:description", $namespace).InnerText
             ProjectUrl = $projectUrlValue
             LicenseType = $licenseTypeValue
@@ -97,6 +105,8 @@ function Get-PackageInfo {
             RepositoryType = $repositoryTypeValue
             RepositoryUrl = $repositoryUrlValue
             RepositoryCommit = $repositoryCommitValue
+            RepositoryBranch = $repositoryBranchValue
+            PackageTypes = $packageTypes
             Files = $files
             Dependencies = $dependencies
         }
@@ -135,7 +145,9 @@ function Assert-PackageMetadata {
         [Parameter(Mandatory = $true)]
         [object] $Package,
 
-        [bool] $RequireLicense = $true
+        [bool] $RequireLicense = $true,
+
+        [bool] $RequireAuthors = $true
     )
 
     if ($Package.ProjectUrl -ne "https://github.com/sh0r3x/VecNet") {
@@ -150,8 +162,16 @@ function Assert-PackageMetadata {
         throw "$($Package.Id) has unexpected repository URL: $($Package.RepositoryUrl)"
     }
 
+    if ($RequireAuthors -and $Package.Authors -ne "sh0r3x") {
+        throw "$($Package.Id) has unexpected authors metadata: $($Package.Authors)"
+    }
+
     if ([string]::IsNullOrWhiteSpace($Package.RepositoryCommit)) {
         throw "$($Package.Id) package did not emit repository commit metadata."
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($Package.RepositoryBranch)) {
+        throw "$($Package.Id) package emitted forbidden repository branch metadata: $($Package.RepositoryBranch)"
     }
 
     if ($RequireLicense -and ($Package.LicenseType -ne "expression" -or $Package.License -ne "MIT")) {
@@ -221,7 +241,15 @@ function Assert-SymbolPackage {
             throw "Unexpected symbol package ID for ${PackageId}: $($symbol.Id)"
         }
 
-        Assert-PackageMetadata -Package $symbol -RequireLicense $false
+        if ($symbol.Version -ne $expectedVersion) {
+            throw "Unexpected symbol package version for ${PackageId}: $($symbol.Version)"
+        }
+
+        Assert-PackageMetadata -Package $symbol -RequireLicense $false -RequireAuthors $false
+        if ($symbol.PackageTypes -notcontains "SymbolsPackage") {
+            throw "$PackageId symbol package did not declare SymbolsPackage package type."
+        }
+
         Assert-RequiredFiles -PackageId $symbol.Id -Files $symbol.Files -RequiredFiles $RequiredFiles
         Assert-NoForbiddenAssets -PackageId $symbol.Id -Files $symbol.Files
 
@@ -378,14 +406,14 @@ try {
     }
 
     Write-Host "CORE_PACKAGE id=$($core.Id) version=$($core.Version)"
-    Write-Host "CORE_PACKAGE_METADATA projectUrl=$($core.ProjectUrl) repositoryType=$($core.RepositoryType) repositoryUrl=$($core.RepositoryUrl) repositoryCommit=$($core.RepositoryCommit) license=$($core.LicenseType):$($core.License)"
+    Write-Host "CORE_PACKAGE_METADATA authors=$($core.Authors) projectUrl=$($core.ProjectUrl) repositoryType=$($core.RepositoryType) repositoryUrl=$($core.RepositoryUrl) repositoryCommit=$($core.RepositoryCommit) license=$($core.LicenseType):$($core.License)"
     Write-Host "CORE_PACKAGE_FILES"
     $core.Files | ForEach-Object { Write-Host "  $_" }
     Write-Host "CORE_SYMBOL_PACKAGE id=$($coreSymbolPackage.Id) version=$($coreSymbolPackage.Version)"
     Write-Host "CORE_SYMBOL_PACKAGE_FILES"
     $coreSymbolPackage.Files | ForEach-Object { Write-Host "  $_" }
     Write-Host "ADAPTER_PACKAGE id=$($adapter.Id) version=$($adapter.Version)"
-    Write-Host "ADAPTER_PACKAGE_METADATA projectUrl=$($adapter.ProjectUrl) repositoryType=$($adapter.RepositoryType) repositoryUrl=$($adapter.RepositoryUrl) repositoryCommit=$($adapter.RepositoryCommit) license=$($adapter.LicenseType):$($adapter.License)"
+    Write-Host "ADAPTER_PACKAGE_METADATA authors=$($adapter.Authors) projectUrl=$($adapter.ProjectUrl) repositoryType=$($adapter.RepositoryType) repositoryUrl=$($adapter.RepositoryUrl) repositoryCommit=$($adapter.RepositoryCommit) license=$($adapter.LicenseType):$($adapter.License)"
     Write-Host "ADAPTER_PACKAGE_FILES"
     $adapter.Files | ForEach-Object { Write-Host "  $_" }
     Write-Host "ADAPTER_SYMBOL_PACKAGE id=$($adapterSymbolPackage.Id) version=$($adapterSymbolPackage.Version)"

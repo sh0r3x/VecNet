@@ -13,7 +13,7 @@ checkpoint/update workflows. It does not compare VecNet with any other
 package, database, service, or native library.
 
 Measured at commit
-`2d3ae68db7197f04ce00a174c56a00b82fb24a77` on branch `hnsw-cosine`.
+`2d3ae68db7197f04ce00a174c56a00b82fb24a77`.
 
 Generated-data cases used uniform generated `float32` vectors and queries
 from the VecNet benchmark runner, scalar-reference canonical cosine truth,
@@ -25,9 +25,10 @@ with `1000` measured queries and `topK=10`. Raw `uint8` pixels were converted
 to unnormalized `float32` caller input; VecNet normalized vectors for cosine
 indexing and search.
 
-Cosine distance is canonical `1 - dot(normalizedQuery, normalizedStored)`.
-Results are ordered by ascending distance, then ascending external ID when
-distances compare equal.
+Cosine distance is canonical `1 - dot(normalizedQuery, normalizedStored)`, with
+an expected range of `[0, 2]`. Tiny floating-point excursions up to `1e-6`
+below zero or above two are tolerated. Results are ordered by ascending
+distance, then ascending external ID when distances compare equal.
 
 The selected search matrix used these cases:
 

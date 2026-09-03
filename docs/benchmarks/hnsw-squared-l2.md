@@ -13,8 +13,7 @@ inner-product HNSW. It does not compare VecNet with any other package,
 database, service, or native library.
 
 Measured against VecNet `1.0.1` at commit
-`4c84a7c9a029e00af8249e5f65bb9332b9b2f35b` on branch
-`public-benchmarking`.
+`4c84a7c9a029e00af8249e5f65bb9332b9b2f35b`.
 
 The selected generated-data cases used uniform generated `float32` vectors
 and queries from the VecNet benchmark runner, with scalar-reference exact

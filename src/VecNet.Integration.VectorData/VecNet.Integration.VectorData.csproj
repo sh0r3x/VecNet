@@ -3,9 +3,9 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <PackageId>VecNet.Integration.VectorData</PackageId>
-    <Version>1.4.1</Version>
+    <Version>1.4.2</Version>
     <Title>VecNet Integration for Microsoft.Extensions.VectorData</Title>
-    <Authors>VecNet Contributors</Authors>
+    <Authors>sh0r3x</Authors>
     <Description>Optional Microsoft.Extensions.VectorData adapter for VecNet exact-flat in-memory CRUD, search and expression-filter scenarios over pregenerated float vectors. This package is separate from the dependency-free VecNet core package and does not provide HNSW VectorData, embedding generation, hybrid search, multiple vector properties or durable VectorData record/key-map storage.</Description>
     <RepositoryUrl>https://github.com/sh0r3x/VecNet.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
@@ -16,7 +16,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <IsPackable>true</IsPackable>
     <EnablePackageValidation>true</EnablePackageValidation>
-    <PackageValidationBaselineVersion>1.3.1</PackageValidationBaselineVersion>
+    <PackageValidationBaselineVersion>1.4.1</PackageValidationBaselineVersion>
   </PropertyGroup>
 
   <ItemGroup>

@@ -777,6 +777,7 @@ internal static class HnswIndexStorage
         writer.WriteString("schemaName", ManifestSchemaName);
         writer.WriteString("schemaVersion", ManifestSchemaVersion);
         writer.WriteString("formatFamily", FormatFamily);
+        writer.WriteString("contentDigest", CreateContentDigest(index, idsFile, vectorsFile, levelsFile, graphFile, layerCount));
         writer.WriteString("snapshotId", Guid.NewGuid().ToString("D", CultureInfo.InvariantCulture));
         writer.WriteString("createdUtc", DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", CultureInfo.InvariantCulture));
 
@@ -850,6 +851,126 @@ internal static class HnswIndexStorage
         writer.WriteEndObject();
 
         writer.WriteEndObject();
+    }
+
+    private static string CreateContentDigest(
+        HnswIndex index,
+        BinaryFileMetadata idsFile,
+        BinaryFileMetadata vectorsFile,
+        BinaryFileMetadata levelsFile,
+        BinaryFileMetadata graphFile,
+        int layerCount) =>
+        CreateContentDigest(
+            index.Dimension,
+            index.Metric,
+            index.Count,
+            index.Options,
+            index.InternalMMax,
+            index.InternalMMax0,
+            index.InternalLevelMultiplier,
+            index.EntryPoint,
+            index.MaxLayer,
+            layerCount,
+            index.InternalMMax0,
+            index.InternalMMax,
+            idsFile,
+            vectorsFile,
+            levelsFile,
+            graphFile);
+
+    private static string CreateContentDigest(
+        int dimension,
+        VectorMetric metric,
+        int vectorCount,
+        HnswIndexOptions options,
+        int mMax,
+        int mMax0,
+        double levelMultiplier,
+        int entryPoint,
+        int maxLayer,
+        int layerCount,
+        int layer0Stride,
+        int upperLayerStride,
+        BinaryFileMetadata idsFile,
+        BinaryFileMetadata vectorsFile,
+        BinaryFileMetadata levelsFile,
+        BinaryFileMetadata graphFile)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = false }))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("schemaName", ManifestSchemaName);
+            writer.WriteString("schemaVersion", ManifestSchemaVersion);
+            writer.WriteString("formatFamily", FormatFamily);
+
+            writer.WriteStartObject("index");
+            writer.WriteNumber("dimension", dimension);
+            writer.WriteString("metric", ToMetricText(metric));
+            writer.WriteNumber("vectorCount", vectorCount);
+            writer.WriteString("idType", "uint64");
+            writer.WriteString("ordinalType", "int32");
+            writer.WriteString("vectorElementType", "float32");
+            writer.WriteString("vectorLayout", "row-major-dense");
+            writer.WriteString("normalizationState", GetNormalizationState(metric));
+            writer.WriteEndObject();
+
+            writer.WriteStartObject("hnsw");
+            writer.WriteStartObject("options");
+            writer.WriteNumber("m", options.M);
+            writer.WriteNumber("efConstruction", options.EfConstruction);
+            writer.WriteNumber("efSearch", options.EfSearch);
+            writer.WriteNumber("randomSeed", options.RandomSeed);
+            writer.WriteEndObject();
+            writer.WriteStartObject("derivedParameters");
+            writer.WriteNumber("mMax", mMax);
+            writer.WriteNumber("mMax0", mMax0);
+            writer.WriteNumber("levelMultiplier", levelMultiplier);
+            writer.WriteBoolean("extendCandidates", false);
+            writer.WriteBoolean("keepPrunedConnections", false);
+            writer.WriteEndObject();
+            writer.WriteStartObject("graph");
+            writer.WriteNumber("entryPoint", entryPoint);
+            writer.WriteNumber("maxLayer", maxLayer);
+            writer.WriteNumber("layerCount", layerCount);
+            writer.WriteNumber("layer0Stride", layer0Stride);
+            writer.WriteNumber("upperLayerStride", upperLayerStride);
+            writer.WriteString("adjacencyLayout", GraphAdjacencyLayout);
+            writer.WriteString("levelGenerator", LevelGenerator);
+            writer.WriteString("insertionOrder", "ordinal-row-order");
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+
+            writer.WriteStartObject("semantics");
+            writer.WriteString("distanceContract", "VecNet.CanonicalDistance.1");
+            writer.WriteString("tiePolicy", "DistanceThenExternalId");
+            writer.WriteString("squaredEuclideanExecutionPolicy", "CurrentPublicDefault");
+            writer.WriteString("resultKind", "approximate");
+            writer.WriteString("openedLifecycle", "read-only");
+            writer.WriteString("mutationPolicy", "reject");
+            writer.WriteString("workspacePolicy", "caller-owned-independent-workspace");
+            writer.WriteEndObject();
+
+            writer.WriteStartObject("files");
+            WriteFileMetadata(writer, "ids", idsFile);
+            WriteFileMetadata(writer, "vectors", vectorsFile);
+            WriteFileMetadata(writer, "levels", levelsFile);
+            WriteFileMetadata(writer, "graph", graphFile);
+            writer.WriteEndObject();
+
+            writer.WriteStartObject("compatibility");
+            writer.WriteStartArray("requiredFeatures");
+            writer.WriteEndArray();
+            writer.WriteStartArray("optionalFeatures");
+            writer.WriteEndArray();
+            writer.WriteNumber("minimumReaderMajorVersion", 1);
+            writer.WriteString("unsupportedFeaturePolicy", "reject-unknown-required-features");
+            writer.WriteEndObject();
+
+            writer.WriteEndObject();
+        }
+
+        return Convert.ToHexString(SHA256.HashData(stream.ToArray())).ToLowerInvariant();
     }
 
     private static void WriteFileMetadata(Utf8JsonWriter writer, string propertyName, BinaryFileMetadata file)
@@ -943,6 +1064,24 @@ internal static class HnswIndexStorage
 
             ValidateCompatibility(GetRequiredObject(root, "compatibility"));
             ValidateLegacyEvidenceIfPresent(root);
+            ValidateContentDigestIfPresent(
+                root,
+                dimension,
+                metric,
+                vectorCount,
+                options,
+                mMax,
+                mMax0,
+                levelMultiplier,
+                entryPoint,
+                maxLayer,
+                layerCount,
+                layer0Stride,
+                upperLayerStride,
+                ids,
+                vectors,
+                levels,
+                graphFile);
 
             return new Manifest(
                 dimension,
@@ -1042,6 +1181,60 @@ internal static class HnswIndexStorage
         }
 
         RequireString(compatibility, "unsupportedFeaturePolicy", "reject-unknown-required-features");
+    }
+
+    private static void ValidateContentDigestIfPresent(
+        JsonElement root,
+        int dimension,
+        VectorMetric metric,
+        int vectorCount,
+        HnswIndexOptions options,
+        int mMax,
+        int mMax0,
+        double levelMultiplier,
+        int entryPoint,
+        int maxLayer,
+        int layerCount,
+        int layer0Stride,
+        int upperLayerStride,
+        BinaryFileMetadata idsFile,
+        BinaryFileMetadata vectorsFile,
+        BinaryFileMetadata levelsFile,
+        BinaryFileMetadata graphFile)
+    {
+        if (!root.TryGetProperty("contentDigest", out JsonElement value))
+        {
+            return;
+        }
+
+        if (value.ValueKind != JsonValueKind.String)
+        {
+            throw new InvalidDataException("HNSW index manifest contentDigest must be a string.");
+        }
+
+        string actual = value.GetString()!;
+        ValidateSha256Text(actual);
+        string expected = CreateContentDigest(
+            dimension,
+            metric,
+            vectorCount,
+            options,
+            mMax,
+            mMax0,
+            levelMultiplier,
+            entryPoint,
+            maxLayer,
+            layerCount,
+            layer0Stride,
+            upperLayerStride,
+            idsFile,
+            vectorsFile,
+            levelsFile,
+            graphFile);
+        if (!string.Equals(actual, expected, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("HNSW index manifest contentDigest does not match the durable contents.");
+        }
     }
 
     private static void ValidateLegacyCreatedByMetadata(JsonElement root)

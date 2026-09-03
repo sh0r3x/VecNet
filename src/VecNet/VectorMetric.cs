@@ -26,5 +26,9 @@ public enum VectorMetric
     /// <summary>
     /// Cosine distance after index-normalized insertion and query inputs: lower values are nearer.
     /// </summary>
+    /// <remarks>
+    /// The canonical cosine distance range is [0, 2]. Tiny floating-point excursions up to 1e-6
+    /// below zero or above two are tolerated.
+    /// </remarks>
     Cosine
 }

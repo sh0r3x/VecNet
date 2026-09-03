@@ -399,7 +399,11 @@ public sealed class ExactFlatIndexStorageIndependentTests
     }
 
     private static void MutateManifestFileMetadata(string directory, string filePropertyName, Action<JsonObject> mutate) =>
-        MutateManifest(directory, root => mutate((JsonObject)root["files"]![filePropertyName]!));
+        MutateManifest(directory, root =>
+        {
+            mutate((JsonObject)root["files"]![filePropertyName]!);
+            root.Remove("contentDigest");
+        });
 
     private static void MutateManifest(string directory, Action<JsonObject> mutate)
     {

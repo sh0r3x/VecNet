@@ -165,6 +165,7 @@ public sealed class ExactFlatIndexStorageTests
                 "schemaName",
                 "schemaVersion",
                 "formatFamily",
+                "contentDigest",
                 "createdUtc",
                 "writer",
                 "index",
@@ -525,6 +526,7 @@ public sealed class ExactFlatIndexStorageTests
             string filePath = Path.Combine(directory, relativePath);
             file["byteLength"] = new FileInfo(filePath).Length;
             file["sha256"] = ComputeSha256Hex(filePath);
+            root.Remove("contentDigest");
         });
     }
 

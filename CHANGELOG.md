@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.4.2 - 2026-09-03
+
+### Changed
+
+- Added deterministic logical `contentDigest` metadata to newly written
+  exact-flat and HNSW durable manifests while preserving supported reads of
+  earlier stable `1.x` manifests that do not contain the field.
+- Documented VecNet's cosine distance policy as canonical `[0, 2]` distance
+  with tolerated floating-point excursions up to `1e-6` below zero or above
+  two.
+- Corrected HNSW `EnsureCapacity` wording to describe preserved logical
+  durable contents, counts, search behavior, and durable compatibility rather
+  than byte-identical physical output.
+
 ## 1.4.1 - 2026-08-23
 
 ### Added

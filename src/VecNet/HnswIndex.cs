@@ -194,7 +194,9 @@ public sealed partial class HnswIndex
     /// <param name="vectorCapacity">The non-negative vector-row capacity to reserve.</param>
     /// <remarks>
     /// This method may allocate and copy existing row, graph, and build-scratch storage. It does not
-    /// change <see cref="Count"/>, graph contents, insertion order, search results, or durable output.
+    /// change <see cref="Count"/>, graph contents, insertion order, search results, logical durable
+    /// contents, or durable compatibility. Saved physical files may still contain normal manifest
+    /// metadata differences.
     /// HNSW indexes opened with <see cref="OpenReadOnly(string)"/> reject this method.
     /// </remarks>
     public void EnsureCapacity(int vectorCapacity)

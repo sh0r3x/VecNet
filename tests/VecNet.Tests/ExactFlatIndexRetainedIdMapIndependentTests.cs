@@ -223,6 +223,7 @@ public sealed class ExactFlatIndexRetainedIdMapIndependentTests
                 "schemaName",
                 "schemaVersion",
                 "formatFamily",
+                "contentDigest",
                 "createdUtc",
                 "writer",
                 "index",

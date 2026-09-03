@@ -11,14 +11,14 @@ and durable application storage.
 Use VecNet from a `.NET 10` project. Add the core package:
 
 ```bash
-dotnet add package VecNet --version 1.4.1
+dotnet add package VecNet --version 1.4.2
 ```
 
 For `Microsoft.Extensions.VectorData` applications, add the separate optional
 exact-flat adapter package in addition to the core package:
 
 ```bash
-dotnet add package VecNet.Integration.VectorData --version 1.4.1
+dotnet add package VecNet.Integration.VectorData --version 1.4.2
 ```
 
 The core `VecNet` package intentionally has no runtime package dependencies
@@ -195,7 +195,7 @@ or semantic-relevance claims.
   projectable class record shape; unsupported projection shapes throw a clear
   `NotSupportedException`.
 
-## Supported 1.4.1 Feature List
+## Supported 1.4.2 Feature List
 
 - Target framework: `net10.0`.
 - The core `VecNet` package is dependency-free and ships managed `lib/net10.0`
@@ -207,7 +207,8 @@ or semantic-relevance claims.
   - `VectorMetric.InnerProduct`: raw-vector negative dot product, so larger
     dot product produces a lower distance and magnitude affects ranking.
   - `VectorMetric.Cosine`: `1 - dot` after VecNet normalizes inserted and
-    query vectors.
+    query vectors. The canonical range is `[0, 2]`; tiny floating-point
+    excursions up to `1e-6` below zero or above two are tolerated.
 - Results ordered by ascending distance, then ascending external ID when the
   computed distance is equal.
 - Durable exact-flat `Save` and `OpenReadOnly` over a directory containing a
@@ -290,7 +291,7 @@ or semantic-relevance claims.
 - Package installation and basic consumer checks do not create a public
   performance, platform support, NativeAOT, trimming, or universal deployment
   claim.
-- `1.4.1` is the stable package version for the supported public API surfaces
+- `1.4.2` is the stable package version for the supported public API surfaces
   described here. Except for the dedicated benchmark documents linked above,
   this README does not make public HNSW recall, latency, throughput,
   allocation, memory, capacity, storage-size, update-profile, concurrency,
@@ -312,7 +313,9 @@ maximum inner product.
 
 Use `VectorMetric.Cosine` when direction-only similarity should rank better.
 VecNet normalizes inserted and query vectors for cosine indexes, rejects zero
-vectors, and reports `1 - dot(normalizedQuery, normalizedStored)`.
+vectors, and reports `1 - dot(normalizedQuery, normalizedStored)`. The
+canonical cosine distance range is `[0, 2]`; tiny floating-point excursions up
+to `1e-6` below zero or above two are tolerated.
 
 HNSW supports squared L2, inner product, and cosine across immutable search,
 durable save/open, opened read-only search, caller-owned allowlist search, and
@@ -458,6 +461,10 @@ ingest. The `initialCapacity` constructors and `EnsureCapacity` reserve vector
 row, graph, ID-map, and build-scratch storage for mutable/buildable HNSW
 instances. `Capacity` is storage reservation, not vector cardinality or a
 published supported scale limit.
+
+Capacity reservation preserves logical durable index contents, counts, search
+behavior, and durable compatibility. Saved physical files may still contain
+normal manifest metadata differences.
 
 Buildable HNSW instances retain build scratch so additional `Add`
 operations can continue without a separate seal step. Applications that want
